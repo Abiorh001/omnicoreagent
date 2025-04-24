@@ -28,6 +28,10 @@ class LLMToolSupport:
             "provider": "deepseek",
             "models": None,  # None means all models support tools
         },
+        "ollama": {
+            "provider": "ollama",
+            "models": ["mistral", "llama3.2", "phi4-mini"],  # None means all models support tools, add other
+        },
     }
 
     @classmethod

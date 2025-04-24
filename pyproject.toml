@@ -36,7 +36,8 @@ dependencies = [
     "redis>=5.2.1",
     "python-decouple>=3.8",
     "mcp[cli]>=1.6.0",
-    "deepseek>=1.0.0"
+    "deepseek>=1.0.0",
+    "langchain_ollama==0.3.2"
 ]
 
 [project.scripts]

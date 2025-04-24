@@ -2,6 +2,7 @@ from typing import Any
 
 from groq import Groq
 from openai import OpenAI
+from langchain_ollama import ChatOllama
 from mcpomni_connect.utils import logger
 
 
@@ -14,6 +15,9 @@ class LLMConnection:
         self.openrouter = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=self.config.llm_api_key,
+        )
+        self.ollama = ChatOllama(
+            base_url="http://localhost:11434",
         )
         self.gemini = OpenAI(
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -167,6 +171,15 @@ class LLMConnection:
                         top_p=self.llm_config["top_p"],
                         messages=messages,
                     )
+                return response
+            elif self.llm_config["provider"].lower() == "ollama":
+                # Use langchain_ollama's ChatOllama for response
+                response = self.ollama.invoke(
+                    messages,
+                    model=self.llm_config["model"],
+                    temperature=self.llm_config["temperature"],
+                    max_tokens=self.llm_config["max_tokens"],
+                )
                 return response
         except Exception as e:
             logger.error(f"Error calling LLM: {e}")
