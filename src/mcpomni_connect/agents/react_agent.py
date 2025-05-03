@@ -13,7 +13,7 @@ class ReactAgent(BaseReactAgent):
             total_tokens_limit=config.total_tokens_limit,
             mcp_enabled=config.mcp_enabled,
         )
-        
+
     async def _run(
         self,
         system_prompt: str,
@@ -35,6 +35,6 @@ class ReactAgent(BaseReactAgent):
             available_tools=kwargs.get("available_tools"),
             tools_registry=kwargs.get("tools_registry"),
             is_generic_agent=kwargs.get("is_generic_agent"),
-            chat_id=kwargs.get("chat_id")
+            chat_id=kwargs.get("chat_id"),
         )
         return response

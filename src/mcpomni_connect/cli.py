@@ -48,7 +48,6 @@ from mcpomni_connect.constants import AGENTS_REGISTRY, date_time_func
 # from mcpomni_connect.mcp_omni_agents import OrchestratorAgent
 
 
-
 class CommandType(Enum):
     """Command types for the MCP client"""
 
@@ -262,7 +261,9 @@ class MCPClientCLI:
     def __init__(self, client: MCPClient, llm_connection: LLMConnection):
         self.client = client
         self.llm_connection = llm_connection
-        self.agent_config = self.llm_connection.config.load_config("servers_config.json")["AgentConfig"]
+        self.agent_config = self.llm_connection.config.load_config(
+            "servers_config.json"
+        )["AgentConfig"]
         self.MAX_CONTEXT_TOKENS = self.llm_connection.config.load_config(
             "servers_config.json"
         )["LLM"]["max_context_length"]
@@ -337,29 +338,31 @@ class MCPClientCLI:
             f"[{'green' if self.client.debug else 'red'}]Debug mode "
             f"{'enabled' if self.client.debug else 'disabled'}[/]"
         )
+
     async def handle_api_stats(self, input_text: str = ""):
         """handle api stats"""
         from mcpomni_connect.agents.token_usage import session_stats
+
         stats = session_stats
         stats_content = f"""
 [bold cyan]API Call Stats for Current Session:[/]
 
-[bold green]Request Tokens:[/] {stats['request_tokens']}
-[bold green]Response Tokens:[/] {stats['response_tokens']}
-[bold green]Total Tokens:[/] {stats['total_tokens']}
+[bold green]Request Tokens:[/] {stats["request_tokens"]}
+[bold green]Response Tokens:[/] {stats["response_tokens"]}
+[bold green]Total Tokens:[/] {stats["total_tokens"]}
 
-[bold yellow]Remaining Requests:[/] {stats['remaining_requests']}
-[bold yellow]Remaining Tokens:[/] {stats['remaining_tokens']}
+[bold yellow]Remaining Requests:[/] {stats["remaining_requests"]}
+[bold yellow]Remaining Tokens:[/] {stats["remaining_tokens"]}
             """
         stats_box = Panel(
-                stats_content, 
-                title="API Stats", 
-                style="bold cyan", 
-                border_style="bright_magenta", 
-                padding=(1, 2)
-            )
+            stats_content,
+            title="API Stats",
+            style="bold cyan",
+            border_style="bright_magenta",
+            padding=(1, 2),
+        )
         self.console.print(stats_box)
-    
+
     async def handle_memory_command(self, input_text: str = ""):
         """Handle memory command"""
         self.USE_MEMORY["redis"] = not self.USE_MEMORY["redis"]
@@ -565,7 +568,7 @@ class MCPClientCLI:
                 llm_call=self.llm_connection.llm_call,
                 debug=self.client.debug,
                 request_limit=self.agent_config["request_limit"],
-                total_tokens_limit=self.agent_config["total_tokens_limit"]
+                total_tokens_limit=self.agent_config["total_tokens_limit"],
             )
 
         if content.startswith("```") or content.startswith("#"):
@@ -642,17 +645,17 @@ class MCPClientCLI:
                     system_prompt=system_prompt,
                     llm_call=self.llm_connection.llm_call,
                     add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
+                        self.redis_short_term_memory.store_message
+                        if self.USE_MEMORY["redis"]
+                        else self.in_memory_short_term_memory.store_message
+                    ),
                     debug=self.client.debug,
                     available_prompts=self.client.available_prompts,
                     name=name,
                     arguments=arguments,
                     request_limit=self.agent_config["request_limit"],
                     total_tokens_limit=self.agent_config["total_tokens_limit"],
-                    chat_id=CLIENT_MAC_ADDRESS
+                    chat_id=CLIENT_MAC_ADDRESS,
                 )
                 if content:
                     # Get latest tools
@@ -668,7 +671,9 @@ class MCPClientCLI:
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
                         mcp_enabled=True,
                     )
-                    tool_calling_agent = ToolCallingAgent(config=agent_config, debug=self.client.debug)
+                    tool_calling_agent = ToolCallingAgent(
+                        config=agent_config, debug=self.client.debug
+                    )
                     response = await tool_calling_agent.run(
                         query=content,
                         chat_id=CLIENT_MAC_ADDRESS,
@@ -687,18 +692,18 @@ class MCPClientCLI:
                             self.redis_short_term_memory.get_messages
                             if self.USE_MEMORY["redis"]
                             else self.in_memory_short_term_memory.get_messages
-                        )
+                        ),
                     )
                 content = response
             else:
                 # Use ReAct agent for LLMs without tool support
                 extra_kwargs = {
-                        "sessions": self.client.sessions,
-                        "available_tools": self.client.available_tools,
-                        "is_generic_agent": True,
-                        "chat_id": CLIENT_MAC_ADDRESS
-                    }
-                    
+                    "sessions": self.client.sessions,
+                    "available_tools": self.client.available_tools,
+                    "is_generic_agent": True,
+                    "chat_id": CLIENT_MAC_ADDRESS,
+                }
+
                 agent_config = AgentConfig(
                     agent_name="react_agent",
                     tool_call_timeout=self.agent_config.get("tool_call_timeout"),
@@ -707,7 +712,9 @@ class MCPClientCLI:
                     total_tokens_limit=self.agent_config.get("total_tokens_limit"),
                     mcp_enabled=True,
                 )
-                react_agent_prompt = generate_react_agent_prompt(current_date_time=date_time_func["format_date"]())
+                react_agent_prompt = generate_react_agent_prompt(
+                    current_date_time=date_time_func["format_date"]()
+                )
                 initial_response = await get_prompt_with_react_agent(
                     sessions=self.client.sessions,
                     system_prompt=react_agent_prompt,
@@ -720,7 +727,7 @@ class MCPClientCLI:
                     available_prompts=self.client.available_prompts,
                     name=name,
                     arguments=arguments,
-                    chat_id=CLIENT_MAC_ADDRESS
+                    chat_id=CLIENT_MAC_ADDRESS,
                 )
                 if initial_response:
                     react_agent = ReactAgent(config=agent_config)
@@ -739,7 +746,7 @@ class MCPClientCLI:
                             else self.in_memory_short_term_memory.get_messages
                         ),
                         debug=self.client.debug,
-                        **extra_kwargs
+                        **extra_kwargs,
                     )
                 else:
                     content = initial_response
@@ -860,7 +867,9 @@ class MCPClientCLI:
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
                         mcp_enabled=True,
                     )
-                    tool_calling_agent = ToolCallingAgent(config=agent_config, debug=self.client.debug)
+                    tool_calling_agent = ToolCallingAgent(
+                        config=agent_config, debug=self.client.debug
+                    )
                     response = await tool_calling_agent.run(
                         query=query,
                         chat_id=CLIENT_MAC_ADDRESS,
@@ -879,21 +888,20 @@ class MCPClientCLI:
                             self.redis_short_term_memory.get_messages
                             if self.USE_MEMORY["redis"]
                             else self.in_memory_short_term_memory.get_messages
-                        )
+                        ),
                     )
-                    
+
                 elif self.MODE["auto"]:
                     react_agent_prompt = generate_react_agent_prompt(
                         current_date_time=date_time_func["format_date"](),
-                        
                     )
                     extra_kwargs = {
                         "sessions": self.client.sessions,
                         "available_tools": self.client.available_tools,
                         "is_generic_agent": True,
-                        "chat_id": CLIENT_MAC_ADDRESS
+                        "chat_id": CLIENT_MAC_ADDRESS,
                     }
-                    
+
                     agent_config = AgentConfig(
                         agent_name="react_agent",
                         tool_call_timeout=self.agent_config.get("tool_call_timeout"),
@@ -922,10 +930,8 @@ class MCPClientCLI:
                     )
                 elif self.MODE["orchestrator"]:
                     # initialize the orchestrator agent in memory
-                    orchestrator_agent_prompt = (
-                        generate_orchestrator_prompt_template(
-                            current_date_time=date_time_func["format_date"]()
-                        )
+                    orchestrator_agent_prompt = generate_orchestrator_prompt_template(
+                        current_date_time=date_time_func["format_date"]()
                     )
                     agent_config = AgentConfig(
                         agent_name="orchestrator_agent",
@@ -962,7 +968,6 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
-                        
                     )
                 else:
                     response = "Your current model doesn't support function calling. You must use '/mode:auto' to switch to Auto Mode - it works with both function-calling and non-function-calling models, providing seamless tool execution through our ReAct Agent. For advanced tool orchestration, use '/mode:orchestrator'."
@@ -1028,10 +1033,9 @@ class MCPClientCLI:
         if self.USE_MEMORY["redis"]:
             await self.redis_short_term_memory.save_message_history_to_file(input_text)
         else:
-            
             await self.in_memory_short_term_memory.save_message_history_to_file(
                 input_text
-                )
+            )
         self.console.print(f"[green]Message history saved to {input_text}[/]")
 
     async def handle_load_history_command(self, input_text: str):
@@ -1166,11 +1170,7 @@ class MCPClientCLI:
         commands_table.add_column("[bold yellow]Example[/]", style="yellow")
 
         commands = [
-           (
-                "/api_stats",
-                "Retrieve API usage stats for the current session 📊",
-                ""
-            ),
+            ("/api_stats", "Retrieve API usage stats for the current session 📊", ""),
             (
                 "/memory",
                 "Toggle memory usage between Redis and In-Memory 💾",

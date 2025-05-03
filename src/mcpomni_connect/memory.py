@@ -15,10 +15,9 @@ import asyncio
 # from qdrant_client.http.models import Distance, VectorParams
 
 
-
 class InMemoryShortTermMemory:
     """In memory short term memory"""
-    
+
     def __init__(
         self,
         max_context_tokens: int = 30000,
@@ -35,12 +34,14 @@ class InMemoryShortTermMemory:
         self.short_term_limit = int(0.7 * max_context_tokens)
         self.agents_history: Dict[str, List[Dict[str, Any]]] = {}
 
-    async def truncate_message_history(self, agent_name: str, chat_id: str = None) -> List[Dict[str, Any]]:
+    async def truncate_message_history(
+        self, agent_name: str, chat_id: str = None
+    ) -> List[Dict[str, Any]]:
         """Truncate message history to stay within token limits.
-        
+
         Args:
             agent_name: Name of agent
-            
+
         Returns:
             List of messages after truncation
         """
@@ -48,14 +49,14 @@ class InMemoryShortTermMemory:
             if agent_name not in self.agents_history:
                 self.agents_history[agent_name] = []
                 return []
-                
+
             messages = self.agents_history[agent_name]
             if chat_id is not None:
-                messages = [message for message in messages if message["chat_id"] == chat_id]
+                messages = [
+                    message for message in messages if message["chat_id"] == chat_id
+                ]
 
-            total_tokens = sum(
-                len(str(msg["content"]).split()) for msg in messages
-            )
+            total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
 
             while total_tokens > self.short_term_limit and messages:
                 messages.pop(0)
@@ -91,15 +92,17 @@ class InMemoryShortTermMemory:
                 "timestamp": asyncio.get_running_loop().time(),
                 "metadata": metadata or {},
             }
-            
+
             if agent_name not in self.agents_history:
                 self.agents_history[agent_name] = []
             self.agents_history[agent_name].append(message)
-            
+
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    async def get_messages(self, agent_name: str, chat_id: str = None) -> List[Dict[str, Any]]:
+    async def get_messages(
+        self, agent_name: str, chat_id: str = None
+    ) -> List[Dict[str, Any]]:
         """Get messages from memory.
 
         Args:
@@ -111,13 +114,15 @@ class InMemoryShortTermMemory:
         try:
             if agent_name not in self.agents_history:
                 self.agents_history[agent_name] = []
-            messages = await self.truncate_message_history(agent_name=agent_name, chat_id=chat_id)
+            messages = await self.truncate_message_history(
+                agent_name=agent_name, chat_id=chat_id
+            )
             return messages
-            
+
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
-    
+
     async def get_all_messages(self):
         try:
             messages = self.agents_history
@@ -138,7 +143,7 @@ class InMemoryShortTermMemory:
             if agent_name and agent_name in self.agents_history:
                 del self.agents_history[agent_name]
             elif agent_name and agent_name not in self.agents_history:
-                return 
+                return
             else:
                 self.agents_history = {}
 
@@ -149,7 +154,7 @@ class InMemoryShortTermMemory:
         self, file_path: str, agent_name: str = None
     ) -> None:
         """Save message history to a file, appending to existing content.
-        
+
         Args:
             file_path: Path to the file
             agent_name: Name of agent (if None, save all agents)
@@ -159,29 +164,23 @@ class InMemoryShortTermMemory:
                 # Add separator if file has content
                 if f.tell() > 0:
                     f.write("\n\n")
- 
+
                 if agent_name:
                     messages = self.agents_history.get(agent_name, [])
                     if messages:
                         f.write(f"Agent: {agent_name}\n")
                         for message in messages:
-                            f.write(
-                                f"{message['role']}: {message['content']}\n"
-                            )
+                            f.write(f"{message['role']}: {message['content']}\n")
                 else:
                     logger.info(
                         f"Saving messages for all agents: {self.agents_history}"
                     )
                     for agent, messages in self.agents_history.items():
                         if messages:
-                            logger.info(
-                                f"Saving messages for agent: {agent}"
-                            )
+                            logger.info(f"Saving messages for agent: {agent}")
                             f.write(f"Agent: {agent}\n")
                             for message in messages:
-                                f.write(
-                                    f"{message['role']}: {message['content']}\n"
-                                )
+                                f.write(f"{message['role']}: {message['content']}\n")
                             f.write("\n")
             if self.debug:
                 logger.info(f"Message history saved to {file_path}")
@@ -194,7 +193,7 @@ class InMemoryShortTermMemory:
         self, file_path: str, agent_name: str = None
     ) -> None:
         """Load message history from a file and store in in memory short term memory.
-        
+
         Args:
             file_path: Path to the file
             agent_name: Name of agent (if specified, only load messages for this agent)
@@ -208,11 +207,11 @@ class InMemoryShortTermMemory:
                     for section in sections[1:]:
                         lines = section.strip().split("\n")
                         current_agent = lines[0].strip()
-                        
+
                         # Skip if agent_name is specified and doesn't match current agent
                         if agent_name and current_agent != agent_name:
                             continue
-                            
+
                         messages = lines[1:]
                         for msg in messages:
                             if ":" in msg:
@@ -224,12 +223,11 @@ class InMemoryShortTermMemory:
                                 )
 
             if self.debug:
-                logger.info(
-                    f"Successfully loaded message history from {file_path}"
-                )
+                logger.info(f"Successfully loaded message history from {file_path}")
 
         except Exception as e:
             logger.error(f"Failed to load message history from file: {e}")
+
 
 class RedisShortTermMemory:
     """Redis short term memory."""

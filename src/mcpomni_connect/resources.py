@@ -1,6 +1,13 @@
 from typing import Any, Callable
 from mcpomni_connect.utils import logger
-from mcpomni_connect.agents.token_usage import Usage, UsageLimits, UsageLimitExceeded, session_stats, usage
+from mcpomni_connect.agents.token_usage import (
+    Usage,
+    UsageLimits,
+    UsageLimitExceeded,
+    session_stats,
+    usage,
+)
+
 
 # handle subscribe to resource change
 async def subscribe_resource(
@@ -83,12 +90,14 @@ async def read_resource(
     llm_call: Callable[[list[dict[str, Any]]], dict[str, Any]],
     debug: bool = False,
     request_limit: int = None,
-    total_tokens_limit: int = None
+    total_tokens_limit: int = None,
 ):
     """Read a resource"""
     if debug:
         logger.info(f"Reading resource: {uri}")
-    usage_limits = UsageLimits(request_limit=request_limit, total_tokens_limit=total_tokens_limit)
+    usage_limits = UsageLimits(
+        request_limit=request_limit, total_tokens_limit=total_tokens_limit
+    )
     usage_limits.check_before_request(usage=usage)
     server_name, found = await find_resource_server(uri, available_resources)
     if not found:
@@ -115,7 +124,7 @@ async def read_resource(
                     requests=1,
                     request_tokens=llm_response.usage.prompt_tokens,
                     response_tokens=llm_response.usage.completion_tokens,
-                    total_tokens=llm_response.usage.total_tokens
+                    total_tokens=llm_response.usage.total_tokens,
                 )
                 usage.incr(request_usage)
                 # Check if we've exceeded token limits
@@ -125,26 +134,30 @@ async def read_resource(
                 used_tokens = usage.total_tokens
                 used_requests = usage.requests
                 remaining_requests = request_limit - used_requests
-                session_stats.update({
+                session_stats.update(
+                    {
                         "used_requests": used_requests,
                         "used_tokens": used_tokens,
                         "remaining_requests": remaining_requests,
                         "remaining_tokens": remaining_tokens,
                         "request_tokens": request_usage.request_tokens,
                         "response_tokens": request_usage.response_tokens,
-                        "total_tokens": request_usage.total_tokens
-                    })
+                        "total_tokens": request_usage.total_tokens,
+                    }
+                )
                 if debug:
-                        logger.info(f"API Call Stats - Requests: {used_requests}/{request_limit}, "
-                                    f"Tokens: {used_tokens}/{usage_limits.total_tokens_limit}, "
-                                    f"Request Tokens: {request_usage.request_tokens}, "
-                                    f"Response Tokens: {request_usage.response_tokens}, "
-                                    f"Total Tokens: {request_usage.total_tokens}, "
-                                    f"Remaining Requests: {remaining_requests}, "
-                                    f"Remaining Tokens: {remaining_tokens}")
+                    logger.info(
+                        f"API Call Stats - Requests: {used_requests}/{request_limit}, "
+                        f"Tokens: {used_tokens}/{usage_limits.total_tokens_limit}, "
+                        f"Request Tokens: {request_usage.request_tokens}, "
+                        f"Response Tokens: {request_usage.response_tokens}, "
+                        f"Total Tokens: {request_usage.total_tokens}, "
+                        f"Remaining Requests: {remaining_requests}, "
+                        f"Remaining Tokens: {remaining_tokens}"
+                    )
 
             if hasattr(llm_response, "choices"):
-                response_content = llm_response.choices[0].message.content 
+                response_content = llm_response.choices[0].message.content
             elif hasattr(llm_response, "message"):
                 response_content = llm_response.message
         return response_content

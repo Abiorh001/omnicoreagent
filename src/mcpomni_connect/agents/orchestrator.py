@@ -7,11 +7,23 @@ from typing import Any, Callable, Optional
 import json
 from mcpomni_connect.utils import logger
 from mcpomni_connect.system_prompts import generate_react_agent_prompt_template
-from mcpomni_connect.agents.token_usage import Usage, UsageLimitExceeded, session_stats, usage
+from mcpomni_connect.agents.token_usage import (
+    Usage,
+    UsageLimitExceeded,
+    session_stats,
+    usage,
+)
 
 
 class OrchestratorAgent(BaseReactAgent):
-    def __init__(self, config: AgentConfig, agents_registry: AGENTS_REGISTRY, chat_id: int, current_date_time: str, debug: bool = False):
+    def __init__(
+        self,
+        config: AgentConfig,
+        agents_registry: AGENTS_REGISTRY,
+        chat_id: int,
+        current_date_time: str,
+        debug: bool = False,
+    ):
         super().__init__(
             agent_name=config.agent_name,
             max_steps=config.max_steps,
@@ -30,16 +42,14 @@ class OrchestratorAgent(BaseReactAgent):
     async def extract_action_json(self, response: ParsedResponse):
         action_data = await super().extract_action_json(response=response)
         # Parse the JSON
-        
+
         try:
             action_json = action_data.get("data")
             action = json.loads(action_json)
             agent_name_to_act = action.get("agent_name")
             # strip away if Agent or agent is part of the agent name
             agent_name_to_act = (
-                agent_name_to_act.replace("Agent", "")
-                .replace("agent", "")
-                .strip()
+                agent_name_to_act.replace("Agent", "").replace("agent", "").strip()
             )
             task_to_act = action.get("task")
             # if tool_name is None or tool_args is None, return an error
@@ -56,8 +66,7 @@ class OrchestratorAgent(BaseReactAgent):
                     agent_description,
                 ) in self.agents_registry.items():
                     agent_names = [
-                        agent_name.lower()
-                        for agent_name in self.agents_registry.keys()
+                        agent_name.lower() for agent_name in self.agents_registry.keys()
                     ]
                     if agent_name_to_act.lower() in agent_names:
                         return {
@@ -75,7 +84,7 @@ class OrchestratorAgent(BaseReactAgent):
                 "error": "Invalid JSON format",
                 "action": False,
             }
-    
+
     async def create_agent_system_prompt(
         self,
         agent_name: str,
@@ -89,10 +98,7 @@ class OrchestratorAgent(BaseReactAgent):
         )
         return agent_system_prompt
 
-    
-    async def update_llm_working_memory(
-        self, message_history: Callable[[], Any]
-    ):
+    async def update_llm_working_memory(self, message_history: Callable[[], Any]):
         """Update the LLM's working memory with the current message history"""
         short_term_memory_message_history = await message_history(
             agent_name="orchestrator", chat_id=self.chat_id
@@ -118,7 +124,6 @@ class OrchestratorAgent(BaseReactAgent):
                     {"role": "system", "content": message["content"]}
                 )
 
-    
     async def act(
         self,
         sessions: dict,
@@ -132,7 +137,6 @@ class OrchestratorAgent(BaseReactAgent):
         max_steps: int,
         request_limit: int,
         total_tokens_limit: int,
-        
     ) -> str:
         """Execute agent and return JSON-formatted observation"""
         try:
@@ -142,20 +146,20 @@ class OrchestratorAgent(BaseReactAgent):
             )
             logger.info(f"request limit: {request_limit}")
             agent_config = AgentConfig(
-                        agent_name=agent_name,
-                        tool_call_timeout=tool_call_timeout,
-                        max_steps=max_steps,
-                        request_limit=request_limit,
-                        total_tokens_limit=total_tokens_limit,
-                        mcp_enabled=True,
-                    )
+                agent_name=agent_name,
+                tool_call_timeout=tool_call_timeout,
+                max_steps=max_steps,
+                request_limit=request_limit,
+                total_tokens_limit=total_tokens_limit,
+                mcp_enabled=True,
+            )
             extra_kwargs = {
-                        "sessions": sessions,
-                        "available_tools": available_tools,
-                        "tools_registry": None,
-                        "is_generic_agent": False,
-                        "chat_id": self.chat_id
-                    }
+                "sessions": sessions,
+                "available_tools": available_tools,
+                "tools_registry": None,
+                "is_generic_agent": False,
+                "chat_id": self.chat_id,
+            }
             react_agent = ReactAgent(config=agent_config)
             observation = await react_agent._run(
                 system_prompt=agent_system_prompt,
@@ -164,9 +168,9 @@ class OrchestratorAgent(BaseReactAgent):
                 add_message_to_history=add_message_to_history,
                 message_history=message_history,
                 debug=self.debug,
-                **extra_kwargs
+                **extra_kwargs,
             )
-           
+
             # if the observation is empty return general error message
             if not observation:
                 observation = "No observation available right now. try again later. or try a different agent."
@@ -181,15 +185,13 @@ class OrchestratorAgent(BaseReactAgent):
                 agent_name="orchestrator",
                 role="user",
                 content=f"{agent_name} Agent Observation:\n{observation}",
-                chat_id=self.chat_id
+                chat_id=self.chat_id,
             )
             return observation
         except Exception as e:
             logger.error("Error executing agent: %s", str(e))
 
-    async def agent_registry_tool(
-        self, available_tools: dict[str, Any]
-    ) -> str:
+    async def agent_registry_tool(self, available_tools: dict[str, Any]) -> str:
         """
         This function is used to create a tool that will return the agent registry
         """
@@ -215,8 +217,7 @@ class OrchestratorAgent(BaseReactAgent):
                 ],
             ]
         )
-    
-    
+
     async def run(
         self,
         sessions: dict,
@@ -230,7 +231,6 @@ class OrchestratorAgent(BaseReactAgent):
         max_steps: int,
         request_limit: int,
         total_tokens_limit: int,
-        
     ) -> Optional[str]:
         """Execute ReAct loop with JSON communication"""
         # Initialize messages with system prompt
@@ -259,9 +259,7 @@ class OrchestratorAgent(BaseReactAgent):
                     logger.info(
                         f"Sending {len(self.orchestrator_messages)} messages to LLM"
                     )
-                response = await llm_connection.llm_call(
-                    self.orchestrator_messages
-                )
+                response = await llm_connection.llm_call(self.orchestrator_messages)
                 if response:
                     # check if it has usage
                     if hasattr(response, "usage"):
@@ -269,7 +267,7 @@ class OrchestratorAgent(BaseReactAgent):
                             requests=current_steps,
                             request_tokens=response.usage.prompt_tokens,
                             response_tokens=response.usage.completion_tokens,
-                            total_tokens=response.usage.total_tokens
+                            total_tokens=response.usage.total_tokens,
                         )
                         usage.incr(request_usage)
                         # Check if we've exceeded token limits
@@ -279,23 +277,27 @@ class OrchestratorAgent(BaseReactAgent):
                         used_tokens = usage.total_tokens
                         used_requests = usage.requests
                         remaining_requests = self.request_limit - used_requests
-                        session_stats.update({
+                        session_stats.update(
+                            {
                                 "used_requests": used_requests,
                                 "used_tokens": used_tokens,
                                 "remaining_requests": remaining_requests,
                                 "remaining_tokens": remaining_tokens,
                                 "request_tokens": request_usage.request_tokens,
                                 "response_tokens": request_usage.response_tokens,
-                                "total_tokens": request_usage.total_tokens
-                            })
+                                "total_tokens": request_usage.total_tokens,
+                            }
+                        )
                         if self.debug:
-                            logger.info(f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
-                                        f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
-                                        f"Request Tokens: {request_usage.request_tokens}, "
-                                        f"Response Tokens: {request_usage.response_tokens}, "
-                                        f"Total Tokens: {request_usage.total_tokens}, "
-                                        f"Remaining Requests: {remaining_requests}, "
-                                        f"Remaining Tokens: {remaining_tokens}")
+                            logger.info(
+                                f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
+                                f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
+                                f"Request Tokens: {request_usage.request_tokens}, "
+                                f"Response Tokens: {request_usage.response_tokens}, "
+                                f"Total Tokens: {request_usage.total_tokens}, "
+                                f"Remaining Requests: {remaining_requests}, "
+                                f"Remaining Tokens: {remaining_tokens}"
+                            )
                     if hasattr(response, "choices"):
                         response = response.choices[0].message.content.strip()
                     elif hasattr(response, "message"):
@@ -310,8 +312,8 @@ class OrchestratorAgent(BaseReactAgent):
                 return error_message
 
             parsed_response = await self.extract_action_or_answer(
-                    response=response, debug=self.debug
-                )
+                response=response, debug=self.debug
+            )
             # check for final answe
             if parsed_response.answer is not None:
                 # add the final answer to the message history and the messages that will be sent to LLM
@@ -325,14 +327,16 @@ class OrchestratorAgent(BaseReactAgent):
                     agent_name="orchestrator",
                     role="assistant",
                     content=parsed_response.answer,
-                    chat_id=self.chat_id
+                    chat_id=self.chat_id,
                 )
                 # reset the steps
                 current_steps = 0
                 return parsed_response.answer
 
             elif parsed_response.action is not None:
-                extract_action_json_data = await self.extract_action_json(response=response)
+                extract_action_json_data = await self.extract_action_json(
+                    response=response
+                )
                 await self.act(
                     sessions=sessions,
                     agent_name=extract_action_json_data["agent_name"],
@@ -344,14 +348,16 @@ class OrchestratorAgent(BaseReactAgent):
                     max_steps=max_steps,
                     tool_call_timeout=tool_call_timeout,
                     total_tokens_limit=total_tokens_limit,
-                    request_limit=request_limit
+                    request_limit=request_limit,
                 )
                 continue
             elif parsed_response.error is not None:
                 error_message = parsed_response.error
             else:
                 # append the invalid response to the messages and the message history
-                error_message = "Invalid response format. Please use the correct required format"
+                error_message = (
+                    "Invalid response format. Please use the correct required format"
+                )
             self.orchestrator_messages.append(
                 {
                     "role": "user",
@@ -359,5 +365,8 @@ class OrchestratorAgent(BaseReactAgent):
                 }
             )
             await add_message_to_history(
-                agent_name="orchestrator", role="user", content=error_message, chat_id=self.chat_id
+                agent_name="orchestrator",
+                role="user",
+                content=error_message,
+                chat_id=self.chat_id,
             )

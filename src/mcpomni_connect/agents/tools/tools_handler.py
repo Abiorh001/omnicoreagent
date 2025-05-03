@@ -5,7 +5,6 @@ import json
 
 
 class BaseToolHandler(ABC):
-
     @abstractmethod
     async def validate_tool_call_request(
         self,
@@ -32,9 +31,7 @@ class MCPToolHandler(BaseToolHandler):
 
         # If server_name not passed in, infer it from tool_data
         if self.server_name is None and tool_data and available_tools:
-            self.server_name = self._infer_server_name(
-                tool_data, available_tools
-            )
+            self.server_name = self._infer_server_name(tool_data, available_tools)
 
     def _infer_server_name(
         self, tool_data: str, available_tools: dict[str, Any]
@@ -55,14 +52,9 @@ class MCPToolHandler(BaseToolHandler):
         self, tool_data: Dict[str, Any], available_tools: Dict[str, Any]
     ) -> dict:
         try:
-
             action = json.loads(tool_data)
-            tool_name = (
-                action["tool"].strip().lower() if "tool" in action else None
-            )
-            tool_args = (
-                action["parameters"] if "parameters" in action else None
-            )
+            tool_name = action["tool"].strip().lower() if "tool" in action else None
+            tool_args = action["parameters"] if "parameters" in action else None
             # if tool_name is None or tool_args is None, return an error
             if tool_name is None or tool_args is None:
                 return {
@@ -163,9 +155,7 @@ class LocalToolHandler(BaseToolHandler):
         tool_fn = normalized_registry.get(tool_name)
 
         if not tool_fn:
-            raise ValueError(
-                f"Tool '{tool_name}' not found in local registry."
-            )
+            raise ValueError(f"Tool '{tool_name}' not found in local registry.")
 
         if inspect.iscoroutinefunction(tool_fn):
             return await tool_fn(**tool_args)

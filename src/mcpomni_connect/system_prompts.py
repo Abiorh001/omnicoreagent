@@ -103,7 +103,6 @@ def generate_concise_prompt(
     current_date_time: str,
     available_tools: dict[str, list[dict[str, Any]]],
     episodic_memory: List[Dict[str, Any]] = None,
-    
 ) -> str:
     """Generate a concise system prompt for LLMs that accept tools in input"""
     prompt = """You are a helpful AI assistant with access to various tools to help users with their tasks.
@@ -160,7 +159,7 @@ You have access to the following tools grouped by server. Use them only when nec
 
 If a task involves using a tool or accessing sensitive data, describe the tool's purpose and behavior, and confirm with the user before proceeding. Always prioritize user consent, data privacy, and safety.
 """
- # Date and Time
+    # Date and Time
     date_time_format = f"""
 The current date and time is: {current_date_time}
 You do not need a tool to get the current Date and Time. Use the information available here.
@@ -269,10 +268,10 @@ def generate_system_prompt(
     # Choose appropriate prompt based on provider
     if current_provider in TOOL_ACCEPTING_PROVIDERS:
         return generate_concise_prompt(
-          current_date_time=current_date_time,
-          available_tools=available_tools, 
-          episodic_memory=episodic_memory
-          )
+            current_date_time=current_date_time,
+            available_tools=available_tools,
+            episodic_memory=episodic_memory,
+        )
     else:
         return generate_detailed_prompt(available_tools, episodic_memory)
 
@@ -1568,12 +1567,14 @@ You do not need a tool to get the current Date and Time. Use the information ava
     return prompt + date_time_format
 
 
-def generate_react_agent_prompt(current_date_time: str, instructions: str = None) -> str:
+def generate_react_agent_prompt(
+    current_date_time: str, instructions: str = None
+) -> str:
     """Generate prompt for ReAct agent"""
     if instructions:
-      prompt = f"""{instructions}"""
+        prompt = f"""{instructions}"""
     else:
-      prompt = """You are an agent, designed to help with a variety of tasks, from answering questions to providing summaries to other types of analyses."""
+        prompt = """You are an agent, designed to help with a variety of tasks, from answering questions to providing summaries to other types of analyses."""
 
     prompt += """
 [UNDERSTANDING USER REQUESTS - CRITICAL]

@@ -5,6 +5,7 @@ from mcpomni_connect.agents.types import AgentConfig
 from mcpomni_connect.system_prompts import generate_react_agent_prompt
 from mcpomni_connect.constants import date_time_func
 
+
 # TODO still working on this
 class SequentialAgent(BaseReactAgent):
     def __init__(self, config: AgentConfig):
@@ -29,7 +30,7 @@ class SequentialAgent(BaseReactAgent):
     ):
         system_prompt = generate_react_agent_prompt(
             current_date_time=date_time_func["format_date"](),
-            instructions=self.instructions
+            instructions=self.instructions,
         )
 
         return await self.run(
@@ -42,7 +43,7 @@ class SequentialAgent(BaseReactAgent):
             sessions=kwargs.get("sessions"),
             available_tools=kwargs.get("available_tools"),
             tools_registry=kwargs.get("tools_registry"),
-            is_generic_agent=False
+            is_generic_agent=False,
         )
 
 
@@ -68,8 +69,6 @@ class SequentialAgentRunner:
                 add_message_to_history=add_message_to_history,
                 message_history=message_history,
                 debug=debug,
-                **kwargs
+                **kwargs,
             )
         return current_query
-
-

@@ -32,7 +32,7 @@ def check_config_exists():
                 "tool_call_timeout": 30,
                 "max_steps": 15,
                 "request_limit": 1000,
-                "total_tokens_limit": 100000
+                "total_tokens_limit": 100000,
             },
             "LLM": {
                 "provider": "openrouter",
@@ -65,7 +65,9 @@ async def async_main():
     try:
         api_key = os.getenv("LLM_API_KEY")
         if not api_key:
-            raise RuntimeError("LLM_API_KEY environment variable is missing. Please set it in your environment or .env file.")
+            raise RuntimeError(
+                "LLM_API_KEY environment variable is missing. Please set it in your environment or .env file."
+            )
         config_path = check_config_exists()
         logger.debug(f"Configuration read in from {config_path}")
         config = Configuration()

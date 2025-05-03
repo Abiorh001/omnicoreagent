@@ -33,9 +33,13 @@ class Usage:
         """Initialize details as an empty dict if None."""
         if self.details is None:
             self.details = {}
-        
+
         # Auto-calculate total tokens if not provided but both request and response tokens are available
-        if self.total_tokens is None and self.request_tokens is not None and self.response_tokens is not None:
+        if (
+            self.total_tokens is None
+            and self.request_tokens is not None
+            and self.response_tokens is not None
+        ):
             self.total_tokens = self.request_tokens + self.response_tokens
 
     def incr(self, incr_usage: Usage, *, requests: int = 0) -> None:
@@ -46,14 +50,14 @@ class Usage:
             requests: The number of requests to increment by in addition to `incr_usage.requests`.
         """
         self.requests += incr_usage.requests + requests
-        
+
         # Handle token counts
-        for f in ('request_tokens', 'response_tokens'):
+        for f in ("request_tokens", "response_tokens"):
             self_value = getattr(self, f)
             other_value = getattr(incr_usage, f)
             if other_value is not None:
                 setattr(self, f, (self_value or 0) + other_value)
-        
+
         # Update total tokens
         if incr_usage.total_tokens is not None:
             self.total_tokens = (self.total_tokens or 0) + incr_usage.total_tokens
@@ -76,7 +80,6 @@ class Usage:
         return new_usage
 
 
-
 @dataclass
 class UsageLimits:
     """Limits on model usage.
@@ -95,13 +98,17 @@ class UsageLimits:
     """The maximum number of tokens allowed in responses from the model."""
     total_tokens_limit: Optional[int] = None
     """The maximum number of tokens allowed in requests and responses combined."""
-    
+
     def __post_init__(self) -> None:
         """Validate limits upon initialization."""
         if self.request_limit is not None and self.request_limit <= 0:
             raise ValueError("request_limit must be positive if specified")
-        
-        for limit_name in ('request_tokens_limit', 'response_tokens_limit', 'total_tokens_limit'):
+
+        for limit_name in (
+            "request_tokens_limit",
+            "response_tokens_limit",
+            "total_tokens_limit",
+        ):
             limit_value = getattr(self, limit_name)
             if limit_value is not None and limit_value <= 0:
                 raise ValueError(f"{limit_name} must be positive if specified")
@@ -116,80 +123,93 @@ class UsageLimits:
         """
         return any(
             limit is not None
-            for limit in (self.request_tokens_limit, self.response_tokens_limit, self.total_tokens_limit)
+            for limit in (
+                self.request_tokens_limit,
+                self.response_tokens_limit,
+                self.total_tokens_limit,
+            )
         )
-    
+
     def remaining_tokens(self, usage: Usage) -> Dict[str, Optional[int]]:
         """Calculate remaining tokens for each limit.
-        
+
         Args:
             usage: The current usage to check against limits
-            
+
         Returns:
             Dictionary with remaining tokens for each limit type
         """
         result = {}
-        
+
         if self.request_tokens_limit is not None:
             used = usage.request_tokens or 0
-            result['request_tokens'] = self.request_tokens_limit - used
-            
+            result["request_tokens"] = self.request_tokens_limit - used
+
         if self.response_tokens_limit is not None:
             used = usage.response_tokens or 0
-            result['response_tokens'] = self.response_tokens_limit - used
-            
+            result["response_tokens"] = self.response_tokens_limit - used
+
         if self.total_tokens_limit is not None:
             used = usage.total_tokens or 0
-            result['total_tokens'] = self.total_tokens_limit - used
-            
-        return result['total_tokens']
+            result["total_tokens"] = self.total_tokens_limit - used
+
+        return result["total_tokens"]
 
     def check_before_request(self, usage: Usage) -> None:
         """Raises a `UsageLimitExceeded` exception if the next request would exceed the request_limit.
-        
+
         Args:
             usage: The current usage to check against limits
-            
+
         Raises:
             UsageLimitExceeded: If the next request would exceed the request_limit
         """
         if self.request_limit is not None and usage.requests >= self.request_limit:
             raise UsageLimitExceeded(
-                f'The next request would exceed the request_limit of {self.request_limit}. '
-                f'Current requests: {usage.requests}'
+                f"The next request would exceed the request_limit of {self.request_limit}. "
+                f"Current requests: {usage.requests}"
             )
 
     def check_tokens(self, usage: Usage) -> None:
         """Raises a `UsageLimitExceeded` exception if the usage exceeds any of the token limits.
-        
+
         Args:
             usage: The current usage to check against limits
-            
+
         Raises:
             UsageLimitExceeded: If any token limit is exceeded
         """
         if not self.has_token_limits():
             return
-            
+
         request_tokens = usage.request_tokens or 0
-        if self.request_tokens_limit is not None and request_tokens > self.request_tokens_limit:
+        if (
+            self.request_tokens_limit is not None
+            and request_tokens > self.request_tokens_limit
+        ):
             raise UsageLimitExceeded(
-                f'Exceeded the request_tokens_limit of {self.request_tokens_limit}. '
-                f'Current request tokens: {request_tokens}'
+                f"Exceeded the request_tokens_limit of {self.request_tokens_limit}. "
+                f"Current request tokens: {request_tokens}"
             )
 
         response_tokens = usage.response_tokens or 0
-        if self.response_tokens_limit is not None and response_tokens > self.response_tokens_limit:
+        if (
+            self.response_tokens_limit is not None
+            and response_tokens > self.response_tokens_limit
+        ):
             raise UsageLimitExceeded(
-                f'Exceeded the response_tokens_limit of {self.response_tokens_limit}. '
-                f'Current response tokens: {response_tokens}'
+                f"Exceeded the response_tokens_limit of {self.response_tokens_limit}. "
+                f"Current response tokens: {response_tokens}"
             )
 
         total_tokens = usage.total_tokens or 0
-        if self.total_tokens_limit is not None and total_tokens > self.total_tokens_limit:
+        if (
+            self.total_tokens_limit is not None
+            and total_tokens > self.total_tokens_limit
+        ):
             raise UsageLimitExceeded(
-                f'Exceeded the total_tokens_limit of {self.total_tokens_limit}. '
-                f'Current total tokens: {total_tokens}'
+                f"Exceeded the total_tokens_limit of {self.total_tokens_limit}. "
+                f"Current total tokens: {total_tokens}"
             )
 
 

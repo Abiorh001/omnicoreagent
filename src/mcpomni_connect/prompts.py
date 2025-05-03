@@ -3,6 +3,7 @@ from mcpomni_connect.agents.token_usage import UsageLimits, usage
 
 from mcpomni_connect.utils import logger
 
+
 async def list_prompts(server_names: list[str], sessions: dict[str, dict[str, Any]]):
     """List all prompts"""
     prompts = []
@@ -46,10 +47,12 @@ async def get_prompt(
     arguments: Optional[dict] = None,
     request_limit: int = None,
     total_tokens_limit: int = None,
-    chat_id: str = None
-):  
+    chat_id: str = None,
+):
     """Get a prompt"""
-    usage_limits = UsageLimits(request_limit=request_limit, total_tokens_limit=total_tokens_limit)
+    usage_limits = UsageLimits(
+        request_limit=request_limit, total_tokens_limit=total_tokens_limit
+    )
     usage_limits.check_before_request(usage=usage)
     agent_name = "tool_calling_agent"
     server_name, found = await find_prompt_server(name, available_prompts)
@@ -58,22 +61,22 @@ async def get_prompt(
     if not found:
         error_message = f"Prompt not found: {name}"
         await add_message_to_history(
-                agent_name=agent_name,
-                role="user",
-                content=error_message,
-                metadata={"prompt_name": name, "error": True},
-                chat_id=chat_id
-            )
+            agent_name=agent_name,
+            role="user",
+            content=error_message,
+            metadata={"prompt_name": name, "error": True},
+            chat_id=chat_id,
+        )
         logger.error(error_message)
         return error_message
     try:
         # add the first message to the history to help the llm to know when to use all available tools directly
         await add_message_to_history(
-                agent_name=agent_name,
-                role="user",
-                content=f"Getting prompt: {name}",
-                chat_id=chat_id
-            )
+            agent_name=agent_name,
+            role="user",
+            content=f"Getting prompt: {name}",
+            chat_id=chat_id,
+        )
         prompt_response = await sessions[server_name]["session"].get_prompt(
             name, arguments
         )
@@ -81,12 +84,12 @@ async def get_prompt(
             if len(prompt_response.messages) == 0:
                 error_message = "Error: Prompt returned empty messages list"
                 await add_message_to_history(
-                        agent_name=agent_name,
-                        role="user",
-                        content=error_message,
-                        metadata={"prompt_name": name, "error": True},
-                        chat_id=chat_id
-                    )
+                    agent_name=agent_name,
+                    role="user",
+                    content=error_message,
+                    metadata={"prompt_name": name, "error": True},
+                    chat_id=chat_id,
+                )
                 logger.error(error_message)
                 return error_message
 
@@ -110,16 +113,16 @@ async def get_prompt(
     except Exception as e:
         error_message = f"Error getting prompt: {e}"
         await add_message_to_history(
-                agent_name=agent_name,
-                role="user",
-                content=error_message,
-                metadata={"prompt_name": name, "error": True},
-                chat_id=chat_id
-            )
+            agent_name=agent_name,
+            role="user",
+            content=error_message,
+            metadata={"prompt_name": name, "error": True},
+            chat_id=chat_id,
+        )
         logger.error(error_message)
         return error_message
-            # TODO PARSING THE PROMPT DIRECTLY TO TOOL CALLING AGENT TO PERFORM THE PROMPT 
-            # REQUEST WORKS BETTER
+        # TODO PARSING THE PROMPT DIRECTLY TO TOOL CALLING AGENT TO PERFORM THE PROMPT
+        # REQUEST WORKS BETTER
     #         messages.extend(message_histories)
     #         messages.append({"role": user_role, "content": message_content})
     #         logger.info(f"messages to be send: {messages}")
@@ -161,7 +164,7 @@ async def get_prompt(
     #                                     f"Remaining Tokens: {remaining_tokens}")
 
     #             if hasattr(llm_response, "choices"):
-    #                 response_content = llm_response.choices[0].message.content 
+    #                 response_content = llm_response.choices[0].message.content
     #             elif hasattr(llm_response, "message"):
     #                 response_content = llm_response.message
     #     # adding the message to history helps the llm to know when to use all available tools directly
@@ -171,7 +174,7 @@ async def get_prompt(
     #             content=response_content,
     #             chat_id=chat_id
     #         )
-    #     return response_content 
+    #     return response_content
     # except UsageLimitExceeded as e:
     #     error_message = f"Usage limit error: {e}"
     #     logger.error(error_message)
@@ -197,8 +200,8 @@ async def get_prompt_with_react_agent(
     available_prompts: dict[str, list[str]],
     name: str,
     arguments: Optional[dict] = None,
-    chat_id: str = None
-    ):
+    chat_id: str = None,
+):
     """Get a prompt with the react agent"""
     agent_name = "react_agent"
     server_name, found = await find_prompt_server(name, available_prompts)
@@ -207,12 +210,12 @@ async def get_prompt_with_react_agent(
     if not found:
         error_message = f"Prompt not found: {name}"
         await add_message_to_history(
-                agent_name=agent_name,
-                role="user",
-                content=error_message,
-                metadata={"prompt_name": name, "error": True},
-                chat_id=chat_id
-            )
+            agent_name=agent_name,
+            role="user",
+            content=error_message,
+            metadata={"prompt_name": name, "error": True},
+            chat_id=chat_id,
+        )
         logger.error(error_message)
         return error_message
     try:
@@ -220,21 +223,21 @@ async def get_prompt_with_react_agent(
             agent_name=agent_name,
             role="user",
             content=f"Getting prompt: {name}",
-            chat_id=chat_id
+            chat_id=chat_id,
         )
 
-        prompt_response = await sessions[server_name]["session"].get_prompt(name, arguments)
-        
+        prompt_response = await sessions[server_name]["session"].get_prompt(
+            name, arguments
+        )
+
         if not prompt_response or not prompt_response.messages:
-            error_message = (
-                "Error getting prompt: Prompt returned empty or no messages"
-            )
+            error_message = "Error getting prompt: Prompt returned empty or no messages"
             await add_message_to_history(
                 agent_name=agent_name,
                 role="user",
                 content=error_message,
                 metadata={"prompt_name": name, "error": True},
-                chat_id=chat_id
+                chat_id=chat_id,
             )
             logger.error(error_message)
             return error_message
@@ -249,13 +252,15 @@ async def get_prompt_with_react_agent(
             message_content = str(content) if content is not None else None
 
         if message_content is None:
-            error_message = "Error getting prompt: Message content is missing or invalid"
+            error_message = (
+                "Error getting prompt: Message content is missing or invalid"
+            )
             await add_message_to_history(
                 agent_name=agent_name,
                 role="user",
                 content=error_message,
                 metadata={"prompt_name": name, "error": True},
-                chat_id=chat_id
+                chat_id=chat_id,
             )
             logger.error(error_message)
             return error_message
@@ -271,7 +276,7 @@ async def get_prompt_with_react_agent(
             role="user",
             content=error_message,
             metadata={"prompt_name": name, "error": True},
-            chat_id=chat_id
+            chat_id=chat_id,
         )
         logger.error(error_message)
         return error_message

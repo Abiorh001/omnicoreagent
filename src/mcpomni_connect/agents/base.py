@@ -25,8 +25,13 @@ from mcpomni_connect.agents.tools.tools_handler import (
     LocalToolHandler,
     ToolExecutor,
 )
-from mcpomni_connect.agents.token_usage import Usage, UsageLimits, UsageLimitExceeded, session_stats, usage
-
+from mcpomni_connect.agents.token_usage import (
+    Usage,
+    UsageLimits,
+    UsageLimitExceeded,
+    session_stats,
+    usage,
+)
 
 
 class BaseReactAgent:
@@ -53,9 +58,10 @@ class BaseReactAgent:
         self.loop_detector = RobustLoopDetector()
         self.assistant_with_tool_calls = None
         self.pending_tool_responses = []
-        self.usage_limits = UsageLimits(request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit)
-       
-    
+        self.usage_limits = UsageLimits(
+            request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
+        )
+
     async def extract_action_json(self, response: str) -> Dict[str, Any]:
         """
         Extract a JSON-formatted action from a model response string.
@@ -127,30 +133,22 @@ class BaseReactAgent:
             # Final answer present
             if "Final Answer:" in response or "Answer:" in response:
                 if debug:
-                    logger.info(
-                        "Final answer detected in response: %s", response
-                    )
+                    logger.info("Final answer detected in response: %s", response)
 
                 parts = re.split(
                     r"(?:Final Answer:|Answer:)", response, flags=re.IGNORECASE
                 )
                 if len(parts) > 1:
-
                     return ParsedResponse(answer=parts[-1].strip())
 
             # Tool action present
             if "Action" in response:
                 if debug:
-                    logger.info(
-                        "Tool action detected in response: %s", response
-                    )
+                    logger.info("Tool action detected in response: %s", response)
 
-                action_result = await self.extract_action_json(
-                    response=response
-                )
+                action_result = await self.extract_action_json(response=response)
 
                 if action_result.get("action"):
-
                     return ParsedResponse(
                         action=action_result.get("action"),
                         data=action_result.get("data"),
@@ -177,13 +175,10 @@ class BaseReactAgent:
     ):
         """Update the LLM's working memory with the current message history"""
         short_term_memory_message_history = await message_history(
-            agent_name=self.agent_name,
-            chat_id=chat_id
+            agent_name=self.agent_name, chat_id=chat_id
         )
         if not short_term_memory_message_history:
-            logger.warning(
-                f"No message history found for agent: {self.agent_name}"
-            )
+            logger.warning(f"No message history found for agent: {self.agent_name}")
             return
 
         validated_messages = [
@@ -200,9 +195,7 @@ class BaseReactAgent:
                     self.messages[self.agent_name].append(
                         self.assistant_with_tool_calls
                     )
-                    self.messages[self.agent_name].extend(
-                        self.pending_tool_responses
-                    )
+                    self.messages[self.agent_name].extend(self.pending_tool_responses)
                     self.assistant_with_tool_calls = None
                     self.pending_tool_responses = []
 
@@ -214,8 +207,12 @@ class BaseReactAgent:
                 if metadata.has_tool_calls:
                     # If we already have a pending assistant with tool calls, flush it
                     if self.assistant_with_tool_calls:
-                        self.messages[self.agent_name].append(self.assistant_with_tool_calls)
-                        self.messages[self.agent_name].extend(self.pending_tool_responses)
+                        self.messages[self.agent_name].append(
+                            self.assistant_with_tool_calls
+                        )
+                        self.messages[self.agent_name].extend(
+                            self.pending_tool_responses
+                        )
                         self.pending_tool_responses = []
 
                     # Store this assistant message for later (until we collect all tool responses)
@@ -232,20 +229,20 @@ class BaseReactAgent:
                     # Regular assistant message without tool calls
                     # First flush any pending tool calls
                     if self.assistant_with_tool_calls:
-                        self.messages[self.agent_name].append(self.assistant_with_tool_calls)
-                        self.messages[self.agent_name].extend(self.pending_tool_responses)
+                        self.messages[self.agent_name].append(
+                            self.assistant_with_tool_calls
+                        )
+                        self.messages[self.agent_name].extend(
+                            self.pending_tool_responses
+                        )
                         self.assistant_with_tool_calls = None
                         self.pending_tool_responses = []
 
                     self.messages[self.agent_name].append(
-                        Message(
-                            role=MessageRole.ASSISTANT, content=message.content
-                        )
+                        Message(role=MessageRole.ASSISTANT, content=message.content)
                     )
 
-            elif role == MessageRole.TOOL and hasattr(
-                metadata, "tool_call_id"
-            ):
+            elif role == MessageRole.TOOL and hasattr(metadata, "tool_call_id"):
                 # Collect tool responses
                 # Only add if we have a preceding assistant message with tool calls
                 if self.assistant_with_tool_calls:
@@ -284,9 +281,7 @@ class BaseReactAgent:
                 available_tools=available_tools,
             )
         else:
-            local_tool_handler = LocalToolHandler(
-                tools_registry=tools_registry
-            )
+            local_tool_handler = LocalToolHandler(tools_registry=tools_registry)
             tool_executor = ToolExecutor(tool_handler=local_tool_handler)
             tool_data = await local_tool_handler.validate_tool_call_request(
                 tool_data=parsed_response.data,
@@ -358,7 +353,7 @@ class BaseReactAgent:
                         tool_name=tool_call_result.tool_name,
                         tool_call_id=tool_call_id,
                         add_message_to_history=add_message_to_history,
-                        chat_id=chat_id
+                        chat_id=chat_id,
                     )
                     try:
                         parsed = json.loads(observation)
@@ -372,16 +367,18 @@ class BaseReactAgent:
                         observation = f"Error: {parsed['message']}"
                     else:
                         observation = str(parsed["data"])
-            
+
             except asyncio.TimeoutError:
-                observation = "Tool call timed out. Please try again or use a different approach."
+                observation = (
+                    "Tool call timed out. Please try again or use a different approach."
+                )
                 logger.warning(observation)
                 await add_message_to_history(
                     agent_name=self.agent_name,
                     role="tool",
                     content=observation,
                     metadata={"tool_call_id": tool_call_id},
-                    chat_id=chat_id
+                    chat_id=chat_id,
                 )
                 self.messages[self.agent_name].append(
                     Message(
@@ -397,7 +394,7 @@ class BaseReactAgent:
                     role="tool",
                     content=observation,
                     metadata={"tool_call_id": tool_call_id},
-                    chat_id=chat_id
+                    chat_id=chat_id,
                 )
 
                 self.messages[self.agent_name].append(
@@ -415,7 +412,8 @@ class BaseReactAgent:
         # Final observation handling
         self.messages[self.agent_name].append(
             Message(
-                role=MessageRole.USER, content=f"OBSERVATION(RESULT FROM {tool_call_result.tool_name} TOOL CALL): \n{observation}"
+                role=MessageRole.USER,
+                content=f"OBSERVATION(RESULT FROM {tool_call_result.tool_name} TOOL CALL): \n{observation}",
             )
         )
         await add_message_to_history(
@@ -460,7 +458,7 @@ class BaseReactAgent:
 
     async def reset_system_prompt(self, messages: list, system_prompt: str):
         # Reset system prompt and keep all messages
-        
+
         old_messages = messages[1:]
         messages = [Message(role=MessageRole.SYSTEM, content=system_prompt)]
         messages.extend(old_messages)
@@ -482,14 +480,20 @@ class BaseReactAgent:
         finally:
             self.state = previous_state
 
-    async def get_tools_registry(self, available_tools: dict, agent_name: str = None) -> str:
+    async def get_tools_registry(
+        self, available_tools: dict, agent_name: str = None
+    ) -> str:
         tools_section = []
         try:
             if agent_name:
                 tools = available_tools.get(agent_name, [])
             else:
                 # Flatten all tools across agents (ignoring server/agent names)
-                tools = [tool for tools_list in available_tools.values() for tool in tools_list]
+                tools = [
+                    tool
+                    for tools_list in available_tools.values()
+                    for tool in tools_list
+                ]
 
             for tool in tools:
                 tool_name = str(tool.name)
@@ -503,9 +507,13 @@ class BaseReactAgent:
                         tool_md += "| Name | Type | Description |\n"
                         tool_md += "|------|------|-------------|\n"
                         for param_name, param_info in params.items():
-                            param_desc = param_info.get("description", "**No description**")
+                            param_desc = param_info.get(
+                                "description", "**No description**"
+                            )
                             param_type = param_info.get("type", "any")
-                            tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+                            tool_md += (
+                                f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+                            )
 
                 tools_section.append(tool_md)
 
@@ -514,8 +522,6 @@ class BaseReactAgent:
             return "No tools registry available"
 
         return "\n\n".join(tools_section)
-
-
 
     async def run(
         self,
@@ -543,11 +549,14 @@ class BaseReactAgent:
             agent_name=self.agent_name, role="user", content=query, chat_id=chat_id
         )
         # Initialize messages with current message history (only once at start)
-        await self.update_llm_working_memory(message_history=message_history, chat_id=chat_id)
+        await self.update_llm_working_memory(
+            message_history=message_history, chat_id=chat_id
+        )
         # inject the tools registry into the assistant message
         # TODO UPDATE LATER FOR TOOL_REGISTRY AS WELL
-        tools_section = await self.get_tools_registry(available_tools, agent_name=None if is_generic_agent else self.agent_name)
-
+        tools_section = await self.get_tools_registry(
+            available_tools, agent_name=None if is_generic_agent else self.agent_name
+        )
 
         self.messages[self.agent_name].append(
             Message(
@@ -561,23 +570,18 @@ class BaseReactAgent:
             AgentState.STUCK,
             AgentState.ERROR,
         ]:
-            raise RuntimeError(
-                f"Agent is not in a valid state to run: {self.state}"
-            )
+            raise RuntimeError(f"Agent is not in a valid state to run: {self.state}")
 
         # set the agent state to running
         async with self.agent_state_context(AgentState.RUNNING):
             current_steps = 0
-            while (
-                self.state != AgentState.FINISHED
-                and current_steps < self.max_steps
-            ):
+            while self.state != AgentState.FINISHED and current_steps < self.max_steps:
                 if debug:
                     logger.info(
                         f"Sending {len(self.messages[self.agent_name])} messages to LLM"
                     )
                 current_steps += 1
-                
+
                 self.usage_limits.check_before_request(usage=usage)
                 try:
                     response = await llm_connection.llm_call(
@@ -590,7 +594,7 @@ class BaseReactAgent:
                                 requests=current_steps,
                                 request_tokens=response.usage.prompt_tokens,
                                 response_tokens=response.usage.completion_tokens,
-                                total_tokens=response.usage.total_tokens
+                                total_tokens=response.usage.total_tokens,
                             )
                             usage.incr(request_usage)
                             # Check if we've exceeded token limits
@@ -600,24 +604,28 @@ class BaseReactAgent:
                             used_tokens = usage.total_tokens
                             used_requests = usage.requests
                             remaining_requests = self.request_limit - used_requests
-                            session_stats.update({
+                            session_stats.update(
+                                {
                                     "used_requests": used_requests,
                                     "used_tokens": used_tokens,
                                     "remaining_requests": remaining_requests,
                                     "remaining_tokens": remaining_tokens,
                                     "request_tokens": request_usage.request_tokens,
                                     "response_tokens": request_usage.response_tokens,
-                                    "total_tokens": request_usage.total_tokens
-                                })
+                                    "total_tokens": request_usage.total_tokens,
+                                }
+                            )
                             if debug:
-                                logger.info(f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
-                                            f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
-                                            f"Request Tokens: {request_usage.request_tokens}, "
-                                            f"Response Tokens: {request_usage.response_tokens}, "
-                                            f"Total Tokens: {request_usage.total_tokens}, "
-                                            f"Remaining Requests: {remaining_requests}, "
-                                            f"Remaining Tokens: {remaining_tokens}")
-                        
+                                logger.info(
+                                    f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
+                                    f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
+                                    f"Request Tokens: {request_usage.request_tokens}, "
+                                    f"Response Tokens: {request_usage.response_tokens}, "
+                                    f"Total Tokens: {request_usage.total_tokens}, "
+                                    f"Remaining Requests: {remaining_requests}, "
+                                    f"Remaining Tokens: {remaining_tokens}"
+                                )
+
                         if hasattr(response, "choices"):
                             response = response.choices[0].message.content.strip()
                         elif hasattr(response, "message"):
@@ -638,7 +646,6 @@ class BaseReactAgent:
                     logger.info(f"current steps: {current_steps}")
                 # check for final answer
                 if parsed_response.answer is not None:
-
                     self.messages[self.agent_name].append(
                         Message(
                             role=MessageRole.ASSISTANT,
@@ -652,15 +659,10 @@ class BaseReactAgent:
                         chat_id=chat_id,
                     )
                     # check if the system prompt has changed
-                    if (
-                        system_prompt
-                        != self.messages[self.agent_name][0].content
-                    ):
+                    if system_prompt != self.messages[self.agent_name][0].content:
                         # Reset system prompt and keep all messages
-                        self.messages[self.agent_name] = (
-                            await self.reset_system_prompt(
-                                self.messages[self.agent_name], system_prompt
-                            )
+                        self.messages[self.agent_name] = await self.reset_system_prompt(
+                            self.messages[self.agent_name], system_prompt
                         )
                     if debug:
                         logger.info(
@@ -704,7 +706,7 @@ class BaseReactAgent:
                     agent_name=self.agent_name,
                     role="user",
                     content=error_message,
-                    chat_id=chat_id
+                    chat_id=chat_id,
                 )
                 self.loop_detector.record_message(error_message, response)
                 if self.loop_detector.is_looping():
@@ -712,10 +714,9 @@ class BaseReactAgent:
                     new_system_prompt = handle_stuck_state(
                         system_prompt, message_stuck_prompt=True
                     )
-                    self.messages[self.agent_name] = (
-                        await self.reset_system_prompt(
-                            messages=self.messages[self.agent_name], system_prompt=new_system_prompt
-                        )
+                    self.messages[self.agent_name] = await self.reset_system_prompt(
+                        messages=self.messages[self.agent_name],
+                        system_prompt=new_system_prompt,
                     )
                     loop_message = (
                         f"Observation:\n"

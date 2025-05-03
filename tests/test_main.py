@@ -151,6 +151,8 @@ def test_main():
     """Test main function"""
     from mcpomni_connect.main import main
 
-    with patch("mcpomni_connect.main.async_main", new_callable=AsyncMock) as mock_async_main:
+    with patch(
+        "mcpomni_connect.main.async_main", new_callable=AsyncMock
+    ) as mock_async_main:
         main()
         mock_async_main.assert_called_once()

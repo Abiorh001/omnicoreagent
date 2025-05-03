@@ -133,7 +133,7 @@ class LLMConnection:
 
 class samplingCallback:
     def __init__(self):
-        self.llm_connection = LLMConnection() 
+        self.llm_connection = LLMConnection()
 
     async def load_model(self):
         config_path = Path("servers_config.json")
