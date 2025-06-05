@@ -1,14 +1,10 @@
-from unittest.mock import Mock, patch
-
+from unittest.mock import Mock, patch, AsyncMock
 import pytest
-
 from mcpomni_connect.llm import LLMConnection
 
 # Mock configuration
 MOCK_CONFIG = {
-    "openai_api_key": "test-openai-key",
-    "groq_api_key": "test-groq-key",
-    "openrouter_api_key": "test-openrouter-key",
+    "llm_api_key": "test-api-key",
     "load_config": Mock(
         return_value={
             "LLM": {
@@ -16,7 +12,6 @@ MOCK_CONFIG = {
                 "model": "gpt-4",
                 "temperature": 0.7,
                 "max_tokens": 1000,
-                "max_input_tokens": 1000,
                 "top_p": 0.9,
             }
         }
@@ -27,12 +22,8 @@ MOCK_CONFIG = {
 @pytest.fixture
 def mock_llm_connection():
     """Create a mock LLM connection"""
-    with (
-        patch("mcpomni_connect.llm.OpenAI") as mock_openai,
-        patch("mcpomni_connect.llm.Groq") as mock_groq,
-    ):
-        mock_openai.return_value = Mock()
-        mock_groq.return_value = Mock()
+    with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+        mock_litellm.acompletion = Mock()
         connection = LLMConnection(Mock(**MOCK_CONFIG))
         return connection
 
@@ -49,223 +40,175 @@ class TestLLMConnection:
         """Test LLM configuration loading"""
         config = mock_llm_connection.llm_configuration()
         assert config["provider"] == "openai"
-        assert config["model"] == "gpt-4"
+        assert config["model"] == "gpt-4"  # Should remain as base model name for OpenAI
         assert config["temperature"] == 0.7
         assert config["max_tokens"] == 1000
         assert config["top_p"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_llm_call_openai(self, mock_llm_connection):
-        """Test LLM call with OpenAI"""
-        messages = [{"role": "user", "content": "Hello"}]
-        tools = [{"name": "test_tool", "description": "Test tool"}]
-
-        mock_response = Mock()
-        mock_llm_connection.openai.chat.completions.create.return_value = mock_response
-
-        response = await mock_llm_connection.llm_call(messages, tools)
-
-        assert response == mock_response
-        mock_llm_connection.openai.chat.completions.create.assert_called_once_with(
-            model="gpt-4",
-            max_tokens=1000,
-            temperature=0.7,
-            top_p=0.9,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-        )
-
-    @pytest.mark.asyncio
-    async def test_llm_call_groq(self, mock_llm_connection):
-        """Test LLM call with Groq"""
-        # Update config to use Groq
-        mock_llm_connection.llm_config["provider"] = "groq"
-        messages = [{"role": "user", "content": "Hello"}]
-        tools = [{"name": "test_tool", "description": "Test tool"}]
-
-        mock_response = Mock()
-        mock_llm_connection.groq.chat.completions.create.return_value = mock_response
-
-        response = await mock_llm_connection.llm_call(messages, tools)
-
-        assert response == mock_response
-        mock_llm_connection.groq.chat.completions.create.assert_called_once_with(
-            model="gpt-4",
-            max_tokens=1000,
-            temperature=0.7,
-            top_p=0.9,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-        )
+    async def test_llm_call_openai(self):
+        """Test LLM call with OpenAI using LiteLLM"""
+        with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+            messages = [{"role": "user", "content": "Hello"}]
+            tools = [{"name": "test_tool", "description": "Test tool"}]
+            mock_response = Mock()
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+            
+            connection = LLMConnection(Mock(**MOCK_CONFIG))
+            response = await connection.llm_call(messages, tools)
+            
+            assert response == mock_response
+            mock_litellm.acompletion.assert_called_once_with(
+                model="gpt-4",  # OpenAI uses base model name
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7,
+                top_p=0.9,
+                tools=tools,
+                tool_choice="auto"
+            )
 
     @pytest.mark.asyncio
-    async def test_llm_call_openrouter(self, mock_llm_connection):
-        """Test LLM call with OpenRouter"""
-        # Update config to use OpenRouter
-        mock_llm_connection.llm_config["provider"] = "openrouter"
-        messages = [{"role": "user", "content": "Hello"}]
-        tools = [{"name": "test_tool", "description": "Test tool"}]
-
-        mock_response = Mock()
-        mock_llm_connection.openrouter.chat.completions.create.return_value = (
-            mock_response
+    async def test_llm_call_groq(self):
+        """Test LLM call with Groq using LiteLLM"""
+        groq_config = MOCK_CONFIG.copy()
+        groq_config["load_config"] = Mock(
+            return_value={
+                "LLM": {
+                    "provider": "groq",
+                    "model": "llama-3.1-70b-versatile",
+                    "temperature": 0.7,
+                    "max_tokens": 1000,
+                    "top_p": 0.9,
+                }
+            }
         )
-
-        response = await mock_llm_connection.llm_call(messages, tools)
-
-        assert response == mock_response
-        mock_llm_connection.openrouter.chat.completions.create.assert_called_once_with(
-            extra_body={
-                "order": ["openai", "anthropic", "groq"],
-                "allow_fallback": True,
-                "require_provider": True,
-            },
-            model="gpt-4",
-            max_tokens=1000,
-            temperature=0.7,
-            top_p=0.9,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-        )
+        
+        with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+            messages = [{"role": "user", "content": "Hello"}]
+            tools = [{"name": "test_tool", "description": "Test tool"}]
+            mock_response = Mock()
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+            
+            connection = LLMConnection(Mock(**groq_config))
+            response = await connection.llm_call(messages, tools)
+            
+            assert response == mock_response
+            mock_litellm.acompletion.assert_called_once_with(
+                model="groq/llama-3.1-70b-versatile",  # Groq uses prefixed model name
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7,
+                top_p=0.9,
+                tools=tools,
+                tool_choice="auto"
+            )
 
     @pytest.mark.asyncio
-    async def test_llm_call_gemini(self, mock_llm_connection):
-        """Test LLM call with Gemini"""
-        # Update config to use Gemini
-        mock_llm_connection.llm_config["provider"] = "gemini"
-        messages = [{"role": "user", "content": "Hello"}]
-        tools = [{"name": "test_tool", "description": "Test tool"}]
-
-        mock_response = Mock()
-        mock_llm_connection.gemini.chat.completions.create.return_value = mock_response
-
-        response = await mock_llm_connection.llm_call(messages, tools)
-
-        assert response == mock_response
-        mock_llm_connection.gemini.chat.completions.create.assert_called_once_with(
-            model="gpt-4",
-            max_tokens=1000,
-            temperature=0.7,
-            top_p=0.9,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
+    async def test_llm_call_openrouter(self):
+        """Test LLM call with OpenRouter using LiteLLM"""
+        openrouter_config = MOCK_CONFIG.copy()
+        openrouter_config["load_config"] = Mock(
+            return_value={
+                "LLM": {
+                    "provider": "openrouter",
+                    "model": "anthropic/claude-3-sonnet",
+                    "temperature": 0.7,
+                    "max_tokens": 1000,
+                    "top_p": 0.9,
+                }
+            }
         )
+        
+        with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+            messages = [{"role": "user", "content": "Hello"}]
+            tools = [{"name": "test_tool", "description": "Test tool"}]
+            mock_response = Mock()
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+            
+            connection = LLMConnection(Mock(**openrouter_config))
+            response = await connection.llm_call(messages, tools)
+            
+            assert response == mock_response
+            mock_litellm.acompletion.assert_called_once_with(
+                model="openrouter/anthropic/claude-3-sonnet",
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7,
+                top_p=0.9,
+                tools=tools,
+                tool_choice="auto"
+            )
 
     @pytest.mark.asyncio
-    async def test_llm_call_without_tools(self, mock_llm_connection):
-        """Test LLM call without tools for different providers"""
-        messages = [{"role": "user", "content": "Hello"}]
-
-        # Test OpenAI without tools
-        mock_response_openai = Mock()
-        mock_llm_connection.openai.chat.completions.create.return_value = (
-            mock_response_openai
+    async def test_llm_call_gemini(self):
+        """Test LLM call with Gemini using LiteLLM"""
+        gemini_config = MOCK_CONFIG.copy()
+        gemini_config["load_config"] = Mock(
+            return_value={
+                "LLM": {
+                    "provider": "gemini",
+                    "model": "gemini-pro",
+                    "temperature": 0.7,
+                    "max_tokens": 1000,
+                    "top_p": 0.9,
+                }
+            }
         )
-        mock_llm_connection.llm_config["provider"] = "openai"
-
-        response = await mock_llm_connection.llm_call(messages)
-        assert response == mock_response_openai
-        mock_llm_connection.openai.chat.completions.create.assert_called_with(
-            model="gpt-4",
-            max_tokens=1000,
-            temperature=0.7,
-            top_p=0.9,
-            messages=messages,
-        )
-
-        # Test OpenRouter without tools
-        mock_response_openrouter = Mock()
-        mock_llm_connection.openrouter.chat.completions.create.return_value = (
-            mock_response_openrouter
-        )
-        mock_llm_connection.llm_config["provider"] = "openrouter"
-
-        response = await mock_llm_connection.llm_call(messages)
-        assert response == mock_response_openrouter
-        mock_llm_connection.openrouter.chat.completions.create.assert_called_with(
-            extra_body={
-                "order": ["Mistral", "Openai", "Groq", "Gemini"],
-                "allow_fallback": True,
-                "require_provider": True,
-            },
-            model="gpt-4",
-            max_tokens=1000,
-            temperature=0.7,
-            top_p=0.9,
-            messages=messages,
-            stop=["\n\nObservation:"],
-        )
+        
+        with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+            messages = [{"role": "user", "content": "Hello"}]
+            tools = [{"name": "test_tool", "description": "Test tool"}]
+            mock_response = Mock()
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+            
+            connection = LLMConnection(Mock(**gemini_config))
+            response = await connection.llm_call(messages, tools)
+            
+            assert response == mock_response
+            mock_litellm.acompletion.assert_called_once_with(
+                model="gemini/gemini-pro",
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7,
+                top_p=0.9,
+                tools=tools,
+                tool_choice="auto"
+            )
 
     @pytest.mark.asyncio
-    async def test_llm_call_error_handling(self, mock_llm_connection):
-        """Test error handling during LLM calls"""
-        messages = [{"role": "user", "content": "Hello"}]
+    async def test_llm_call_without_tools(self):
+        """Test LLM call without tools"""
+        with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+            messages = [{"role": "user", "content": "Hello"}]
+            mock_response = Mock()
+            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+            
+            connection = LLMConnection(Mock(**MOCK_CONFIG))
+            response = await connection.llm_call(messages)
+            
+            assert response == mock_response
+            mock_litellm.acompletion.assert_called_once_with(
+                model="gpt-4",
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7,
+                top_p=0.9
+            )
 
-        # Test invalid provider
-        mock_llm_connection.llm_config["provider"] = "invalid_provider"
-        response = await mock_llm_connection.llm_call(messages)
-        assert response is None
-
-        # Test API error with OpenAI
-        mock_llm_connection.llm_config["provider"] = "openai"
-        mock_llm_connection.openai.chat.completions.create.side_effect = Exception(
-            "API Error"
-        )
-        response = await mock_llm_connection.llm_call(messages)
-        assert response is None
-
-        # Test API error with Groq
-        mock_llm_connection.llm_config["provider"] = "groq"
-        mock_llm_connection.groq.chat.completions.create.side_effect = Exception(
-            "API Error"
-        )
-        response = await mock_llm_connection.llm_call(messages)
-        assert response is None
+    @pytest.mark.asyncio
+    async def test_llm_call_error_handling(self):
+        """Test LLM call error handling"""
+        with patch("mcpomni_connect.llm.litellm") as mock_litellm:
+            mock_litellm.acompletion = AsyncMock(side_effect=Exception("API Error"))
+            
+            connection = LLMConnection(Mock(**MOCK_CONFIG))
+            messages = [{"role": "user", "content": "Hello"}]
+            
+            response = await connection.llm_call(messages)
+            assert response is None
 
     def test_truncate_messages_for_groq(self, mock_llm_connection):
-        """Test message truncation for Groq"""
-        messages = [
-            {
-                "role": "system",
-                "content": "x" * 2000,
-            },  # Should be truncated to 1000
-            *[
-                {"role": "user", "content": "x" * 600} for _ in range(5)
-            ],  # Should be kept
-            *[
-                {"role": "assistant", "content": "x" * 600} for _ in range(5)
-            ],  # Should be kept
-            {
-                "role": "user",
-                "content": "x" * 600,
-            },  # May be truncated or removed
-            {
-                "role": "assistant",
-                "content": "x" * 600,
-            },  # May be truncated or removed
-        ]
-
-        truncated = mock_llm_connection.truncate_messages_for_groq(messages)
-
-        print("\n=== Debugging Truncated Messages ===")
-        print("Original message count:", len(messages))
-        print("Truncated message count:", len(truncated))
-        for i, msg in enumerate(truncated):
-            print(f"Message {i} ({msg['role']}): {len(msg['content'])} characters")
-
-        # Check system message truncation
-        assert truncated[0]["role"] == "system"
-        assert len(truncated[0]["content"]) == 1000
-
-        if len(messages) > 10:
-            assert any(len(msg["content"]) < 600 for msg in truncated), (
-                "Expected some messages to be truncated"
-            )
-        else:
-            assert len(truncated) == len(messages), (
-                "No truncation expected for ≤10 messages"
-            )
+        """Test that truncate_messages_for_groq method was removed"""
+        # This method should no longer exist since LiteLLM handles token management
+        assert not hasattr(mock_llm_connection, 'truncate_messages_for_groq')

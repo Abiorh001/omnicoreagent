@@ -1,4 +1,5 @@
-# example of connecting azure model json config:
+# Example of connecting Azure OpenAI model via LiteLLM integration
+# This configuration works with the unified LiteLLM interface
 {
     "AgentConfig": {
         "tool_call_timeout": 30,

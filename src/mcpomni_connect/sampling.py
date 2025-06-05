@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from groq import Groq
+import litellm
 from mcp.client.session import ClientSession
 from mcp.shared.context import RequestContext
 from mcp.types import (
@@ -15,7 +15,6 @@ from mcp.types import (
     ErrorData,
     TextContent,
 )
-from openai import OpenAI
 
 from mcpomni_connect.types import ContextInclusion
 from mcpomni_connect.utils import logger
@@ -64,66 +63,35 @@ class LLMConnection:
     ):
         try:
             provider = provider.lower()
-
-            if provider == "openai":
-                response = await asyncio.to_thread(
-                    self.openai.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-
-            elif provider == "groq":
-                response = await asyncio.to_thread(
-                    self.groq.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-
-            elif provider == "openrouter":
-                response = await asyncio.to_thread(
-                    self.openrouter.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-
-            elif provider == "gemini":
-                response = await asyncio.to_thread(
-                    self.gemini.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-
-            elif provider == "deepseek":
-                response = await asyncio.to_thread(
-                    self.deepseek.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-            else:
-                return ErrorData(
-                    code="INVALID_REQUEST",
-                    message=f"Unsupported LLM provider: {provider}",
-                )
+            
+            # Map provider to LiteLLM format
+            provider_model_map = {
+                "openai": model,
+                "anthropic": f"anthropic/{model}",
+                "groq": f"groq/{model}",
+                "gemini": f"gemini/{model}",
+                "deepseek": f"deepseek/{model}",
+                "openrouter": f"openrouter/{model}",
+                "azureopenai": f"azure/{model}",
+                "ollama": f"ollama/{model}"
+            }
+            
+            full_model = provider_model_map.get(provider, model)
+            
+            response = await litellm.acompletion(
+                model=full_model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Error calling LLM for provider '{provider}': {e}")
+            return ErrorData(
+                code="INVALID_REQUEST",
+                message=f"Unsupported LLM provider: {provider}",
+            )
         except Exception as e:
             logger.error(f"Error calling LLM for provider '{provider}': {e}")
             return ErrorData(
