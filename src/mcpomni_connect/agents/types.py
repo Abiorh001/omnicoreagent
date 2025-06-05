@@ -45,9 +45,18 @@ class ToolCallMetadata(BaseModel):
 class Message(BaseModel):
     role: str
     content: str
-    tool_call_id: str = None
-    tool_calls: str = None
+    tool_call_id: str | None = None
+    tool_calls: str | None = None
     metadata: ToolCallMetadata | None = None
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        return setattr(self, key, value)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
 
 
 class ParsedResponse(BaseModel):
