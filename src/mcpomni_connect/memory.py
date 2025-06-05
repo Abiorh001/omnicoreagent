@@ -35,6 +35,31 @@ class InMemoryShortTermMemory:
         self.debug = debug
         self.short_term_limit = int(0.7 * max_context_tokens)
         self.agents_history: dict[str, list[dict[str, Any]]] = {}
+        self.memory_config: dict[str, Any] = {
+            "mode": "token_budget",  # default mode
+            "value": self.short_term_limit,  # default token budget
+        }
+
+    def set_memory_config(self, mode: str, value: int = None) -> None:
+        """Set global memory strategy.
+
+        Args:
+            mode: Memory mode ('sliding_window', 'token_budget')
+            value: Optional value (e.g., window size or token limit)
+        """
+        valid_modes = {"sliding_window", "token_budget"}
+        if mode.lower() not in valid_modes:
+            raise ValueError(
+                f"Invalid memory mode: {mode}. Must be one of {valid_modes}."
+            )
+
+        self.memory_config = {
+            "mode": mode,
+            "value": value,
+        }
+
+        if self.debug:
+            logger.info(f"[Memory] Config set to: {self.memory_config}")
 
     async def truncate_message_history(
         self, agent_name: str, chat_id: str = None
@@ -47,6 +72,7 @@ class InMemoryShortTermMemory:
         Returns:
             List of messages after truncation
         """
+        logger.info(f"memory config: {self.memory_config}")
         try:
             if agent_name not in self.agents_history:
                 self.agents_history[agent_name] = []
@@ -57,12 +83,18 @@ class InMemoryShortTermMemory:
                 messages = [
                     message for message in messages if message["chat_id"] == chat_id
                 ]
+            mode = self.memory_config.get("mode", "token_budget")
+            value = self.memory_config.get("value")
+            if mode.lower() == "sliding_window":
+                messages = messages[-value:]
 
-            total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
-
-            while total_tokens > self.short_term_limit and messages:
-                messages.pop(0)
+            elif mode.lower() == "token_budget":
                 total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
+                while value is not None and total_tokens > value and messages:
+                    messages.pop(0)
+                    total_tokens = sum(
+                        len(str(msg["content"]).split()) for msg in messages
+                    )
 
             return messages
         except Exception as e:

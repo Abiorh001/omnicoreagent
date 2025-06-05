@@ -73,6 +73,7 @@ class CommandType(Enum):
     API_STATS = "api_stats"
     ADD_SERVERS = "add_servers"
     REMOVE_SERVER = "remove_server"
+    MEMORY_MODE = "memory_mode"
 
 
 class CommandHelp:
@@ -129,6 +130,33 @@ class CommandHelp:
                 ],
                 "subcommands": {},
                 "tips": ["Use to toggle memory usage between Redis and In-Memory"],
+            },
+            "memory_mode": {
+                "description": "Switch short-term memory strategy for the agent",
+                "usage": "/memory_mode[:<mode>[:<value>]]",
+                "examples": [
+                    "/memory_mode:sliding_window:5  # Keep last 5 messages",
+                    "/memory_mode:token_budget:3000  # Keep messages under 3000 tokens",
+                ],
+                "subcommands": {
+                    "sliding_window": {
+                        "description": "Use fixed-size message window",
+                        "usage": "/memory_mode:sliding_window:<N>",
+                        "examples": ["/memory_mode:sliding_window:10"],
+                        "tips": [
+                            "Best for short conversations or minimal context carryover."
+                        ],
+                    },
+                    "token_budget": {
+                        "description": "Keep messages under token limit",
+                        "usage": "/memory_mode:token_budget:<max_tokens>",
+                        "examples": ["/memory_mode:token_budget:4000"],
+                        "tips": ["Useful when managing LLM input length across tools."],
+                    },
+                },
+                "tips": [
+                    "Choose a memory strategy based on how you want agents to retain context.",
+                ],
             },
             "tools": {
                 "description": "List and manage available tools across all connected servers",
@@ -355,6 +383,8 @@ class MCPClientCLI:
             return CommandType.ADD_SERVERS, input_text[13:].strip()
         elif input_text.startswith("/remove_server:"):
             return CommandType.REMOVE_SERVER, input_text[15:].strip()
+        elif input_text.startswith("/memory_mode:"):
+            return CommandType.MEMORY_MODE, input_text[13:].strip()
         elif input_text == "/api_stats":
             return CommandType.API_STATS, ""
         else:
@@ -445,6 +475,34 @@ class MCPClientCLI:
             f"[{'green' if self.USE_MEMORY['redis'] else 'red'}]Redis memory "
             f"{'enabled' if self.USE_MEMORY['redis'] else 'disabled'}[/]"
         )
+
+    async def handle_memory_mode_command(self, input_text: str):
+        """Handle memory mode command."""
+        memory = (
+            self.redis_short_term_memory
+            if self.USE_MEMORY.get("redis")
+            else self.in_memory_short_term_memory
+        )
+
+        try:
+            if ":" in input_text:
+                mode, value = input_text.split(":", 1)
+                value = int(value.strip()) if value.strip().isdigit() else None
+            else:
+                mode = input_text.strip()
+                value = None
+
+            memory.set_memory_config(mode=mode.strip(), value=value)
+
+            value_str = f" with value {value}" if value is not None else ""
+            self.console.print(
+                f"[green]Memory mode set to '{mode}'{value_str}.[/green]"
+            )
+
+        except ValueError as ve:
+            self.console.print(f"[red]Invalid input: {ve}[/red]")
+        except Exception as e:
+            self.console.print(f"[red]Failed to set memory mode: {e}[/red]")
 
     async def handle_mode_command(self, mode: str) -> str:
         """Handle mode switching command."""
@@ -1161,6 +1219,7 @@ class MCPClientCLI:
             CommandType.API_STATS: self.handle_api_stats,
             CommandType.ADD_SERVERS: self.handle_add_servers,
             CommandType.REMOVE_SERVER: self.handle_remove_server,
+            CommandType.MEMORY_MODE: self.handle_memory_mode_command,
         }
 
         while True:
@@ -1247,6 +1306,13 @@ class MCPClientCLI:
         commands_table.add_column("[bold yellow]Example[/]", style="yellow")
 
         commands = [
+            (
+                "/memory_mode[:<mode>[:<value>]]",
+                "Configure memory mode for all agents 💾",
+                "/memory_mode  # Show current memory mode\n"
+                "/memory_mode:sliding_window:5  # Keep last 5 messages\n"
+                "/memory_mode:token_budget:4000  # Keep messages under 4000 tokens\n",
+            ),
             (
                 "/add_servers:<path>",
                 "Add one or more MCP servers from a JSON config file",
