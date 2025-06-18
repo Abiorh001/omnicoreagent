@@ -1,5 +1,3 @@
-import asyncio
-import contextlib
 import json
 import os
 from pathlib import Path
@@ -26,31 +24,7 @@ api_key = os.getenv("LLM_API_KEY")
 
 class LLMConnection:
     def __init__(self):
-        self.openai = None
-        self.groq = None
-        self.gemini = None
-        self.openrouter = None
-        self.deepseek = None
-        with contextlib.suppress(Exception):
-            self.openai = OpenAI(api_key=api_key)
-        with contextlib.suppress(Exception):
-            self.groq = Groq(api_key=api_key)
-        with contextlib.suppress(Exception):
-            self.openrouter = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=api_key,
-            )
-
-        with contextlib.suppress(Exception):
-            self.gemini = OpenAI(
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                api_key=api_key,
-            )
-        with contextlib.suppress(Exception):
-            self.deepseek = OpenAI(
-                base_url="https://api.deepseek.com",
-                api_key=api_key,
-            )
+        self.llm_config = None
 
     async def llm_call(
         self,
@@ -63,24 +37,36 @@ class LLMConnection:
     ):
         try:
             provider = provider.lower()
-            
+
             # Map provider to LiteLLM format
             provider_model_map = {
-                "openai": model,
+                "openai": f"openai/{model}",
                 "anthropic": f"anthropic/{model}",
                 "groq": f"groq/{model}",
                 "gemini": f"gemini/{model}",
                 "deepseek": f"deepseek/{model}",
                 "openrouter": f"openrouter/{model}",
                 "azureopenai": f"azure/{model}",
-                "ollama": f"ollama/{model}"
+                "ollama": f"ollama/{model}",
             }
-            
-            full_model = provider_model_map.get(provider, model)
-            
+
+            full_model = provider_model_map.get(provider)
+
+            # Convert Message objects to dicts before sending to LiteLLM
+            def to_dict(msg):
+                if hasattr(msg, "model_dump"):
+                    return msg.model_dump(exclude_none=True)
+                elif isinstance(msg, dict):
+                    return msg
+                elif hasattr(msg, "__dict__"):
+                    return {k: v for k, v in msg.__dict__.items() if v is not None}
+                else:
+                    return msg
+
+            messages_dicts = [to_dict(m) for m in messages]
             response = await litellm.acompletion(
                 model=full_model,
-                messages=messages,
+                messages=messages_dicts,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stop=stop,
