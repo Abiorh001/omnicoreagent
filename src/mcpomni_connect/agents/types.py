@@ -66,6 +66,7 @@ class ToolCallResult(BaseModel):
 class ToolError(BaseModel):
     observation: str
     tool_name: str
+    tool_args: dict | None = None
 
 
 class ToolData(BaseModel):

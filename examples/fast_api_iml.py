@@ -28,6 +28,7 @@ from mcpomni_connect.system_prompts import (
 from mcpomni_connect.utils import logger
 from mcpomni_connect.resources import read_resource, list_resources
 
+
 class MCPClientConnect:
     def __init__(self, client: MCPClient, llm_connection: LLMConnection):
         self.client = client
@@ -50,12 +51,14 @@ class MCPClientConnect:
                 generate_react_agent_role_prompt=generate_react_agent_role_prompt,
             )
             AGENTS_REGISTRY[server_name] = react_agent_role_prompt
+
     async def handle_list_resources(self):
         response = await list_resources(
             server_names=self.client.server_names,
             sessions=self.client.sessions,
         )
         return response
+
     async def handle_resource_query(self, query: str, chat_id: str = None):
         response = await read_resource(
             uri=query,
@@ -204,11 +207,13 @@ async def chat_endpoint(request: Request, user_input: str, chat_id: str):
             + b"\n"
         )
 
+
 async def stream_resource(request: Request, query: str, chat_id: str):
     response = await request.app.state.client_connection.handle_resource_query(
         query=query, chat_id=chat_id
     )
     return response  # must be an async generator or async iterator
+
 
 class ChatInput(BaseModel):
     query: str = Form(...)
@@ -231,6 +236,7 @@ async def chat(request: Request, chat_input: ChatInput):
             ),
             media_type="text/plain",
         )
+
 
 @app.get("/resources")
 async def list_resources_endpoint(request: Request):

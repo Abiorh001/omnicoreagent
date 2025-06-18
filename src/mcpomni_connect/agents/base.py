@@ -292,6 +292,7 @@ class BaseReactAgent:
             return ToolError(
                 observation=tool_data.get("error", "N/A"),
                 tool_name=tool_data.get("tool_name", "N/A"),
+                tool_args=tool_data.get("tool_args", None),
             )
 
         return ToolCallResult(

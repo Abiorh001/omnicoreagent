@@ -39,12 +39,12 @@ class MCPToolHandler(BaseToolHandler):
     ) -> str | None:
         try:
             action = json.loads(tool_data)
-            tool_name = action.get("tool", "").lower()
+            input_tool_name = action.get("tool", "").strip().lower()
 
             for server_name, tools in available_tools.items():
-                tool_names = [tool.name.lower() for tool in tools]
-                if tool_name in tool_names:
-                    return server_name
+                for tool in tools:
+                    if tool.name.lower() == input_tool_name:
+                        return server_name
         except (json.JSONDecodeError, AttributeError, KeyError):
             pass
         return None
@@ -54,43 +54,42 @@ class MCPToolHandler(BaseToolHandler):
     ) -> dict:
         try:
             action = json.loads(tool_data)
-            tool_name = action["tool"].strip().lower() if "tool" in action else None
-            tool_args = action["parameters"] if "parameters" in action else None
-            # if tool_name is None or tool_args is None, return an error
-            if tool_name is None or tool_args is None:
+            input_tool_name = action.get("tool", "").strip()
+            tool_args = action.get("parameters")
+
+            if not input_tool_name or not tool_args:
                 return {
-                    "error": "Invalid JSON format. check the action format again.",
+                    "error": "Invalid JSON format. Check the action format again.",
                     "action": False,
-                    "tool_name": tool_name,
+                    "tool_name": input_tool_name,
+                    "tool_args": tool_args,
                 }
 
-            # Validate JSON structure and tool exists
-            if "tool" in action and "parameters" in action:
-                for (
-                    server_name,
-                    tools,
-                ) in available_tools.items():
-                    tool_names = [tool.name.lower() for tool in tools]
-                    if tool_name in tool_names:
+            input_tool_name_lower = input_tool_name.lower()
+
+            for server_name, tools in available_tools.items():
+                for tool in tools:
+                    if tool.name.lower() == input_tool_name_lower:
                         return {
                             "action": True,
-                            "tool_name": tool_name,
+                            "tool_name": tool.name,
                             "tool_args": tool_args,
                             "server_name": server_name,
                         }
-            error_message = (
-                f"The tool named {tool_name} does not exist in the current available tools. "
-                "Please double-check the available tools before attempting another action.\n\n"
-                "I will not retry the same tool name since it's not defined. "
-                "If an alternative method or tool is available to fulfill the request, I’ll try that now. "
-                "Otherwise, I’ll respond directly based on what I know."
-            )
-            return {"action": False, "error": error_message, "tool_name": tool_name}
+
+            return {
+                "action": False,
+                "error": f"The tool named '{input_tool_name}' does not exist in the available tools.",
+                "tool_name": input_tool_name,
+                "tool_args": tool_args,
+            }
+
         except json.JSONDecodeError as e:
             return {
                 "error": f"Json decode error: Invalid JSON format: {e}",
                 "action": False,
                 "tool_name": "N/A",
+                "tool_args": None,
             }
 
     async def call(self, tool_name: str, tool_args: dict[str, Any]) -> Any:
@@ -117,6 +116,7 @@ class LocalToolHandler(BaseToolHandler):
                     "error": "Missing 'tool' name or 'parameters' in the request.",
                     "action": False,
                     "tool_name": tool_name,
+                    "tool_args": tool_args,
                 }
 
             # Normalize available tool names
@@ -137,10 +137,20 @@ class LocalToolHandler(BaseToolHandler):
                 "If an alternative method or tool is available to fulfill the request, I’ll try that now. "
                 "Otherwise, I’ll respond directly based on what I know."
             )
-            return {"action": False, "error": error_message, "tool_name": tool_name}
+            return {
+                "action": False,
+                "error": error_message,
+                "tool_name": tool_name,
+                "tool_args": tool_args,
+            }
 
         except json.JSONDecodeError:
-            return {"error": "Invalid JSON format", "action": False, "tool_name": "N/A"}
+            return {
+                "error": "Invalid JSON format",
+                "action": False,
+                "tool_name": "N/A",
+                "tool_args": None,
+            }
 
     async def call(self, tool_name: str, tool_args: dict[str, Any]) -> Any:
         tool_name = tool_name.strip().lower()
