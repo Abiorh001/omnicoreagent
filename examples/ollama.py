@@ -1,4 +1,4 @@
-# Example of connecting Ollama local model via LiteLLM integration  
+# Example of connecting Ollama local model via LiteLLM integration
 # This configuration works with the unified LiteLLM interface
 {
     "AgentConfig": {
