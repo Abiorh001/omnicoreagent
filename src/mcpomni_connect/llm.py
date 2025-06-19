@@ -125,7 +125,6 @@ class LLMConnection:
             # Call LiteLLM
             response = await litellm.acompletion(**params)
 
-            logger.info(f"LLM response: {response}")
             return response
 
         except Exception as e:
