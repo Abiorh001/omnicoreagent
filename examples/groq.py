@@ -1,4 +1,4 @@
-# Example of connecting Ollama local model via LiteLLM integration
+# Example of connecting Groq model via LiteLLM integration
 # This configuration works with the unified LiteLLM interface
 {
     "AgentConfig": {
@@ -8,14 +8,12 @@
         "total_tokens_limit": 40000000,
     },
     "LLM": {
-        "provider": "ollama",
-        "model": "qwen2.5:3b",
-        "ollama_host": "http://ollama_host:ollama_port",
+        "provider": "groq",
+        "model": "llama-3.1-8b-instant",
         "temperature": 0.5,
-        "max_tokens": 5000,
-        "max_context_length": 100000,
-        "top_p": 0.7,
-        "top_k": "N/A",
+        "max_tokens": 2000,
+        "max_context_length": 8000,
+        "top_p": 0.9,
     },
     "mcpServers": {
         "yahoo-finance": {"command": "uvx", "args": ["mcp-yahoo-finance"]},

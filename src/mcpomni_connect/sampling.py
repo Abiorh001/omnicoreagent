@@ -1,12 +1,10 @@
-import asyncio
-import contextlib
 import json
 import os
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from groq import Groq
+import litellm
 from mcp.client.session import ClientSession
 from mcp.shared.context import RequestContext
 from mcp.types import (
@@ -15,7 +13,6 @@ from mcp.types import (
     ErrorData,
     TextContent,
 )
-from openai import OpenAI
 
 from mcpomni_connect.types import ContextInclusion
 from mcpomni_connect.utils import logger
@@ -27,31 +24,7 @@ api_key = os.getenv("LLM_API_KEY")
 
 class LLMConnection:
     def __init__(self):
-        self.openai = None
-        self.groq = None
-        self.gemini = None
-        self.openrouter = None
-        self.deepseek = None
-        with contextlib.suppress(Exception):
-            self.openai = OpenAI(api_key=api_key)
-        with contextlib.suppress(Exception):
-            self.groq = Groq(api_key=api_key)
-        with contextlib.suppress(Exception):
-            self.openrouter = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=api_key,
-            )
-
-        with contextlib.suppress(Exception):
-            self.gemini = OpenAI(
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                api_key=api_key,
-            )
-        with contextlib.suppress(Exception):
-            self.deepseek = OpenAI(
-                base_url="https://api.deepseek.com",
-                api_key=api_key,
-            )
+        self.llm_config = None
 
     async def llm_call(
         self,
@@ -65,65 +38,46 @@ class LLMConnection:
         try:
             provider = provider.lower()
 
-            if provider == "openai":
-                response = await asyncio.to_thread(
-                    self.openai.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
+            # Map provider to LiteLLM format
+            provider_model_map = {
+                "openai": f"openai/{model}",
+                "anthropic": f"anthropic/{model}",
+                "groq": f"groq/{model}",
+                "gemini": f"gemini/{model}",
+                "deepseek": f"deepseek/{model}",
+                "openrouter": f"openrouter/{model}",
+                "azureopenai": f"azure/{model}",
+                "ollama": f"ollama/{model}",
+            }
 
-            elif provider == "groq":
-                response = await asyncio.to_thread(
-                    self.groq.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
+            full_model = provider_model_map.get(provider)
 
-            elif provider == "openrouter":
-                response = await asyncio.to_thread(
-                    self.openrouter.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
+            # Convert Message objects to dicts before sending to LiteLLM
+            def to_dict(msg):
+                if hasattr(msg, "model_dump"):
+                    return msg.model_dump(exclude_none=True)
+                elif isinstance(msg, dict):
+                    return msg
+                elif hasattr(msg, "__dict__"):
+                    return {k: v for k, v in msg.__dict__.items() if v is not None}
+                else:
+                    return msg
 
-            elif provider == "gemini":
-                response = await asyncio.to_thread(
-                    self.gemini.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-
-            elif provider == "deepseek":
-                response = await asyncio.to_thread(
-                    self.deepseek.chat.completions.create,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    messages=messages,
-                    stop=stop,
-                )
-                return response
-            else:
-                return ErrorData(
-                    code="INVALID_REQUEST",
-                    message=f"Unsupported LLM provider: {provider}",
-                )
+            messages_dicts = [to_dict(m) for m in messages]
+            response = await litellm.acompletion(
+                model=full_model,
+                messages=messages_dicts,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Error calling LLM for provider '{provider}': {e}")
+            return ErrorData(
+                code="INVALID_REQUEST",
+                message=f"Unsupported LLM provider: {provider}",
+            )
         except Exception as e:
             logger.error(f"Error calling LLM for provider '{provider}': {e}")
             return ErrorData(

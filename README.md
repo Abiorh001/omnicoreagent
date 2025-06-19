@@ -38,12 +38,18 @@ MCPOmni Connect is a powerful, universal command-line interface (CLI) that serve
   - Automated subtask management and execution
 
 ### 🧠 AI-Powered Intelligence
-- **Advanced LLM Integration**
-  - Seamless OpenAI models integration
-  - Seamless OpenRouter models integration
-  - Seamless Groq models integration
-  - Seamless Gemini models integration
-  - Seamless DeepSeek models integration
+- **Unified LLM Integration with LiteLLM**
+  - Single unified interface for all AI providers
+  - Support for 100+ models across providers including:
+    - OpenAI (GPT-4, GPT-3.5, etc.)
+    - Anthropic (Claude 3.5 Sonnet, Claude 3 Haiku, etc.)
+    - Google (Gemini Pro, Gemini Flash, etc.)
+    - Groq (Llama, Mixtral, Gemma, etc.)
+    - DeepSeek (DeepSeek-V3, DeepSeek-Coder, etc.)
+    - Azure OpenAI
+    - OpenRouter (access to 200+ models)
+    - Ollama (local models)
+  - Simplified configuration and reduced complexity
   - Dynamic system prompts based on available capabilities
   - Intelligent context management
   - Automatic tool selection and chaining
@@ -180,10 +186,15 @@ echo "REDIS_DB=0" >> .env"
 
 | Variable        | Description                        | Example                |
 |-----------------|------------------------------------|------------------------|
-| LLM_API_KEY     | API key for LLM provider           | sk-...                 |
+| LLM_API_KEY     | Universal API key for LLM provider | sk-... (OpenAI), etc. |
+| OPENAI_API_KEY  | Specific OpenAI API key (optional) | sk-...                 |
+| ANTHROPIC_API_KEY | Specific Anthropic API key (optional) | sk-ant-...           |
+| GROQ_API_KEY    | Specific Groq API key (optional)   | gsk_...                |
 | REDIS_HOST      | Redis server hostname (optional)   | localhost              |
 | REDIS_PORT      | Redis server port (optional)       | 6379                   |
 | REDIS_DB        | Redis database number (optional)   | 0                      |
+
+**Note**: With LiteLLM integration, you can either use `LLM_API_KEY` as a universal key or set provider-specific keys. LiteLLM will automatically route to the appropriate provider based on the model name.
 
 ### Start CLI
 ```bash
@@ -363,6 +374,7 @@ See the [FastAPI example](examples/fast_api_iml.py) for:
 
 ### Server Configuration Examples
 
+#### Basic OpenAI Configuration
 ```json
 {
     "AgentConfig": {
@@ -405,6 +417,80 @@ See the [FastAPI example](examples/fast_api_iml.py) for:
             "timeout": 60, 
             "sse_read_timeout": 120
         }
+    }
+}
+```
+
+#### Anthropic Claude Configuration
+```json
+{
+    "LLM": {
+        "provider": "anthropic",
+        "model": "claude-3-5-sonnet-20241022",
+        "temperature": 0.7,
+        "max_tokens": 4000,
+        "max_context_length": 200000,
+        "top_p": 0.95
+    }
+}
+```
+
+#### Groq Configuration
+```json
+{
+    "LLM": {
+        "provider": "groq",
+        "model": "llama-3.1-8b-instant",
+        "temperature": 0.5,
+        "max_tokens": 2000,
+        "max_context_length": 8000,
+        "top_p": 0.9
+    }
+}
+```
+
+#### Azure OpenAI Configuration
+```json
+{
+    "LLM": {
+        "provider": "azureopenai",
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "max_context_length": 100000,
+        "top_p": 0.95,
+        "azure_endpoint": "https://your-resource.openai.azure.com",
+        "azure_api_version": "2024-02-01",
+        "azure_deployment": "your-deployment-name"
+    }
+}
+```
+
+#### Ollama Local Model Configuration
+```json
+{
+    "LLM": {
+        "provider": "ollama",
+        "model": "llama3.1:8b",
+        "temperature": 0.5,
+        "max_tokens": 5000,
+        "max_context_length": 100000,
+        "top_p": 0.7,
+        "ollama_host": "http://localhost:11434"
+    }
+}
+```
+
+#### OpenRouter Configuration
+```json
+{
+    "LLM": {
+        "provider": "openrouter",
+        "model": "anthropic/claude-3.5-sonnet",
+        "temperature": 0.7,
+        "max_tokens": 4000,
+        "max_context_length": 200000,
+        "top_p": 0.95
     }
 }
 ```
@@ -605,23 +691,27 @@ The client intelligently:
 - Handles errors gracefully
 - Maintains conversation context
 
-### Model Support
-- **OpenAI Models**
-  - Full support for all OpenAI models
+### Model Support with LiteLLM
+- **Unified Model Access**
+  - Single interface for 100+ models across all major providers
+  - Automatic provider detection and routing
+  - Consistent API regardless of underlying provider
   - Native function calling for compatible models
-  - ReAct Agent fallback for older models
-- **OpenRouter Models**
-  - Access to all OpenRouter-hosted models
-  - Unified interface for model interaction
-  - Automatic capability detection
-- **Groq Models**
-  - Support for all Groq models
-  - Ultra-fast inference capabilities
-  - Seamless integration with tool system
-- **Universal Model Support**
-  - Custom ReAct Agent for models without function calling
-  - Dynamic tool execution based on model capabilities
+  - ReAct Agent fallback for models without function calling
+- **Supported Providers**
+  - **OpenAI**: GPT-4, GPT-3.5, and all model variants
+  - **Anthropic**: Claude 3.5 Sonnet, Claude 3 Haiku, Claude 3 Opus
+  - **Google**: Gemini Pro, Gemini Flash, PaLM models
+  - **Groq**: Ultra-fast inference for Llama, Mixtral, Gemma
+  - **DeepSeek**: DeepSeek-V3, DeepSeek-Coder, and specialized models
+  - **Azure OpenAI**: Enterprise-grade OpenAI models
+  - **OpenRouter**: Access to 200+ models from various providers
+  - **Ollama**: Local model execution with privacy
+- **Advanced Features**
+  - Automatic model capability detection
+  - Dynamic tool execution based on model features
   - Intelligent fallback mechanisms
+  - Provider-specific optimizations
 
 ### Token & Usage Management
 
