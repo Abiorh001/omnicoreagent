@@ -4,10 +4,10 @@
 rm -rf dist/ build/ *.egg-info/
 
 # Build the package
-hatch build
+uv run hatch build
 
 # Check the distribution
-twine check dist/*
+uv run twine check dist/*
 
 echo "Build complete! To publish to PyPI, run:"
 echo "twine upload dist/*"

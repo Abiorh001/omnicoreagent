@@ -10,6 +10,8 @@
 
 MCPOmni Connect is a powerful, universal command-line interface (CLI) that serves as your gateway to the Model Context Protocol (MCP) ecosystem. It seamlessly integrates multiple MCP servers, AI models, and various transport protocols into a unified, intelligent interface.
 
+> 🚀 **New User?** Start with the [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide) to understand the difference between config files, transport types, and OAuth behavior. Then check out the [🧪 Testing](#-testing) section to get started quickly.
+
 ## ✨ Key Features
 
 ### 🔌 Universal Connectivity
@@ -182,19 +184,236 @@ echo "REDIS_PORT=6379" >> .env
 echo "REDIS_DB=0" >> .env"
 # Configure your servers in servers_config.json
 ```
-### Environment Variables
 
-| Variable        | Description                        | Example                |
-|-----------------|------------------------------------|------------------------|
-| LLM_API_KEY     | Universal API key for LLM provider | sk-... (OpenAI), etc. |
-| OPENAI_API_KEY  | Specific OpenAI API key (optional) | sk-...                 |
-| ANTHROPIC_API_KEY | Specific Anthropic API key (optional) | sk-ant-...           |
-| GROQ_API_KEY    | Specific Groq API key (optional)   | gsk_...                |
-| REDIS_HOST      | Redis server hostname (optional)   | localhost              |
-| REDIS_PORT      | Redis server port (optional)       | 6379                   |
-| REDIS_DB        | Redis database number (optional)   | 0                      |
+## ⚙️ Configuration Guide
 
-**Note**: With LiteLLM integration, you can either use `LLM_API_KEY` as a universal key or set provider-specific keys. LiteLLM will automatically route to the appropriate provider based on the model name.
+### Configuration Files Overview
+
+MCPOmni Connect uses **two separate configuration files** for different purposes:
+
+#### 1. `.env` File - Environment Variables
+Contains sensitive information like API keys and optional settings:
+```bash
+# Required: Your LLM provider API key
+LLM_API_KEY=your_api_key_here
+
+# Optional: Redis configuration (for persistent memory)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+
+
+#### 2. `servers_config.json` - Server & Agent Configuration
+Contains application settings, LLM configuration, and MCP server connections:
+
+```json
+{
+    "AgentConfig": {
+        "tool_call_timeout": 30,
+        "max_steps": 15,
+        "request_limit": 1000,
+        "total_tokens_limit": 100000
+    },
+    "LLM": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.5,
+        "max_tokens": 5000,
+        "top_p": 0.7
+    },
+    "mcpServers": {
+        "your-server-name": {
+            "transport_type": "stdio",
+            "command": "uvx",
+            "args": ["mcp-server-package"]
+        }
+    }
+}
+```
+
+### 🚦 Transport Types & Authentication
+
+MCPOmni Connect supports multiple ways to connect to MCP servers:
+
+#### 1. **stdio** - Direct Process Communication
+**Use when**: Connecting to local MCP servers that run as separate processes
+```json
+{
+    "server-name": {
+        "transport_type": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-package"]
+    }
+}
+```
+- **No authentication needed**
+- **No OAuth server started**
+- Most common for local development
+
+#### 2. **sse** - Server-Sent Events
+**Use when**: Connecting to HTTP-based MCP servers using Server-Sent Events
+```json
+{
+    "server-name": {
+        "transport_type": "sse",
+        "url": "http://your-server.com:4010/sse",
+        "headers": {
+            "Authorization": "Bearer your-token"
+        },
+        "timeout": 60,
+        "sse_read_timeout": 120
+    }
+}
+```
+- **Uses Bearer token or custom headers**
+- **No OAuth server started**
+
+#### 3. **streamable_http** - HTTP with Optional OAuth
+**Use when**: Connecting to HTTP-based MCP servers with or without OAuth
+
+**Without OAuth (Bearer Token):**
+```json
+{
+    "server-name": {
+        "transport_type": "streamable_http",
+        "url": "http://your-server.com:4010/mcp",
+        "headers": {
+            "Authorization": "Bearer your-token"
+        },
+        "timeout": 60
+    }
+}
+```
+- **Uses Bearer token or custom headers**
+- **No OAuth server started**
+
+**With OAuth:**
+```json
+{
+    "server-name": {
+        "transport_type": "streamable_http",
+        "auth": {
+            "method": "oauth"
+        },
+        "url": "http://your-server.com:4010/mcp"
+    }
+}
+```
+- **OAuth callback server automatically starts on `http://localhost:3000`**
+- **This is hardcoded and cannot be changed**
+- **Required for OAuth flow to work properly**
+
+### 🔐 OAuth Server Behavior
+
+**Important**: When using OAuth authentication, MCPOmni Connect automatically starts an OAuth callback server.
+
+#### What You'll See:
+```
+🖥️  Started callback server on http://localhost:3000
+```
+
+#### Key Points:
+  - **This is normal behavior** - not an error
+  - **The address `http://localhost:3000` is hardcoded** and cannot be changed
+- **The server only starts when** you have `"auth": {"method": "oauth"}` in your config
+- **The server stops** when the application shuts down
+- **Only used for OAuth token handling** - no other purpose
+
+#### When OAuth is NOT Used:
+- Remove the entire `"auth"` section from your server configuration
+- Use `"headers"` with `"Authorization": "Bearer token"` instead
+- No OAuth server will start
+
+### 🛠️ Troubleshooting Common Issues
+
+#### "Failed to connect to server: Session terminated"
+
+**Possible Causes & Solutions:**
+
+1. **Wrong Transport Type**
+   ```
+   Problem: Your server expects 'stdio' but you configured 'streamable_http'
+   Solution: Check your server's documentation for the correct transport type
+   ```
+
+2. **OAuth Configuration Mismatch**
+   ```
+   Problem: Your server doesn't support OAuth but you have "auth": {"method": "oauth"}
+   Solution: Remove the "auth" section entirely and use headers instead:
+   
+   "headers": {
+       "Authorization": "Bearer your-token"
+   }
+   ```
+
+3. **Server Not Running**
+   ```
+   Problem: The MCP server at the specified URL is not running
+   Solution: Start your MCP server first, then connect with MCPOmni Connect
+   ```
+
+4. **Wrong URL or Port**
+   ```
+   Problem: URL in config doesn't match where your server is running
+   Solution: Verify the server's actual address and port
+   ```
+
+#### "Started callback server on http://localhost:3000" - Is This Normal?
+
+**Yes, this is completely normal** when:
+- You have `"auth": {"method": "oauth"}` in any server configuration
+- The OAuth server handles authentication tokens automatically
+- You cannot and should not try to change this address
+
+**If you don't want the OAuth server:**
+- Remove `"auth": {"method": "oauth"}` from all server configurations
+- Use alternative authentication methods like Bearer tokens
+
+### 📋 Configuration Examples by Use Case
+
+#### Local Development (stdio)
+```json
+{
+    "mcpServers": {
+        "local-tools": {
+            "transport_type": "stdio",
+            "command": "uvx",
+            "args": ["mcp-server-tools"]
+        }
+    }
+}
+```
+
+#### Remote Server with Token
+```json
+{
+    "mcpServers": {
+        "remote-api": {
+            "transport_type": "streamable_http",
+            "url": "http://api.example.com:8080/mcp",
+            "headers": {
+                "Authorization": "Bearer abc123token"
+            }
+        }
+    }
+}
+```
+
+#### Remote Server with OAuth
+```json
+{
+    "mcpServers": {
+        "oauth-server": {
+            "transport_type": "streamable_http",
+            "auth": {
+                "method": "oauth"
+            },
+            "url": "http://oauth-server.com:8080/mcp"
+        }
+    }
+}
+```
 
 ### Start CLI
 ```bash
@@ -797,6 +1016,12 @@ User: "Analyze the contents of /path/to/document.pdf"
 
 ## 🔍 Troubleshooting
 
+> 📖 **For comprehensive configuration help**, see the [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide) section above, which covers:
+> - Config file differences (`.env` vs `servers_config.json`)
+> - Transport type selection and authentication
+> - OAuth server behavior explanation
+> - Common connection issues and solutions
+
 ### Common Issues and Solutions
 
 1. **Connection Issues**
@@ -807,6 +1032,7 @@ User: "Analyze the contents of /path/to/document.pdf"
    - Verify server configuration in `servers_config.json`
    - Ensure network connectivity
    - Check server logs for errors
+   - **See [Transport Types & Authentication](#-transport-types--authentication) for detailed setup**
 
 2. **API Key Issues**
    ```bash
@@ -815,6 +1041,7 @@ User: "Analyze the contents of /path/to/document.pdf"
    - Verify API key is correctly set in `.env`
    - Check if API key has required permissions
    - Ensure API key is for correct environment (production/development)
+   - **See [Configuration Files Overview](#configuration-files-overview) for correct setup**
 
 3. **Redis Connection**
    ```bash
