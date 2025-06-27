@@ -8,11 +8,29 @@
 [![Open Issues](https://img.shields.io/github/issues/Abiorh001/mcp_omni_connect)](https://github.com/Abiorh001/mcp_omni_connect/issues)
 [![Pull Requests](https://img.shields.io/github/issues-pr/Abiorh001/mcp_omni_connect)](https://github.com/Abiorh001/mcp_omni_connect/pulls)
 
-MCPOmni Connect is a powerful, universal command-line interface (CLI) that serves as your gateway to the Model Context Protocol (MCP) ecosystem. It seamlessly integrates multiple MCP servers, AI models, and various transport protocols into a unified, intelligent interface.
+MCPOmni Connect is a powerful, intelligent AI agent system and universal command-line interface (CLI) that goes beyond being just a gateway to the Model Context Protocol (MCP) ecosystem. It acts as an autonomous agent through its **ReAct Agent Mode** and **Orchestrator Mode**, capable of independent reasoning, decision-making, and complex task execution. It seamlessly integrates multiple MCP servers, AI models, and various transport protocols into a unified, intelligent interface that can operate autonomously or interactively.
 
 > 🚀 **New User?** Start with the [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide) to understand the difference between config files, transport types, and OAuth behavior. Then check out the [🧪 Testing](#-testing) section to get started quickly.
 
 ## ✨ Key Features
+
+### 🤖 Intelligent Agent System
+- **ReAct Agent Mode**
+  - Autonomous task execution with reasoning and action cycles
+  - Independent decision-making without human intervention
+  - Advanced problem-solving through iterative reasoning
+  - Self-guided tool selection and execution
+  - Complex task decomposition and handling
+- **Orchestrator Agent Mode**
+  - Strategic multi-step task planning and execution
+  - Intelligent coordination across multiple MCP servers
+  - Dynamic agent delegation and communication
+  - Parallel task execution when possible
+  - Sophisticated workflow management with real-time progress monitoring
+- **Interactive Chat Mode**
+  - Human-in-the-loop task execution with approval workflows
+  - Step-by-step guidance and explanations
+  - Educational mode for understanding AI decision processes
 
 ### 🔌 Universal Connectivity
 - **Multi-Protocol Support**
@@ -27,17 +45,10 @@ MCPOmni Connect is a powerful, universal command-line interface (CLI) that serve
   - Bearer token authentication
   - Custom header support
   - Secure credential management
-- **ReAct Agentic Mode**
-  - Autonomous task execution without human intervention
-  - Advanced reasoning and decision-making capabilities
-  - Seamless switching between chat and agentic modes
-  - Self-guided tool selection and execution
-  - Complex task decomposition and handling
-- **Orchestrator Agent Mode**
-  - Advanced planning for complex multi-step tasks
-  - Intelligent task delegation across multiple MCP servers
-  - Dynamic agent coordination and communication
-  - Automated subtask management and execution
+- **Agentic Operation Modes**
+  - Seamless switching between chat, autonomous, and orchestrator modes
+  - Context-aware mode selection based on task complexity
+  - Persistent state management across mode transitions
 
 ### 🧠 AI-Powered Intelligence
 - **Unified LLM Integration with LiteLLM**
