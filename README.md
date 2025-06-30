@@ -1086,6 +1086,16 @@ For additional support, please:
 
 We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details.
 
+## 📖 Documentation
+
+Complete documentation is available at: **[MCPOmni Connect Docs](https://abiorh001.github.io/mcp_omni_connect)**
+
+To build documentation locally:
+```bash
+./docs.sh serve    # Start development server at http://127.0.0.1:8080
+./docs.sh build    # Build static documentation
+```
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
