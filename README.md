@@ -190,13 +190,13 @@ MCPOmni Connect
 
 ### Install using package manager
 
-#### with uv recommended
+#### With uv (recommended)
 
 ```bash
 uv add mcpomni-connect
 ```
 
-#### using pip
+#### Using pip
 
 ```bash
 pip install mcpomni-connect
@@ -210,7 +210,7 @@ echo "LLM_API_KEY=your_key_here" > .env
 # Optional: Configure Redis connection
 echo "REDIS_HOST=localhost" >> .env
 echo "REDIS_PORT=6379" >> .env
-echo "REDIS_DB=0" >> .env"
+echo "REDIS_DB=0" >> .env
 # Configure your servers in servers_config.json
 ```
 
@@ -470,10 +470,9 @@ MCPOmni Connect supports multiple ways to connect to MCP servers:
 
 ### Start CLI
 
-##### start the cli running the command ensure your api key is exported or create .env
+Start the CLI - ensure your API key is exported or create `.env` file:
 
 ```bash
-
 mcpomni_connect
 ```
 
@@ -525,14 +524,13 @@ tests/
    # Configure your servers in servers_config.json
    ```
 
-3. ** Start Client**
+3. **Start Client**
 
    ```bash
-
    uv run run.py
    ```
 
-   # or
+   Or:
 
    ```bash
    python run.py
