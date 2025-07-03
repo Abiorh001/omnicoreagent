@@ -190,10 +190,15 @@ MCPOmni Connect
 
 ### Install using package manager
 
-```bash
 # with uv recommended
+
+```bash
 uv add mcpomni-connect
+```
+
 # using pip
+
+```bash
 pip install mcpomni-connect
 ```
 
