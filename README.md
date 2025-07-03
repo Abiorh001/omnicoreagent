@@ -470,8 +470,10 @@ MCPOmni Connect supports multiple ways to connect to MCP servers:
 
 ### Start CLI
 
+##### start the cli running the command ensure your api key is exported or create .env
+
 ```bash
-# start the cli running the command ensure your api key is exported or create .env
+
 mcpomni_connect
 ```
 
@@ -524,10 +526,15 @@ tests/
    ```
 
 3. ** Start Client**
+
    ```bash
-   # Start the client
+
    uv run run.py
+   ```
+
    # or
+
+   ```bash
    python run.py
    ```
 
