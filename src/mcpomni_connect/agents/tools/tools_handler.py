@@ -158,7 +158,7 @@ class LocalToolHandler(BaseToolHandler):
 
         # Normalize keys in the registry to match lookup
         normalized_registry = {
-            name.lower(): func for name, func in self.tool_registry.items()
+            name.lower(): func for name, func in self.tools_registry.items()
         }
         tool_fn = normalized_registry.get(tool_name)
 
