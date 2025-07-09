@@ -22,6 +22,7 @@ from mcpomni_connect.llm_support import LLMToolSupport
 from mcpomni_connect.memory import (
     InMemoryShortTermMemory,
     RedisShortTermMemory,
+    DatabaseSessionMemory,
 )
 from mcpomni_connect.prompts import (
     get_prompt,
@@ -123,13 +124,39 @@ class CommandHelp:
                 ],
             },
             "memory": {
-                "description": "Toggle memory usage between Redis and In-Memory",
-                "usage": "/memory",
+                "description": "Cycle through or select memory types: In-Memory, Redis, Database",
+                "usage": "/memory or /memory:<type>",
                 "examples": [
-                    "/memory  # Toggle memory usage between Redis and In-Memory"
+                    "/memory  # Cycle through memory types",
+                    "/memory:redis  # Switch to Redis memory",
+                    "/memory:database  # Switch to Database memory",
+                    "/memory:in_memory  # Switch to In-Memory"
                 ],
-                "subcommands": {},
-                "tips": ["Use to toggle memory usage between Redis and In-Memory"],
+                "subcommands": {
+                    "redis": {
+                        "description": "Use Redis for persistent memory across sessions",
+                        "usage": "/memory:redis",
+                        "examples": ["/memory:redis"],
+                        "tips": ["Requires Redis server to be running"]
+                    },
+                    "database": {
+                        "description": "Use database for structured session memory with full event tracking",
+                        "usage": "/memory:database",
+                        "examples": ["/memory:database"],
+                        "tips": ["Uses SQLite by default, configurable via DATABASE_URL env var"]
+                    },
+                    "in_memory": {
+                        "description": "Use in-memory storage (cleared on restart)",
+                        "usage": "/memory:in_memory",
+                        "examples": ["/memory:in_memory"],
+                        "tips": ["Fastest but not persistent across sessions"]
+                    }
+                },
+                "tips": [
+                    "Database memory provides full session tracking",
+                    "Redis memory is fastest for persistent storage",
+                    "In-Memory is good for temporary sessions"
+                ],
             },
             "memory_mode": {
                 "description": "Switch short-term memory strategy for the agent",
@@ -323,13 +350,21 @@ class MCPClientCLI:
         self.MAX_CONTEXT_TOKENS = self.llm_connection.config.load_config(
             "servers_config.json"
         )["LLM"]["max_context_length"]
-        self.USE_MEMORY = {"redis": False, "in_memory": True}
+        self.USE_MEMORY = {"redis": False, "in_memory": True, "database": False}
         self.MODE = {"auto": False, "chat": True, "orchestrator": False}
         self.redis_short_term_memory = RedisShortTermMemory(
             max_context_tokens=self.MAX_CONTEXT_TOKENS
         )
         self.in_memory_short_term_memory = InMemoryShortTermMemory(
             max_context_tokens=self.MAX_CONTEXT_TOKENS
+        )
+        # Get database URL from config or environment
+        from decouple import config
+        db_url = config("DATABASE_URL", default=None)
+        self.database_session_memory = DatabaseSessionMemory(
+            db_url=db_url,
+            max_context_tokens=self.MAX_CONTEXT_TOKENS,
+            debug=self.client.debug
         )
 
         # TODO: add episodic memory
@@ -338,6 +373,33 @@ class MCPClientCLI:
         # )
         self.console = Console()
         self.command_help = CommandHelp()
+
+    def _get_active_memory_store_message(self):
+        """Get the store_message function for the currently active memory system."""
+        if self.USE_MEMORY["database"]:
+            return self.database_session_memory.store_message
+        elif self.USE_MEMORY["redis"]:
+            return self.redis_short_term_memory.store_message
+        else:
+            return self.in_memory_short_term_memory.store_message
+
+    def _get_active_memory_get_messages(self):
+        """Get the get_messages function for the currently active memory system."""
+        if self.USE_MEMORY["database"]:
+            return self.database_session_memory.get_messages
+        elif self.USE_MEMORY["redis"]:
+            return self.redis_short_term_memory.get_messages
+        else:
+            return self.in_memory_short_term_memory.get_messages
+
+    def _get_active_memory_name(self):
+        """Get the name of the currently active memory system."""
+        if self.USE_MEMORY["database"]:
+            return "Database"
+        elif self.USE_MEMORY["redis"]:
+            return "Redis"
+        else:
+            return "In-Memory"
 
     def parse_command(self, input_text: str) -> tuple[CommandType, str]:
         """Parse input to determine command type and payload"""
@@ -469,20 +531,46 @@ class MCPClientCLI:
         self.console.print(stats_box)
 
     async def handle_memory_command(self, input_text: str = ""):
-        """Handle memory command"""
-        self.USE_MEMORY["redis"] = not self.USE_MEMORY["redis"]
-        self.console.print(
-            f"[{'green' if self.USE_MEMORY['redis'] else 'red'}]Redis memory "
-            f"{'enabled' if self.USE_MEMORY['redis'] else 'disabled'}[/]"
-        )
+        """Handle memory command - cycles through or sets memory types"""
+        if ":" in input_text:
+            # Direct memory type selection: /memory:redis, /memory:database, /memory:in_memory
+            memory_type = input_text.split(":", 1)[1].strip().lower()
+            if memory_type == "redis":
+                self.USE_MEMORY = {"in_memory": False, "redis": True, "database": False}
+            elif memory_type == "database":
+                self.USE_MEMORY = {"in_memory": False, "redis": False, "database": True}
+            elif memory_type in ["in_memory", "memory", "local"]:
+                self.USE_MEMORY = {"in_memory": True, "redis": False, "database": False}
+            else:
+                self.console.print(f"[red]Invalid memory type: {memory_type}. Use: redis, database, or in_memory[/]")
+                return
+        else:
+            # Cycle through memory types: in_memory -> redis -> database -> in_memory
+            if self.USE_MEMORY["in_memory"]:
+                # Switch to Redis
+                self.USE_MEMORY = {"in_memory": False, "redis": True, "database": False}
+            elif self.USE_MEMORY["redis"]:
+                # Switch to Database
+                self.USE_MEMORY = {"in_memory": False, "redis": False, "database": True}
+            else:
+                # Switch to In-memory
+                self.USE_MEMORY = {"in_memory": True, "redis": False, "database": False}
+
+        status_icon = "✅" if not self.USE_MEMORY["in_memory"] else "❌"
+        memory_type = self._get_active_memory_name()
+        status = "ENABLED" if not self.USE_MEMORY["in_memory"] else "DISABLED"
+
+        self.console.print(f"{status_icon} Memory persistence is now {status} using {memory_type}")
 
     async def handle_memory_mode_command(self, input_text: str):
         """Handle memory mode command."""
-        memory = (
-            self.redis_short_term_memory
-            if self.USE_MEMORY.get("redis")
-            else self.in_memory_short_term_memory
-        )
+        # Get the active memory system
+        if self.USE_MEMORY["database"]:
+            memory = self.database_session_memory
+        elif self.USE_MEMORY["redis"]:
+            memory = self.redis_short_term_memory
+        else:
+            memory = self.in_memory_short_term_memory
 
         try:
             if ":" in input_text:
@@ -777,11 +865,7 @@ class MCPClientCLI:
                     sessions=self.client.sessions,
                     system_prompt=system_prompt,
                     llm_call=self.llm_connection.llm_call,
-                    add_message_to_history=(
-                        self.redis_short_term_memory.store_message
-                        if self.USE_MEMORY["redis"]
-                        else self.in_memory_short_term_memory.store_message
-                    ),
+                    add_message_to_history=self._get_active_memory_store_message(),
                     debug=self.client.debug,
                     available_prompts=self.client.available_prompts,
                     name=name,
@@ -816,16 +900,8 @@ class MCPClientCLI:
                         server_names=self.client.server_names,
                         tools_list=tools,
                         available_tools=self.client.available_tools,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=self._get_active_memory_store_message(),
+                        message_history=self._get_active_memory_get_messages(),
                     )
                 content = response
             else:
@@ -851,11 +927,7 @@ class MCPClientCLI:
                 initial_response = await get_prompt_with_react_agent(
                     sessions=self.client.sessions,
                     system_prompt=react_agent_prompt,
-                    add_message_to_history=(
-                        self.redis_short_term_memory.store_message
-                        if self.USE_MEMORY["redis"]
-                        else self.in_memory_short_term_memory.store_message
-                    ),
+                    add_message_to_history=self._get_active_memory_store_message(),
                     debug=self.client.debug,
                     available_prompts=self.client.available_prompts,
                     name=name,
@@ -868,16 +940,8 @@ class MCPClientCLI:
                         system_prompt=react_agent_prompt,
                         query=initial_response,
                         llm_connection=self.llm_connection,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=self._get_active_memory_store_message(),
+                        message_history=self._get_active_memory_get_messages(),
                         debug=self.client.debug,
                         **extra_kwargs,
                     )
@@ -1048,16 +1112,8 @@ class MCPClientCLI:
                         system_prompt=react_agent_prompt,
                         query=query,
                         llm_connection=self.llm_connection,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=self._get_active_memory_store_message(),
+                        message_history=self._get_active_memory_get_messages(),
                         debug=self.client.debug,
                         **extra_kwargs,
                     )
@@ -1084,18 +1140,10 @@ class MCPClientCLI:
                     response = await orchestrator_agent.run(
                         query=query,
                         sessions=self.client.sessions,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
+                        add_message_to_history=self._get_active_memory_store_message(),
                         llm_connection=self.llm_connection,
                         available_tools=self.client.available_tools,
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        message_history=self._get_active_memory_get_messages(),
                         orchestrator_system_prompt=orchestrator_agent_prompt,
                         tool_call_timeout=self.agent_config.get("tool_call_timeout"),
                         max_steps=self.agent_config.get("max_steps"),
@@ -1137,9 +1185,20 @@ class MCPClientCLI:
         prompts_table = Table(title="Message History", box=box.ROUNDED)
         prompts_table.add_column("Role", style="cyan", no_wrap=False)
         prompts_table.add_column("Content", style="green")
-        if self.USE_MEMORY["redis"]:
-            messages = await self.redis_short_term_memory.get_messages()
+        
+        if not self.USE_MEMORY["in_memory"]:
+            # Using Redis or Database memory
+            if self.USE_MEMORY["database"]:
+                messages = await self.database_session_memory.get_messages()
+            else:
+                messages = await self.redis_short_term_memory.get_messages()
+            
+            for message in messages:
+                role = message.get("role", "unknown")
+                content = message.get("content", "")
+                prompts_table.add_row(role, content)
         else:
+            # Using in-memory
             messages = await self.in_memory_short_term_memory.get_all_messages()
             prompts_table = Table(title="Message History")
             prompts_table.add_column("Agent", style="cyan", no_wrap=True)
@@ -1155,7 +1214,9 @@ class MCPClientCLI:
 
     async def handle_clear_history_command(self, input_text: str = ""):
         """Handle clear history command"""
-        if self.USE_MEMORY["redis"]:
+        if self.USE_MEMORY["database"]:
+            await self.database_session_memory.clear_memory()
+        elif self.USE_MEMORY["redis"]:
             await self.redis_short_term_memory.clear_memory()
         else:
             await self.in_memory_short_term_memory.clear_memory()
@@ -1163,7 +1224,9 @@ class MCPClientCLI:
 
     async def handle_save_history_command(self, input_text: str):
         """Handle save history command"""
-        if self.USE_MEMORY["redis"]:
+        if self.USE_MEMORY["database"]:
+            await self.database_session_memory.save_message_history_to_file(input_text)
+        elif self.USE_MEMORY["redis"]:
             await self.redis_short_term_memory.save_message_history_to_file(input_text)
         else:
             await self.in_memory_short_term_memory.save_message_history_to_file(
@@ -1172,10 +1235,15 @@ class MCPClientCLI:
         self.console.print(f"[green]Message history saved to {input_text}[/]")
 
     async def handle_load_history_command(self, input_text: str):
-        """Handle load history command for in memory short term memory"""
-        await self.in_memory_short_term_memory.load_message_history_from_file(
-            input_text
-        )
+        """Handle load history command"""
+        if self.USE_MEMORY["database"]:
+            await self.database_session_memory.load_message_history_from_file(input_text)
+        elif self.USE_MEMORY["redis"]:
+            await self.redis_short_term_memory.load_message_history_from_file(input_text)
+        else:
+            await self.in_memory_short_term_memory.load_message_history_from_file(
+                input_text
+            )
         self.console.print(f"[green]Message history loaded from {input_text}[/]")
 
     async def handle_episodic_memory_command(self):

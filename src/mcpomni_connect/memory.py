@@ -747,3 +747,290 @@ class RedisShortTermMemory:
 #         except Exception as e:
 #             logger.error(f"Failed to retrieve episodic memories: {e}")
 #             return []
+
+
+class DatabaseSessionMemory:
+    """Database-backed session memory using DatabaseSessionService."""
+
+    def __init__(
+        self,
+        db_url: str = None,
+        max_context_tokens: int = 30000,
+        debug: bool = False,
+    ) -> None:
+        """Initialize database session memory.
+
+        Args:
+            db_url: Database URL (defaults to SQLite if not provided)
+            max_context_tokens: Maximum tokens to keep in memory
+            debug: Enable debug logging
+        """
+        from mcpomni_connect.session.database_session import DatabaseSessionService
+        from mcpomni_connect.events.event import Event, EventActions
+        from mcpomni_connect.session._session_util import UserContent, AssistantContent
+
+        self.max_context_tokens = max_context_tokens
+        self.debug = debug
+        self.short_term_limit = int(0.7 * max_context_tokens)
+        self.client_id = CLIENT_MAC_ADDRESS
+        
+       
+        if not db_url:
+            db_url = f"sqlite:///mcp_memory_{self.client_id}.db"
+        
+        self.db_service = DatabaseSessionService(db_url)
+        self.app_name = "mcp_omni_connect"
+        self.user_id = self.client_id
+        self.session_id = None  
+        
+       
+        self.Event = Event
+        self.EventActions = EventActions  
+        self.UserContent = UserContent
+        self.AssistantContent = AssistantContent
+        
+       
+        self.memory_config: dict[str, Any] = {
+            "mode": "token_budget",  
+            "value": self.short_term_limit,  
+        }
+        
+      
+        self.in_memory_short_term_memory = InMemoryShortTermMemory(
+            max_context_tokens=max_context_tokens,
+            debug=debug
+        )
+        
+        logger.info(
+            f"Initialized DatabaseSessionMemory with client ID: {self.client_id}, DB: {db_url}"
+        )
+
+    def set_memory_config(self, mode: str, value: int = None) -> None:
+        """Set global memory strategy.
+
+        Args:
+            mode: Memory mode ('sliding_window', 'token_budget')
+            value: Optional value (e.g., window size or token limit)
+        """
+        valid_modes = {"sliding_window", "token_budget"}
+        if mode.lower() not in valid_modes:
+            raise ValueError(
+                f"Invalid memory mode: {mode}. Must be one of {valid_modes}."
+            )
+
+        self.memory_config = {
+            "mode": mode,
+            "value": value,
+        }
+        
+       
+        self.in_memory_short_term_memory.set_memory_config(mode, value)
+
+        if self.debug:
+            logger.info(f"[DatabaseMemory] Config set to: {self.memory_config}")
+
+    async def _ensure_session(self):
+        """Ensure we have an active session."""
+        if not self.session_id:
+            session = await self.db_service.create_session(
+                app_name=self.app_name,
+                user_id=self.user_id,
+                state={"memory_type": "database", "client_id": self.client_id}
+            )
+            self.session_id = session.id
+            logger.debug(f"Created database session: {self.session_id}")
+
+    async def store_message(self, role: str, content: str, metadata: dict = None):
+        """Store a message in the database with session management."""
+        metadata = metadata or {}
+        
+        if self.debug:
+            logger.info(f"Storing message for client {self.client_id}: {content}")
+
+        await self._ensure_session()
+        
+        
+        session = await self.db_service.get_session(
+            app_name=self.app_name,
+            user_id=self.user_id,
+            session_id=self.session_id
+        )
+        
+        if not session:
+           
+            self.session_id = None  
+            await self._ensure_session()
+            session = await self.db_service.get_session(
+                app_name=self.app_name,
+                user_id=self.user_id,
+                session_id=self.session_id
+            )
+
+       
+        if role.lower() == "user":
+            event_content = self.UserContent(text=content)
+        elif role.lower() in ["assistant", "system"]:
+            event_content = self.AssistantContent(text=content)
+        else:
+            event_content = self.UserContent(text=content)  
+        
+        
+        event = self.Event(
+            invocation_id=f"msg_{time.time()}",
+            author=role,
+            content=event_content,
+            actions=self.EventActions(
+                state_delta={
+                    "last_message": content,
+                    "last_role": role,
+                    "message_count": len(session.events) + 1,
+                    **metadata
+                }
+            )
+        )
+        
+       
+        await self.db_service.append_event(session, event)
+        
+        
+        await self.in_memory_short_term_memory.store_message(role, content, metadata)
+        
+        
+        await self.enforce_short_term_limit()
+
+    async def get_messages(self):
+        """Retrieve messages from the database session."""
+        await self._ensure_session()
+        
+       
+        await self.enforce_short_term_limit()
+        
+        session = await self.db_service.get_session(
+            app_name=self.app_name,
+            user_id=self.user_id,
+            session_id=self.session_id
+        )
+        
+        if not session:
+            return []
+        
+       
+        messages = []
+        for event in session.events:
+            message = {
+                "role": event.author,
+                "content": event.content.text if hasattr(event.content, 'text') else str(event.content),
+                "metadata": event.actions.state_delta if event.actions else {},
+                "timestamp": event.timestamp,
+            }
+            messages.append(message)
+        
+        return messages
+
+    async def get_last_active(self):
+        """Get last active timestamp for this client."""
+        await self._ensure_session()
+        
+        session = await self.db_service.get_session(
+            app_name=self.app_name,
+            user_id=self.user_id,
+            session_id=self.session_id
+        )
+        
+        if session:
+            return session.last_update_time
+        return None
+
+    async def enforce_short_term_limit(self):
+        """Enforce memory limits based on configured strategy."""
+        await self._ensure_session()
+        
+        session = await self.db_service.get_session(
+            app_name=self.app_name,
+            user_id=self.user_id,
+            session_id=self.session_id
+        )
+        
+        if not session or not session.events:
+            return
+        
+        mode = self.memory_config.get("mode", "token_budget")
+        value = self.memory_config.get("value", self.short_term_limit)
+        
+        if mode == "sliding_window":
+            
+            if value and len(session.events) > value:
+                
+                logger.debug(f"Session has {len(session.events)} events, limit is {value}")
+        
+        elif mode == "token_budget":
+          
+            total_tokens = 0
+            for event in session.events:
+                if hasattr(event.content, 'text') and event.content.text:
+                    total_tokens += len(event.content.text.split())
+            
+            if total_tokens > value:
+                logger.debug(f"Token budget exceeded: {total_tokens}/{value} tokens")
+               
+
+        logger.debug(f"Memory limit check complete for session {self.session_id}")
+
+    async def clear_memory(self):
+        """Clear the memory by deleting the current session."""
+        if self.session_id:
+            try:
+                await self.db_service.delete_session(
+                    app_name=self.app_name,
+                    user_id=self.user_id,
+                    session_id=self.session_id
+                )
+                logger.info(f"Cleared database memory for client {self.client_id}")
+            except Exception as e:
+                logger.error(f"Failed to clear database memory: {e}")
+            finally:
+                self.session_id = None
+        
+        
+        await self.in_memory_short_term_memory.clear_memory()
+
+    async def get_all_messages(self, agent_name: str = None):
+        """Get all messages, optionally filtered by agent."""
+        messages = await self.get_messages()
+        
+        if agent_name:
+           
+            return [msg for msg in messages if msg.get("metadata", {}).get("agent_name") == agent_name]
+        
+        return messages
+
+    async def save_message_history_to_file(self, filename: str, agent_name: str = None):
+        """Save message history to a JSON file."""
+        messages = await self.get_all_messages(agent_name)
+        
+        
+        self.in_memory_short_term_memory.agents_history[agent_name or "default"] = [
+            {
+                "role": msg["role"],
+                "content": msg["content"], 
+                "metadata": msg.get("metadata", {})
+            }
+            for msg in messages
+        ]
+        
+        await self.in_memory_short_term_memory.save_message_history_to_file(filename, agent_name)
+
+    async def load_message_history_from_file(self, filename: str, agent_name: str = None):
+        """Load message history from a JSON file."""
+        
+        await self.in_memory_short_term_memory.load_message_history_from_file(filename, agent_name)
+        
+        
+        loaded_messages = self.in_memory_short_term_memory.agents_history.get(agent_name or "default", [])
+        
+        for msg in loaded_messages:
+            await self.store_message(
+                role=msg["role"],
+                content=msg["content"],
+                metadata=msg.get("metadata", {})
+            )

@@ -46,7 +46,8 @@ dependencies = [
     "python-multipart>=0.0.20",
     "colorama>=0.4.6",
     "mcp[cli]>=1.9.1",
-    
+    "sqlalchemy>=2.0.0",
+    "tzlocal>=5.2",
 ]
 
 [project.scripts]
@@ -74,6 +75,8 @@ markers = [
     "asyncio: marks tests that use asyncio",
     "OpenAIIntegration: marks tests that require an OpenAI API key",
 ]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.uv.sources]
 mcpomni_connect = { workspace = true }
