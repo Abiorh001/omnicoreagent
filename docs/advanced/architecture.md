@@ -326,46 +326,88 @@ class LLMIntegration:
 
 ```mermaid
 graph TB
-    MM[💾 Memory Manager] --> SM[🧠 Session Memory]
-    MM --> RM[📊 Redis Memory]
-    MM --> FM[📁 File Memory]
+    MM[💾 Memory System] --> IM[🧠 InMemoryStore]
+    MM --> RM[📊 RedisShortTermMemory]
+    MM --> File[📁 File Storage]
     
-    SM --> Current[⚡ Current Context]
-    SM --> Buffer[📦 Message Buffer]
+    IM --> Session[⚡ Session Storage]
+    IM --> Context[📦 Context Management]
+    IM --> Truncation[✂️ Token Truncation]
     
-    RM --> Persistence[💾 Persistence]
+    RM --> Persistence[💾 Redis Persistence]
     RM --> TTL[⏰ TTL Management]
+    RM --> Serialization[🔄 Serialization]
     
-    FM --> Save[💾 Save Operations]
-    FM --> Load[📥 Load Operations]
-    FM --> Backup[🔄 Backup]
+    File --> Save[💾 Save Operations]
+    File --> Load[📥 Load Operations]
+    File --> Backup[🔄 Backup]
 ```
 
 ### Memory Implementation
 
 ```python
-class MemoryManager:
-    def __init__(self, config):
-        self.session_memory = SessionMemory()
-        self.redis_memory = RedisMemory(config.redis) if config.redis else None
-        self.file_memory = FileMemory()
-        self.enabled = False
+# InMemoryStore - Database compatible session memory
+class InMemoryStore:
+    def __init__(self, max_context_tokens=30000, debug=False):
+        self.sessions_history = {}  # session_id -> messages
+        self.max_context_tokens = max_context_tokens
+        self.debug = debug
     
-    async def store_message(self, message):
-        # Always store in session
-        self.session_memory.add(message)
+    async def store_message(self, role, content, metadata=None, session_id=None):
+        # Store message with agent_name in metadata
+        if metadata is None:
+            metadata = {}
         
-        # Store in Redis if enabled
-        if self.enabled and self.redis_memory:
-            await self.redis_memory.store(message)
+        message = {
+            "role": role,
+            "content": content,
+            "session_id": session_id,
+            "timestamp": time.time(),
+            "metadata": metadata,
+        }
+        
+        if session_id not in self.sessions_history:
+            self.sessions_history[session_id] = []
+        self.sessions_history[session_id].append(message)
     
-    async def get_context(self, limit=None):
-        # Get from Redis if available
-        if self.enabled and self.redis_memory:
-            return await self.redis_memory.get_context(limit)
+    async def get_messages(self, session_id=None, agent_name=None):
+        # Get messages for session, optionally filtered by agent
+        if session_id not in self.sessions_history:
+            return []
         
-        # Fallback to session memory
-        return self.session_memory.get_context(limit)
+        messages = self.sessions_history[session_id]
+        
+        # Filter by agent_name if provided
+        if agent_name:
+            messages = [
+                msg for msg in messages 
+                if msg.get("metadata", {}).get("agent_name") == agent_name
+            ]
+        
+        return messages
+
+# RedisShortTermMemory - Persistent memory with Redis
+class RedisShortTermMemory:
+    def __init__(self, redis_client=None, max_context_tokens=30000):
+        self._redis_client = redis_client or redis.Redis()
+        self.max_context_tokens = max_context_tokens
+    
+    async def store_message(self, role, content, metadata=None):
+        # Store in Redis with client ID
+        key = f"mcp_memory:{self.client_id}"
+        message = {
+            "role": role,
+            "content": content,
+            "metadata": metadata,
+            "timestamp": time.time(),
+        }
+        await self._redis_client.zadd(key, {json.dumps(message): time.time()})
+    
+    async def get_messages(self):
+        # Retrieve from Redis
+        key = f"mcp_memory:{self.client_id}"
+        messages = await self._redis_client.zrange(key, 0, -1)
+        return [json.loads(msg) for msg in messages]
 ```
 
 ## Tool Management

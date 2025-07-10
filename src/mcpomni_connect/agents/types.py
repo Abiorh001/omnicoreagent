@@ -12,7 +12,7 @@ class AgentConfig(BaseModel):
     total_tokens_limit: int
     max_steps: int = Field(gt=0, le=1000)
     tool_call_timeout: int = Field(gt=1, le=1000)
-    mcp_enabled: bool = False
+    
 
 
 class AgentState(str, Enum):
@@ -40,6 +40,7 @@ class ToolCallMetadata(BaseModel):
     has_tool_calls: bool = False
     tool_calls: list[ToolCall] = []
     tool_call_id: UUID | None = None
+    agent_name: str | None = None
 
 
 class Message(BaseModel):

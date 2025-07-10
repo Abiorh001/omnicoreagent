@@ -98,17 +98,23 @@ class MCPToolHandler(BaseToolHandler):
 
 
 class LocalToolHandler(BaseToolHandler):
-    def __init__(self, tools_registry: dict[str, Any]):
-        self.tools_registry = tools_registry
+    def __init__(self, local_tools_integration: Any):
+        """
+        Initialize LocalToolHandler with LocalToolsIntegration instance
+        
+        Args:
+            local_tools_integration: LocalToolsIntegration instance
+        """
+        self.local_tools = local_tools_integration
 
     async def validate_tool_call_request(
         self,
-        tool_data: dict[str, Any],
-        available_tools: dict[str, Any],  # tool registry
+        tool_data: str,
+        available_tools: dict[str, Any] = None,  # Not used for local tools
     ) -> dict[str, Any]:
         try:
             action = json.loads(tool_data)
-            tool_name = action.get("tool", "").strip().lower()
+            tool_name = action.get("tool", "").strip()
             tool_args = action.get("parameters")
 
             if not tool_name or tool_args is None:
@@ -119,23 +125,23 @@ class LocalToolHandler(BaseToolHandler):
                     "tool_args": tool_args,
                 }
 
-            # Normalize available tool names
-            available_tools_normalized = {
-                name.lower(): func for name, func in available_tools.items()
-            }
-
-            if tool_name in available_tools_normalized:
+            # Check if tool exists in local tools
+            available_local_tools = self.local_tools.get_available_tools()
+            tool_names = [tool['name'] for tool in available_local_tools]
+            
+            if tool_name in tool_names:
                 return {
                     "action": True,
                     "tool_name": tool_name,
                     "tool_args": tool_args,
                 }
+            
             error_message = (
-                f"The tool named {tool_name} does not exist in the current available tools. "
+                f"The tool named '{tool_name}' does not exist in the current available tools. "
                 "Please double-check the available tools before attempting another action.\n\n"
                 "I will not retry the same tool name since it's not defined. "
-                "If an alternative method or tool is available to fulfill the request, I’ll try that now. "
-                "Otherwise, I’ll respond directly based on what I know."
+                "If an alternative method or tool is available to fulfill the request, I'll try that now. "
+                "Otherwise, I'll respond directly based on what I know."
             )
             return {
                 "action": False,
@@ -153,22 +159,64 @@ class LocalToolHandler(BaseToolHandler):
             }
 
     async def call(self, tool_name: str, tool_args: dict[str, Any]) -> Any:
-        tool_name = tool_name.strip().lower()
-        tool_args = tool_args or {}
+        """Execute a local tool using LocalToolsIntegration"""
+        return await self.local_tools.execute_tool(tool_name, tool_args)
 
-        # Normalize keys in the registry to match lookup
-        normalized_registry = {
-            name.lower(): func for name, func in self.tool_registry.items()
-        }
-        tool_fn = normalized_registry.get(tool_name)
 
-        if not tool_fn:
-            raise ValueError(f"Tool '{tool_name}' not found in local registry.")
-
-        if inspect.iscoroutinefunction(tool_fn):
-            return await tool_fn(**tool_args)
-
-        return tool_fn(**tool_args)
+class LocalToolExecutor:
+    """Executor for local tools"""
+    
+    def __init__(self, local_tools_integration: Any, tool_name: str):
+        self.local_tools = local_tools_integration
+        self.tool_name = tool_name
+    
+    async def execute(
+        self,
+        agent_name: str,
+        tool_args: dict,
+        tool_name: str,
+        tool_call_id: str,
+        add_message_to_history: Callable[[str, str, dict | None], Any],
+        session_id: str = None,
+    ) -> str:
+        """Execute a local tool"""
+        try:
+            result = await self.local_tools.execute_tool(tool_name, tool_args)
+            
+            # Add tool result to history
+            await add_message_to_history(
+                agent_name=agent_name,
+                role="tool",
+                content=str(result),
+                metadata={"tool_call_id": tool_call_id, "agent_name": agent_name},
+                session_id=session_id,
+            )
+            
+            return json.dumps({
+                "status": "success",
+                "data": result,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id
+            })
+            
+        except Exception as e:
+            error_msg = f"Local tool execution failed: {str(e)}"
+            
+            # Add error to history
+            await add_message_to_history(
+                agent_name=agent_name,
+                role="tool",
+                content=error_msg,
+                metadata={"tool_call_id": tool_call_id, "agent_name": agent_name},
+                session_id=session_id,
+            )
+            
+            return json.dumps({
+                "status": "error",
+                "message": error_msg,
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id
+            })
 
 
 class ToolExecutor:
@@ -182,7 +230,7 @@ class ToolExecutor:
         tool_args: dict[str, Any],
         tool_call_id: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
-        chat_id: str = None,
+        session_id: str = None,
     ) -> str:
         try:
             result = await self.tool_handler.call(tool_name, tool_args)
@@ -224,8 +272,9 @@ class ToolExecutor:
                     "tool_call_id": tool_call_id,
                     "tool": tool_name,
                     "args": tool_args,
+                    "agent_name": agent_name,
                 },
-                chat_id=chat_id,
+                session_id=session_id,
             )
 
             return json.dumps(response)
@@ -247,7 +296,8 @@ class ToolExecutor:
                     "tool_call_id": tool_call_id,
                     "tool": tool_name,
                     "args": tool_args,
+                    "agent_name": agent_name,
                 },
-                chat_id=chat_id,
+                session_id=session_id,
             )
             return json.dumps(error_response)

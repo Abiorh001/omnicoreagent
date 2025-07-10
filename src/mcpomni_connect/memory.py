@@ -17,8 +17,8 @@ from mcpomni_connect.utils import (
 # from qdrant_client.http.models import Distance, VectorParams
 
 
-class InMemoryShortTermMemory:
-    """In memory short term memory"""
+class InMemoryStore:
+    """In memory store - Database compatible version"""
 
     def __init__(
         self,
@@ -34,7 +34,8 @@ class InMemoryShortTermMemory:
         self.max_context_tokens = max_context_tokens
         self.debug = debug
         self.short_term_limit = int(0.7 * max_context_tokens)
-        self.agents_history: dict[str, list[dict[str, Any]]] = {}
+        # Changed to session-based storage for database compatibility
+        self.sessions_history: dict[str, list[dict[str, Any]]] = {}
         self.memory_config: dict[str, Any] = {
             "mode": "token_budget",  # default mode
             "value": self.short_term_limit,  # default token budget
@@ -62,27 +63,23 @@ class InMemoryShortTermMemory:
             logger.info(f"[Memory] Config set to: {self.memory_config}")
 
     async def truncate_message_history(
-        self, agent_name: str, chat_id: str = None
+        self, session_id: str = None
     ) -> list[dict[str, Any]]:
         """Truncate message history to stay within token limits.
 
-        Args:
-            agent_name: Name of agent
+        Args:   
+            session_id: Session ID to truncate
 
         Returns:
             List of messages after truncation
         """
         logger.info(f"memory config: {self.memory_config}")
         try:
-            if agent_name not in self.agents_history:
-                self.agents_history[agent_name] = []
+            if session_id not in self.sessions_history:
+                self.sessions_history[session_id] = []
                 return []
 
-            messages = self.agents_history[agent_name]
-            if chat_id is not None:
-                messages = [
-                    message for message in messages if message["chat_id"] == chat_id
-                ]
+            messages = self.sessions_history[session_id]
             mode = self.memory_config.get("mode", "token_budget")
             value = self.memory_config.get("value")
             if mode.lower() == "sliding_window":
@@ -99,99 +96,142 @@ class InMemoryShortTermMemory:
             return messages
         except Exception as e:
             logger.error(f"Failed to truncate message history: {e}")
-            self.agents_history[agent_name] = []
+            self.sessions_history[session_id] = []
             return []
 
     async def store_message(
         self,
-        agent_name: str,
         role: str,
         content: str,
         metadata: dict | None = None,
-        chat_id: str = None,
+        session_id: str = None,
     ) -> None:
         """Store a message in memory.
 
         Args:
-            agent_name: Name of agent
             role: Message role (e.g., 'user', 'assistant')
             content: Message content
             metadata: Optional metadata about the message
+            session_id: Session ID for grouping messages
         """
         try:
+            # Ensure metadata exists
+            if metadata is None:
+                metadata = {}
+            
+            # Use session-based storage for database compatibility
+            if session_id not in self.sessions_history:
+                self.sessions_history[session_id] = []
+            
             message = {
                 "role": role,
                 "content": content,
-                "chat_id": chat_id,
+                "session_id": session_id,
                 "timestamp": asyncio.get_running_loop().time(),
-                "metadata": metadata or {},
+                "metadata": metadata,
             }
 
-            if agent_name not in self.agents_history:
-                self.agents_history[agent_name] = []
-            self.agents_history[agent_name].append(message)
+            self.sessions_history[session_id].append(message)
 
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
     async def get_messages(
-        self, agent_name: str, chat_id: str = None
+        self, session_id: str = None, agent_name: str = None
     ) -> list[dict[str, Any]]:
         """Get messages from memory.
 
         Args:
-            agent_name: Name of agent
+            session_id: Session ID to get messages for
+            agent_name: Optional agent name to filter by (from metadata)
 
         Returns:
             List of messages
         """
+        
         try:
-            if agent_name not in self.agents_history:
-                self.agents_history[agent_name] = []
-            messages = await self.truncate_message_history(
-                agent_name=agent_name, chat_id=chat_id
-            )
+            if session_id not in self.sessions_history:
+                self.sessions_history[session_id] = []
+            
+            messages = await self.truncate_message_history(session_id=session_id)
+            
+            # Filter by agent_name if provided
+            if agent_name:
+                messages = [
+                    msg for msg in messages 
+                    if msg.get("metadata", {}).get("agent_name") == agent_name
+                ]
+            
             return messages
 
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
 
-    async def get_all_messages(self):
+    async def get_all_messages(self, agent_name: str = None):
+        """Get all messages across all sessions, optionally filtered by agent_name"""
         try:
-            messages = self.agents_history
-            if messages:
-                return messages
-            return {}
+            all_messages = []
+            for session_messages in self.sessions_history.values():
+                if agent_name:
+                    # Filter by agent_name in metadata
+                    filtered_messages = [
+                        msg for msg in session_messages 
+                        if msg.get("metadata", {}).get("agent_name") == agent_name
+                    ]
+                    all_messages.extend(filtered_messages)
+                else:
+                    all_messages.extend(session_messages)
+            
+            return all_messages
         except Exception as e:
-            logger.error(f"error getting messages: {e}")
-            return {}
+            logger.error(f"error getting all messages: {e}")
+            return []
 
-    async def clear_memory(self, agent_name: str = None) -> None:
-        """Clear memory for an agent or all memory.
+    async def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
+        """Clear memory for a session or all memory.
 
         Args:
-            agent_name: Name of agent to clear (required for auto-agent mode)
+            session_id: Session ID to clear (if None, clear all)
+            agent_name: Optional agent name to filter by
         """
         try:
-            if agent_name and agent_name in self.agents_history:
-                del self.agents_history[agent_name]
-            elif agent_name and agent_name not in self.agents_history:
-                return
+            if session_id and session_id in self.sessions_history:
+                if agent_name:
+                    # Remove only messages for specific agent in this session
+                    self.sessions_history[session_id] = [
+                        msg for msg in self.sessions_history[session_id]
+                        if msg.get("metadata", {}).get("agent_name") != agent_name
+                    ]
+                else:
+                    # Remove entire session
+                    del self.sessions_history[session_id]
+            elif agent_name:
+                # Remove messages for specific agent across all sessions
+                for session_id in list(self.sessions_history.keys()):
+                    self.sessions_history[session_id] = [
+                        msg for msg in self.sessions_history[session_id]
+                        if msg.get("metadata", {}).get("agent_name") != agent_name
+                    ]
+                    # Remove empty sessions
+                    if not self.sessions_history[session_id]:
+                        del self.sessions_history[session_id]
             else:
-                self.agents_history = {}
+                # Clear all memory
+                self.sessions_history = {}
 
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")
 
     async def save_message_history_to_file(
-        self, file_path: str, agent_name: str = None
+        self, file_path: str, session_id: str = None, agent_name: str = None
     ) -> None:
         """Save message history to a file, appending to existing content.
 
         Args:
             file_path: Path to the file
-            agent_name: Name of agent (if None, save all agents)
+            session_id: Session ID to save (if None, save all sessions)
+            agent_name: Agent name to filter by (from metadata)
         """
         try:
             with open(file_path, "a") as f:
@@ -199,22 +239,34 @@ class InMemoryShortTermMemory:
                 if f.tell() > 0:
                     f.write("\n\n")
 
-                if agent_name:
-                    messages = self.agents_history.get(agent_name, [])
+                if session_id:
+                    messages = self.sessions_history.get(session_id, [])
+                    if agent_name:
+                        messages = [
+                            msg for msg in messages 
+                            if msg.get("metadata", {}).get("agent_name") == agent_name
+                        ]
                     if messages:
-                        f.write(f"Agent: {agent_name}\n")
+                        f.write(f"Session: {session_id}\n")
                         for message in messages:
-                            f.write(f"{message['role']}: {message['content']}\n")
+                            agent = message.get("metadata", {}).get("agent_name", "unknown")
+                            f.write(f"[{agent}] {message['role']}: {message['content']}\n")
                 else:
                     logger.info(
-                        f"Saving messages for all agents: {self.agents_history}"
+                        f"Saving messages for all sessions: {self.sessions_history}"
                     )
-                    for agent, messages in self.agents_history.items():
+                    for session_id, messages in self.sessions_history.items():
+                        if agent_name:
+                            messages = [
+                                msg for msg in messages 
+                                if msg.get("metadata", {}).get("agent_name") == agent_name
+                            ]
                         if messages:
-                            logger.info(f"Saving messages for agent: {agent}")
-                            f.write(f"Agent: {agent}\n")
+                            logger.info(f"Saving messages for session: {session_id}")
+                            f.write(f"Session: {session_id}\n")
                             for message in messages:
-                                f.write(f"{message['role']}: {message['content']}\n")
+                                agent = message.get("metadata", {}).get("agent_name", "unknown")
+                                f.write(f"[{agent}] {message['role']}: {message['content']}\n")
                             f.write("\n")
             if self.debug:
                 logger.info(f"Message history saved to {file_path}")
@@ -224,37 +276,46 @@ class InMemoryShortTermMemory:
             raise
 
     async def load_message_history_from_file(
-        self, file_path: str, agent_name: str = None
+        self, file_path: str, session_id: str = None, agent_name: str = None
     ) -> None:
-        """Load message history from a file and store in in memory short term memory.
+        """Load message history from a file and store in memory.
 
         Args:
             file_path: Path to the file
-            agent_name: Name of agent (if specified, only load messages for this agent)
+            session_id: Session ID to load into (if None, use file session IDs)
+            agent_name: Agent name to filter by
         """
         try:
             with open(file_path) as f:
                 content = f.read()
 
-                if "Agent:" in content:
-                    sections = content.split("Agent:")
+                if "Session:" in content:
+                    sections = content.split("Session:")
                     for section in sections[1:]:
                         lines = section.strip().split("\n")
-                        current_agent = lines[0].strip()
+                        current_session = lines[0].strip()
 
-                        # Skip if agent_name is specified and doesn't match current agent
-                        if agent_name and current_agent != agent_name:
+                        # Skip if session_id is specified and doesn't match
+                        if session_id and current_session != session_id:
                             continue
 
                         messages = lines[1:]
                         for msg in messages:
-                            if ":" in msg:
-                                role, content = msg.split(":", 1)
-                                await self.store_message(
-                                    agent_name=current_agent,
-                                    role=role.strip(),
-                                    content=content.strip(),
-                                )
+                            if ":" in msg and "[" in msg:
+                                # Parse format: [agent] role: content
+                                agent_end = msg.find("]")
+                                if agent_end > 0:
+                                    agent = msg[1:agent_end]
+                                    role_content = msg[agent_end + 1:].strip()
+                                    if ":" in role_content:
+                                        role, content = role_content.split(":", 1)
+                                        metadata = {"agent_name": agent}
+                                        await self.store_message(
+                                            role=role.strip(),
+                                            content=content.strip(),
+                                            metadata=metadata,
+                                            session_id=current_session
+                                        )
 
             if self.debug:
                 logger.info(f"Successfully loaded message history from {file_path}")
@@ -284,7 +345,7 @@ class RedisShortTermMemory:
         )
         self.SHORT_TERM_LIMIT = int(0.7 * max_context_tokens)
         self.client_id = CLIENT_MAC_ADDRESS
-        self.in_memory_short_term_memory = InMemoryShortTermMemory(
+        self.in_memory_short_term_memory = InMemoryStore(
             max_context_tokens=max_context_tokens
         )
         logger.info(

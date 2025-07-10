@@ -4,15 +4,16 @@ import tempfile
 import pytest
 
 from mcpomni_connect.memory import (
-    InMemoryShortTermMemory,
+    InMemoryStore,
+    RedisShortTermMemory,
 )
 
 
 @pytest.mark.asyncio
-class TestInMemoryShortTermMemory:
+class TestInMemoryStore:
     @pytest.fixture
     def memory(self):
-        return InMemoryShortTermMemory(max_context_tokens=100, debug=True)
+        return InMemoryStore(max_context_tokens=100, debug=True)
 
     async def test_store_and_get_messages(self, memory):
         await memory.store_message("agent1", "user", "Hello")

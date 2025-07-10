@@ -16,6 +16,7 @@ from mcpomni_connect.agents.tools.tools_handler import (
     LocalToolHandler,
     MCPToolHandler,
     ToolExecutor,
+    LocalToolExecutor,
 )
 from mcpomni_connect.agents.types import (
     AgentState,
@@ -46,14 +47,14 @@ class BaseReactAgent:
         tool_call_timeout: int,
         request_limit: int,
         total_tokens_limit: int,
-        mcp_enabled: bool,
+    
     ):
         self.agent_name = agent_name
         self.max_steps = max_steps
         self.tool_call_timeout = tool_call_timeout
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
-        self.mcp_enabled = mcp_enabled
+       
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
 
@@ -171,11 +172,11 @@ class BaseReactAgent:
             return ParsedResponse(error=str(e))
 
     async def update_llm_working_memory(
-        self, message_history: Callable[[], Any], chat_id: str
+        self, message_history: Callable[[], Any], session_id: str
     ):
         """Update the LLM's working memory with the current message history"""
         short_term_memory_message_history = await message_history(
-            agent_name=self.agent_name, chat_id=chat_id
+            agent_name=self.agent_name, session_id=session_id
         )
         if not short_term_memory_message_history:
             logger.warning(f"No message history found for agent: {self.agent_name}")
@@ -267,39 +268,117 @@ class BaseReactAgent:
         parsed_response: ParsedResponse,
         sessions: dict,
         available_tools: dict,
-        tools_registry: dict,
+        local_tools: Any = None,  # LocalToolsIntegration instance
     ) -> ToolError | ToolCallResult:
-        if self.mcp_enabled:
-            mcp_tool_handler = MCPToolHandler(
-                sessions=sessions,
-                tool_data=parsed_response.data,
-                available_tools=available_tools,
-            )
-            tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
-            tool_data = await mcp_tool_handler.validate_tool_call_request(
-                tool_data=parsed_response.data,
-                available_tools=available_tools,
-            )
-        else:
-            local_tool_handler = LocalToolHandler(tools_registry=tools_registry)
-            tool_executor = ToolExecutor(tool_handler=local_tool_handler)
-            tool_data = await local_tool_handler.validate_tool_call_request(
-                tool_data=parsed_response.data,
-                available_tools=tools_registry,
-            )
-
-        if not tool_data.get("action"):
+        """
+        Resolve tool call request for both MCP and local tools.
+        
+        Args:
+            parsed_response: Parsed response from LLM
+            sessions: MCP sessions dict
+            available_tools: Combined available tools dict
+            local_tools: LocalToolsIntegration instance for local tool execution
+        """
+        try:
+            action = json.loads(parsed_response.data)
+            tool_name = action.get("tool", "").strip()
+            tool_args = action.get("parameters", {})
+            
+            if not tool_name:
+                return ToolError(
+                    observation="No tool name provided in the request",
+                    tool_name="N/A",
+                    tool_args=tool_args,
+                )
+            
+            # Check if it's a local tool
+            if local_tools:
+                # Use LocalToolHandler to validate and execute local tools
+                local_tool_handler = LocalToolHandler(local_tools)
+                validation_result = await local_tool_handler.validate_tool_call_request(
+                    tool_data=parsed_response.data,
+                    available_tools={}  # Not used for local tools
+                )
+                
+                if validation_result.get("action"):
+                    # Create LocalToolExecutor for local tool execution
+                    tool_executor = LocalToolExecutor(local_tools, tool_name)
+                    return ToolCallResult(
+                        tool_executor=tool_executor,
+                        tool_name=validation_result.get("tool_name"),
+                        tool_args=validation_result.get("tool_args"),
+                    )
+                else:
+                    # Check if it's an MCP tool before returning error
+                    pass
+            
+            # Check if it's an MCP tool
+            if sessions and available_tools:
+                # Find the tool in available MCP tools
+                for server_name, tools in available_tools.items():
+                    if server_name == "local_tools":
+                        continue  # Skip local tools, already handled above
+                    
+                    for tool in tools:
+                        if hasattr(tool, 'name') and tool.name.lower() == tool_name.lower():
+                            # Use MCP tool handler
+                            mcp_tool_handler = MCPToolHandler(
+                                sessions=sessions,
+                                tool_data=parsed_response.data,
+                                available_tools=available_tools,
+                            )
+                            tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
+                            tool_data = await mcp_tool_handler.validate_tool_call_request(
+                                tool_data=parsed_response.data,
+                                available_tools=available_tools,
+                            )
+                            
+                            if not tool_data.get("action"):
+                                return ToolError(
+                                    observation=tool_data.get("error", "MCP tool validation failed"),
+                                    tool_name=tool_name,
+                                    tool_args=tool_args,
+                                )
+                            
+                            return ToolCallResult(
+                                tool_executor=tool_executor,
+                                tool_name=tool_data.get("tool_name"),
+                                tool_args=tool_data.get("tool_args"),
+                            )
+            
+            # Tool not found - return error from local tool validation if available
+            if local_tools:
+                local_tool_handler = LocalToolHandler(local_tools)
+                validation_result = await local_tool_handler.validate_tool_call_request(
+                    tool_data=parsed_response.data,
+                    available_tools={}
+                )
+                if not validation_result.get("action"):
+                    return ToolError(
+                        observation=validation_result.get("error", f"Tool '{tool_name}' not found"),
+                        tool_name=tool_name,
+                        tool_args=tool_args,
+                    )
+            
+            # Fallback error
             return ToolError(
-                observation=tool_data.get("error", "N/A"),
-                tool_name=tool_data.get("tool_name", "N/A"),
-                tool_args=tool_data.get("tool_args", None),
+                observation=f"Tool '{tool_name}' not found in available tools",
+                tool_name=tool_name,
+                tool_args=tool_args,
             )
-
-        return ToolCallResult(
-            tool_executor=tool_executor,
-            tool_name=tool_data.get("tool_name"),
-            tool_args=tool_data.get("tool_args"),
-        )
+            
+        except json.JSONDecodeError as e:
+            return ToolError(
+                observation=f"Invalid JSON in tool call: {str(e)}",
+                tool_name="N/A",
+                tool_args={},
+            )
+        except Exception as e:
+            return ToolError(
+                observation=f"Error resolving tool call: {str(e)}",
+                tool_name="N/A",
+                tool_args={},
+            )
 
     async def act(
         self,
@@ -310,14 +389,14 @@ class BaseReactAgent:
         debug: bool = False,
         sessions: dict = None,
         available_tools: dict = None,
-        tools_registry: dict = None,
-        chat_id: str = None,
+        local_tools: Any = None,  # LocalToolsIntegration instance
+        session_id: str = None,
     ):
         tool_call_result = await self.resolve_tool_call_request(
             parsed_response=parsed_response,
             available_tools=available_tools,
             sessions=sessions,
-            tools_registry=tools_registry,
+            local_tools=local_tools,
         )
 
         # Early exit on tool validation failure
@@ -327,6 +406,7 @@ class BaseReactAgent:
             # Create proper tool call metadata
             tool_call_id = str(uuid.uuid4())
             tool_calls_metadata = ToolCallMetadata(
+                agent_name=self.agent_name,
                 has_tool_calls=True,
                 tool_call_id=tool_call_id,
                 tool_calls=[
@@ -341,11 +421,11 @@ class BaseReactAgent:
             )
 
             await add_message_to_history(
-                agent_name=self.agent_name,
+               
                 role="assistant",
                 content=response,
                 metadata=tool_calls_metadata,
-                chat_id=chat_id,
+                session_id=session_id,
             )
 
             try:
@@ -356,7 +436,7 @@ class BaseReactAgent:
                         tool_name=tool_call_result.tool_name,
                         tool_call_id=tool_call_id,
                         add_message_to_history=add_message_to_history,
-                        chat_id=chat_id,
+                        session_id=session_id,
                     )
                     try:
                         parsed = json.loads(observation)
@@ -377,11 +457,11 @@ class BaseReactAgent:
                 )
                 logger.warning(observation)
                 await add_message_to_history(
-                    agent_name=self.agent_name,
+                   
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id},
-                    chat_id=chat_id,
+                    metadata={"tool_call_id": tool_call_id, "agent_name": self.agent_name},
+                    session_id=session_id,
                 )
                 self.messages[self.agent_name].append(
                     Message(
@@ -393,11 +473,11 @@ class BaseReactAgent:
                 observation = f"Error executing tool: {str(e)}"
                 logger.error(observation)
                 await add_message_to_history(
-                    agent_name=self.agent_name,
+                   
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id},
-                    chat_id=chat_id,
+                    metadata={"tool_call_id": tool_call_id, "agent_name": self.agent_name},
+                    session_id=session_id,
                 )
 
                 self.messages[self.agent_name].append(
@@ -427,10 +507,11 @@ class BaseReactAgent:
             )
         )
         await add_message_to_history(
-            agent_name=self.agent_name,
+           
             role="user",
             content=f"OBSERVATION(RESULT FROM {tool_call_result.tool_name} TOOL CALL): \n{observation}",
-            chat_id=chat_id,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
         if debug:
             logger.info(
@@ -543,16 +624,15 @@ class BaseReactAgent:
         debug: bool = False,
         sessions: dict = None,
         available_tools: dict = None,
-        tools_registry: dict = None,
-        is_generic_agent: bool = True,
-        chat_id: str = None,
+        local_tools: Any = None,  # LocalToolsIntegration instance
+        session_id: str = None,
     ) -> str | None:
         """Execute ReAct loop with JSON communication
-        kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be tools_registry
+        kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be local_tools
         """
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
-            available_tools, agent_name=None if is_generic_agent else self.agent_name
+            available_tools, agent_name=self.agent_name
         )
         system_updated_prompt = (
             system_prompt + f"[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
@@ -563,11 +643,11 @@ class BaseReactAgent:
         ]
         # Add initial user message to message history
         await add_message_to_history(
-            agent_name=self.agent_name, role="user", content=query, chat_id=chat_id
+            role="user", content=query, session_id=session_id, metadata={"agent_name": self.agent_name}
         )
         # Initialize messages with current message history (only once at start)
         await self.update_llm_working_memory(
-            message_history=message_history, chat_id=chat_id
+            message_history=message_history, session_id=session_id
         )
         # check if the agent is in a valid state to run
         if self.state not in [
@@ -658,10 +738,10 @@ class BaseReactAgent:
                         )
                     )
                     await add_message_to_history(
-                        agent_name=self.agent_name,
                         role="assistant",
                         content=parsed_response.answer,
-                        chat_id=chat_id,
+                        session_id=session_id,
+                        metadata={"agent_name": self.agent_name},
                     )
                     # check if the system prompt has changed
                     if system_prompt != self.messages[self.agent_name][0].content:
@@ -694,8 +774,8 @@ class BaseReactAgent:
                         debug=debug,
                         sessions=sessions,
                         available_tools=available_tools,
-                        tools_registry=tools_registry,
-                        chat_id=chat_id,
+                        local_tools=local_tools,
+                        session_id=session_id,
                     )
                     continue
                 # append the invalid response to the messages and the message history
@@ -708,10 +788,11 @@ class BaseReactAgent:
                     Message(role="user", content=error_message)
                 )
                 await add_message_to_history(
-                    agent_name=self.agent_name,
+                    
                     role="user",
                     content=error_message,
-                    chat_id=chat_id,
+                    session_id=session_id,
+                    metadata={"agent_name": self.agent_name},
                 )
                 self.loop_detector.record_message(error_message, response)
                 if self.loop_detector.is_looping():
@@ -732,13 +813,18 @@ class BaseReactAgent:
                         f"2. Try a completely different tool or approach\n"
                         f"3. If the issue persists, please provide a detailed description of the problem and the current state of the conversation. and don't try again.\n"
                     )
-
                     self.messages[self.agent_name].append(
                         Message(role="user", content=loop_message)
                     )
-                    self.loop_detector.reset()
                     if debug:
                         logger.info(
                             f"Agent state changed from {self.state} to {AgentState.STUCK}"
                         )
                     self.state = AgentState.STUCK
+                    self.loop_detector.reset()
+
+            # If we've reached max steps, return the last response
+            if current_steps >= self.max_steps:
+                return f"Maximum steps ({self.max_steps}) reached. Last response: {response}"
+
+            return None

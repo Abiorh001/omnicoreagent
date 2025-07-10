@@ -218,45 +218,105 @@ class TestSSETransport:
 ```python title="tests/unit/test_memory.py"
 import pytest
 from unittest.mock import Mock, patch
-from mcpomni_connect.memory import MemoryManager, RedisMemory
+from mcpomni_connect.memory import InMemoryStore, RedisShortTermMemory
 
-class TestMemoryManager:
+class TestInMemoryStore:
     @pytest.fixture
-    def memory_config(self):
-        return {
-            "redis_host": "localhost",
-            "redis_port": 6379,
-            "redis_db": 15
-        }
+    def memory(self):
+        return InMemoryStore(max_context_tokens=100, debug=True)
     
-    def test_session_memory(self, memory_config):
-        memory = MemoryManager(memory_config)
+    @pytest.mark.asyncio
+    async def test_store_and_get_messages(self, memory):
+        # Test storing messages
+        await memory.store_message(
+            role="user",
+            content="test message",
+            metadata={"agent_name": "test_agent"},
+            session_id="test_session"
+        )
         
-        # Test adding messages
-        message = {"role": "user", "content": "test"}
-        memory.add_message(message)
+        # Test retrieving messages
+        messages = await memory.get_messages(
+            session_id="test_session",
+            agent_name="test_agent"
+        )
         
-        # Test retrieving context
-        context = memory.get_context()
-        assert len(context) == 1
-        assert context[0] == message
+        assert len(messages) == 1
+        assert messages[0]["content"] == "test message"
+        assert messages[0]["role"] == "user"
     
-    @pytest.mark.requires_redis
-    def test_redis_memory(self, memory_config):
-        memory = MemoryManager(memory_config)
-        memory.enable_persistence()
+    @pytest.mark.asyncio
+    async def test_session_isolation(self, memory):
+        # Store messages in different sessions
+        await memory.store_message(
+            role="user",
+            content="session1 message",
+            session_id="session1"
+        )
         
-        # Test persistence
-        message = {"role": "user", "content": "persistent test"}
-        memory.add_message(message)
+        await memory.store_message(
+            role="user", 
+            content="session2 message",
+            session_id="session2"
+        )
         
-        # Create new instance and check persistence
-        new_memory = MemoryManager(memory_config)
-        new_memory.enable_persistence()
-        context = new_memory.get_context()
+        # Verify sessions are isolated
+        session1_messages = await memory.get_messages(session_id="session1")
+        session2_messages = await memory.get_messages(session_id="session2")
         
-        assert len(context) >= 1
-        assert any(msg["content"] == "persistent test" for msg in context)
+        assert len(session1_messages) == 1
+        assert len(session2_messages) == 1
+        assert session1_messages[0]["content"] == "session1 message"
+        assert session2_messages[0]["content"] == "session2 message"
+    
+    @pytest.mark.asyncio
+    async def test_agent_filtering(self, memory):
+        # Store messages for different agents
+        await memory.store_message(
+            role="user",
+            content="agent1 message",
+            metadata={"agent_name": "agent1"},
+            session_id="test_session"
+        )
+        
+        await memory.store_message(
+            role="user",
+            content="agent2 message", 
+            metadata={"agent_name": "agent2"},
+            session_id="test_session"
+        )
+        
+        # Test filtering by agent
+        agent1_messages = await memory.get_messages(
+            session_id="test_session",
+            agent_name="agent1"
+        )
+        
+        agent2_messages = await memory.get_messages(
+            session_id="test_session",
+            agent_name="agent2"
+        )
+        
+        assert len(agent1_messages) == 1
+        assert len(agent2_messages) == 1
+        assert agent1_messages[0]["content"] == "agent1 message"
+        assert agent2_messages[0]["content"] == "agent2 message"
+    
+    @pytest.mark.asyncio
+    async def test_clear_memory(self, memory):
+        # Store some messages
+        await memory.store_message(
+            role="user",
+            content="test message",
+            session_id="test_session"
+        )
+        
+        # Clear memory
+        await memory.clear_memory(session_id="test_session")
+        
+        # Verify memory is cleared
+        messages = await memory.get_messages(session_id="test_session")
+        assert len(messages) == 0
 ```
 
 ## Integration Tests

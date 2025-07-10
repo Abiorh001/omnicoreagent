@@ -15,7 +15,7 @@ from mcpomni_connect.client import Configuration, MCPClient
 from mcpomni_connect.constants import AGENTS_REGISTRY, date_time_func
 from mcpomni_connect.llm import LLMConnection
 from mcpomni_connect.memory import (
-    InMemoryShortTermMemory,
+    InMemoryStore,
 )
 from mcpomni_connect.refresh_server_capabilities import (
     generate_react_agent_role_prompt_func,
@@ -38,7 +38,7 @@ class MCPClientConnect:
         )["LLM"]["max_context_length"]
         self.MODE = {"auto": False, "orchestrator": True}
         self.client.debug = True
-        self.in_memory_short_term_memory = InMemoryShortTermMemory(
+        self.in_memory_short_term_memory = InMemoryStore(
             max_context_tokens=self.MAX_CONTEXT_TOKENS
         )
 

@@ -157,7 +157,7 @@ class OrchestratorAgent(BaseReactAgent):
             extra_kwargs = {
                 "sessions": sessions,
                 "available_tools": available_tools,
-                "tools_registry": None,
+                "local_tools": None,  # No local tools in orchestrator mode
                 "is_generic_agent": False,
                 "chat_id": self.chat_id,
             }

@@ -13,7 +13,7 @@ class ReactAgent(BaseReactAgent):
             tool_call_timeout=config.tool_call_timeout,
             request_limit=config.request_limit,
             total_tokens_limit=config.total_tokens_limit,
-            mcp_enabled=config.mcp_enabled,
+            
         )
 
     async def _run(
@@ -35,8 +35,7 @@ class ReactAgent(BaseReactAgent):
             debug=debug,
             sessions=kwargs.get("sessions"),
             available_tools=kwargs.get("available_tools"),
-            tools_registry=kwargs.get("tools_registry"),
-            is_generic_agent=kwargs.get("is_generic_agent"),
-            chat_id=kwargs.get("chat_id"),
+            local_tools=kwargs.get("local_tools"),  # Pass local tools
+            session_id=kwargs.get("session_id"),
         )
         return response

@@ -20,7 +20,7 @@ from mcpomni_connect.constants import AGENTS_REGISTRY, date_time_func
 from mcpomni_connect.llm import LLMConnection
 from mcpomni_connect.llm_support import LLMToolSupport
 from mcpomni_connect.memory import (
-    InMemoryShortTermMemory,
+    InMemoryStore,
     RedisShortTermMemory,
 )
 from mcpomni_connect.prompts import (
@@ -328,7 +328,7 @@ class MCPClientCLI:
         self.redis_short_term_memory = RedisShortTermMemory(
             max_context_tokens=self.MAX_CONTEXT_TOKENS
         )
-        self.in_memory_short_term_memory = InMemoryShortTermMemory(
+        self.in_memory_short_term_memory = InMemoryStore(
             max_context_tokens=self.MAX_CONTEXT_TOKENS
         )
 
