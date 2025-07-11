@@ -13,36 +13,62 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from mcpomni_connect.omni_agent import OmniAgent
-from mcpomni_connect.config import ModelConfig, MCPToolConfig, TransportType, AgentConfig
+from mcpomni_connect.omni_agent.config import ModelConfig, MCPToolConfig, TransportType, AgentConfig
 from mcpomni_connect.memory import InMemoryStore
 
 import asyncio
 from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
-from mcpomni_connect.agents.tools.local_tools_integration import LocalToolsIntegration
 
 
-# 1. Create your tools
-registry = ToolRegistry()
+# 1. Create local tools registry
+local_tools = ToolRegistry()
 
-@registry.register(
+# 2. Define and register tools using decorators
+@local_tools.register_tool(
     name="calculate_area",
-    description="Calculate the area of a rectangle"
+    description="Calculate the area of a rectangle",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "length": {"type": "number"},
+            "width": {"type": "number"}
+        },
+        "required": ["length", "width"],
+        "additionalProperties": False
+    }
 )
 def calculate_area(length: float, width: float) -> float:
     """Calculate area of a rectangle"""
     return length * width
 
-@registry.register(
+@local_tools.register_tool(
     name="get_weather_info",
-    description="Get weather information for a city"
+    description="Get weather information for a city",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "city": {"type": "string"}
+        },
+        "required": ["city"],
+        "additionalProperties": False
+    }
 )
 def get_weather_info(city: str) -> str:
     """Get weather info (simulated)"""
     return f"Weather in {city}: Sunny, 25°C"
 
-@registry.register(
+@local_tools.register_tool(
     name="format_text",
-    description="Format text in different styles"
+    description="Format text in different styles",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "style": {"type": "string", "default": "normal"}
+        },
+        "required": ["text"],
+        "additionalProperties": False
+    }
 )
 def format_text(text: str, style: str = "normal") -> str:
     """Format text in different styles"""
@@ -55,8 +81,6 @@ def format_text(text: str, style: str = "normal") -> str:
     else:
         return text
 
-# 2. Create local tools integration
-local_tools = LocalToolsIntegration(registry)
 
 async def example_session_management():
     """Example: Session management with chat IDs"""
@@ -101,42 +125,47 @@ async def example_session_management():
     # Simulate a conversation with chat ID management
     chat_id = None
     
-    # First message - will generate new chat ID
-    print("\n🤖 First message (new chat):")
+    # # First message - will generate new chat ID
+    # print("\n🤖 First message (new chat):")
     result1 = await agent.run("Hello! My name is Alice.", chat_id)
     chat_id = result1["chat_id"]
     print(f"Response: {result1['response']}")
     print(f"Chat ID: {chat_id}")
     
-    # Second message - using same chat ID for continuity
-    print("\n🤖 Second message (same chat):")
-    result2 = await agent.run("What's my name?", chat_id)
+    # # Second message - using same chat ID for continuity
+    # print("\n🤖 Second message (same chat):")
+    result2 = await agent.run("list all the files in my current directory, my current directory is /home/abiorh/ai", chat_id)
     print(f"Response: {result2['response']}")
     print(f"Chat ID: {result2['chat_id']}")
     
-    # Get chat history
-    print("\n📜 Chat History:")
-    history = await agent.get_chat_history(chat_id)
-    for i, msg in enumerate(history):
-        print(f"  {i+1}. {msg['role']}: {msg['content']}")
+    get_history = await agent.get_chat_history(chat_id)
+    print(f"History: {get_history}")
+    
+    # # Get chat history
+    # print("\n📜 Chat History:")
+    # history = await agent.get_chat_history(chat_id)
+    # for i, msg in enumerate(history):
+    #     print(f"  {i+1}. {msg['role']}: {msg['content']}")
     
     # New conversation with different chat ID
     print("\n🤖 New conversation (different chat):")
-    result3 = await agent.run("Hello! My name is Bob.")
+    result3 = await agent.run("Hello! My name is Bob. What is the weather in Tokyo?")
     new_chat_id = result3["chat_id"]
     print(f"Response: {result3['response']}")
     print(f"New Chat ID: {new_chat_id}")
     
-    # Clear specific chat history
-    print(f"\n🧹 Clearing chat history for: {chat_id}")
-    await agent.clear_chat_history(chat_id)
+    # # Clear specific chat history
+    # print(f"\n🧹 Clearing chat history for: {chat_id}")
+    # await agent.clear_chat_history(chat_id)
     
     # Verify history is cleared
-    history_after_clear = await agent.get_chat_history(chat_id)
-    print(f"History after clear: {len(history_after_clear)} messages")
+    # history_after_clear = await agent.get_chat_history(chat_id)
+    # print(f"History after clear: {len(history_after_clear)} messages")
+
+    get_history = await agent.get_chat_history(new_chat_id)
+    print(f"History: {get_history}")
     
-    # get the local tools
-    print(f"Local tools: {agent.local_tools.get_available_tools()}")
+  
     # Clean up
     await agent.cleanup()
     

@@ -25,23 +25,23 @@ class MCPToolHandler(BaseToolHandler):
         sessions: dict,
         server_name: str = None,
         tool_data: str = None,
-        available_tools: dict = None,
+        mcp_tools: dict = None,
     ):
         self.sessions = sessions
         self.server_name = server_name
 
         # If server_name not passed in, infer it from tool_data
-        if self.server_name is None and tool_data and available_tools:
-            self.server_name = self._infer_server_name(tool_data, available_tools)
+        if self.server_name is None and tool_data and mcp_tools:
+            self.server_name = self._infer_server_name(tool_data, mcp_tools)
 
     def _infer_server_name(
-        self, tool_data: str, available_tools: dict[str, Any]
+        self, tool_data: str, mcp_tools: dict[str, Any]
     ) -> str | None:
         try:
             action = json.loads(tool_data)
             input_tool_name = action.get("tool", "").strip().lower()
 
-            for server_name, tools in available_tools.items():
+            for server_name, tools in mcp_tools.items():
                 for tool in tools:
                     if tool.name.lower() == input_tool_name:
                         return server_name
@@ -50,7 +50,7 @@ class MCPToolHandler(BaseToolHandler):
         return None
 
     async def validate_tool_call_request(
-        self, tool_data: dict[str, Any], available_tools: dict[str, Any]
+        self, tool_data: str, mcp_tools: dict[str, Any]
     ) -> dict:
         try:
             action = json.loads(tool_data)
@@ -67,7 +67,7 @@ class MCPToolHandler(BaseToolHandler):
 
             input_tool_name_lower = input_tool_name.lower()
 
-            for server_name, tools in available_tools.items():
+            for server_name, tools in mcp_tools.items():
                 for tool in tools:
                     if tool.name.lower() == input_tool_name_lower:
                         return {
@@ -98,19 +98,14 @@ class MCPToolHandler(BaseToolHandler):
 
 
 class LocalToolHandler(BaseToolHandler):
-    def __init__(self, local_tools_integration: Any):
-        """
-        Initialize LocalToolHandler with LocalToolsIntegration instance
-        
-        Args:
-            local_tools_integration: LocalToolsIntegration instance
-        """
-        self.local_tools = local_tools_integration
+    def __init__(self, local_tools: Any = None):
+        """Initialize LocalToolHandler with LocalToolsIntegration instance"""
+        self.local_tools = local_tools
 
     async def validate_tool_call_request(
         self,
         tool_data: str,
-        available_tools: dict[str, Any] = None,  # Not used for local tools
+        local_tools: Any = None,  # Not used for local tools
     ) -> dict[str, Any]:
         try:
             action = json.loads(tool_data)
@@ -126,7 +121,7 @@ class LocalToolHandler(BaseToolHandler):
                 }
 
             # Check if tool exists in local tools
-            available_local_tools = self.local_tools.get_available_tools()
+            available_local_tools = local_tools.get_available_tools()
             tool_names = [tool['name'] for tool in available_local_tools]
             
             if tool_name in tool_names:
@@ -163,60 +158,7 @@ class LocalToolHandler(BaseToolHandler):
         return await self.local_tools.execute_tool(tool_name, tool_args)
 
 
-class LocalToolExecutor:
-    """Executor for local tools"""
-    
-    def __init__(self, local_tools_integration: Any, tool_name: str):
-        self.local_tools = local_tools_integration
-        self.tool_name = tool_name
-    
-    async def execute(
-        self,
-        agent_name: str,
-        tool_args: dict,
-        tool_name: str,
-        tool_call_id: str,
-        add_message_to_history: Callable[[str, str, dict | None], Any],
-        session_id: str = None,
-    ) -> str:
-        """Execute a local tool"""
-        try:
-            result = await self.local_tools.execute_tool(tool_name, tool_args)
-            
-            # Add tool result to history
-            await add_message_to_history(
-                agent_name=agent_name,
-                role="tool",
-                content=str(result),
-                metadata={"tool_call_id": tool_call_id, "agent_name": agent_name},
-                session_id=session_id,
-            )
-            
-            return json.dumps({
-                "status": "success",
-                "data": result,
-                "tool_name": tool_name,
-                "tool_call_id": tool_call_id
-            })
-            
-        except Exception as e:
-            error_msg = f"Local tool execution failed: {str(e)}"
-            
-            # Add error to history
-            await add_message_to_history(
-                agent_name=agent_name,
-                role="tool",
-                content=error_msg,
-                metadata={"tool_call_id": tool_call_id, "agent_name": agent_name},
-                session_id=session_id,
-            )
-            
-            return json.dumps({
-                "status": "error",
-                "message": error_msg,
-                "tool_name": tool_name,
-                "tool_call_id": tool_call_id
-            })
+
 
 
 class ToolExecutor:
@@ -227,7 +169,7 @@ class ToolExecutor:
         self,
         agent_name: str,
         tool_name: str,
-        tool_args: dict[str, Any],
+        tool_args: dict[str, Any],  
         tool_call_id: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         session_id: str = None,
@@ -265,7 +207,6 @@ class ToolExecutor:
                 tool_content = response["message"]
 
             await add_message_to_history(
-                agent_name=agent_name,
                 role="tool",
                 content=tool_content,
                 metadata={
@@ -289,7 +230,6 @@ class ToolExecutor:
                 ),
             }
             await add_message_to_history(
-                agent_name=agent_name,
                 role="tool",
                 content=error_response["message"],
                 metadata={

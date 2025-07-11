@@ -1,7 +1,7 @@
 import inspect
 import asyncio
 from collections.abc import Callable
-from typing import Any, Dict, Union
+from typing import Any, Dict, List
 
 
 class Tool:
@@ -54,7 +54,7 @@ class ToolRegistry:
     def __init__(self):
         self.tools: dict[str, Tool] = {}
 
-    def register(
+    def register_tool(
         self,
         name: str | None = None,
         inputSchema: dict[str, Any] | None = None,
@@ -81,6 +81,20 @@ class ToolRegistry:
 
     def list_tools(self) -> list[Tool]:
         return list(self.tools.values())
+    
+
+
+    def get_available_tools(self) -> List[Dict[str, Any]]:
+        """Get list of available tools for OmniAgent"""
+        tools = []
+        for tool in self.list_tools():
+            tools.append({
+                "name": tool.name,
+                "description": tool.description,
+                "inputSchema": tool.inputSchema,
+                "type": "local"
+            })
+        return tools
 
     def get_tool_schemas(self) -> Dict[str, Dict[str, Any]]:
         """Get all tool schemas for MCP integration"""

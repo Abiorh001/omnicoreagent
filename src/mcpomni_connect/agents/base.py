@@ -16,7 +16,6 @@ from mcpomni_connect.agents.tools.tools_handler import (
     LocalToolHandler,
     MCPToolHandler,
     ToolExecutor,
-    LocalToolExecutor,
 )
 from mcpomni_connect.agents.types import (
     AgentState,
@@ -267,7 +266,7 @@ class BaseReactAgent:
         self,
         parsed_response: ParsedResponse,
         sessions: dict,
-        available_tools: dict,
+        mcp_tools: dict,
         local_tools: Any = None,  # LocalToolsIntegration instance
     ) -> ToolError | ToolCallResult:
         """
@@ -276,7 +275,7 @@ class BaseReactAgent:
         Args:
             parsed_response: Parsed response from LLM
             sessions: MCP sessions dict
-            available_tools: Combined available tools dict
+            mcp_tools: MCP tools dict
             local_tools: LocalToolsIntegration instance for local tool execution
         """
         try:
@@ -291,93 +290,62 @@ class BaseReactAgent:
                     tool_args=tool_args,
                 )
             
-            # Check if it's a local tool
-            if local_tools:
-                # Use LocalToolHandler to validate and execute local tools
-                local_tool_handler = LocalToolHandler(local_tools)
-                validation_result = await local_tool_handler.validate_tool_call_request(
-                    tool_data=parsed_response.data,
-                    available_tools={}  # Not used for local tools
-                )
-                
-                if validation_result.get("action"):
-                    # Create LocalToolExecutor for local tool execution
-                    tool_executor = LocalToolExecutor(local_tools, tool_name)
-                    return ToolCallResult(
-                        tool_executor=tool_executor,
-                        tool_name=validation_result.get("tool_name"),
-                        tool_args=validation_result.get("tool_args"),
-                    )
-                else:
-                    # Check if it's an MCP tool before returning error
-                    pass
-            
-            # Check if it's an MCP tool
-            if sessions and available_tools:
-                # Find the tool in available MCP tools
-                for server_name, tools in available_tools.items():
-                    if server_name == "local_tools":
-                        continue  # Skip local tools, already handled above
-                    
+            # First, check if tool exists in MCP tools
+            mcp_tool_found = False
+            if mcp_tools:
+                for server_name, tools in mcp_tools.items():
                     for tool in tools:
-                        if hasattr(tool, 'name') and tool.name.lower() == tool_name.lower():
-                            # Use MCP tool handler
+                        if tool.name.lower() == tool_name.lower():
+                            # MCP tool found
                             mcp_tool_handler = MCPToolHandler(
                                 sessions=sessions,
                                 tool_data=parsed_response.data,
-                                available_tools=available_tools,
+                                mcp_tools=mcp_tools,
                             )
                             tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
                             tool_data = await mcp_tool_handler.validate_tool_call_request(
                                 tool_data=parsed_response.data,
-                                available_tools=available_tools,
+                                mcp_tools=mcp_tools,
                             )
-                            
-                            if not tool_data.get("action"):
-                                return ToolError(
-                                    observation=tool_data.get("error", "MCP tool validation failed"),
-                                    tool_name=tool_name,
-                                    tool_args=tool_args,
-                                )
-                            
-                            return ToolCallResult(
-                                tool_executor=tool_executor,
-                                tool_name=tool_data.get("tool_name"),
-                                tool_args=tool_data.get("tool_args"),
-                            )
+                            mcp_tool_found = True
+                            break
+                    if mcp_tool_found:
+                        break
             
-            # Tool not found - return error from local tool validation if available
-            if local_tools:
-                local_tool_handler = LocalToolHandler(local_tools)
-                validation_result = await local_tool_handler.validate_tool_call_request(
+            # If not found in MCP tools, check local tools
+            if not mcp_tool_found and local_tools:
+                local_tool_handler = LocalToolHandler(local_tools=local_tools)
+                tool_executor = ToolExecutor(tool_handler=local_tool_handler)
+                tool_data = await local_tool_handler.validate_tool_call_request(
                     tool_data=parsed_response.data,
-                    available_tools={}
+                    local_tools=local_tools,
                 )
-                if not validation_result.get("action"):
-                    return ToolError(
-                        observation=validation_result.get("error", f"Tool '{tool_name}' not found"),
-                        tool_name=tool_name,
-                        tool_args=tool_args,
-                    )
+            elif not mcp_tool_found:
+                # Tool not found in either MCP or local tools
+                return ToolError(
+                    observation=f"The tool named '{tool_name}' does not exist in the available tools.",
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                )
             
-            # Fallback error
-            return ToolError(
-                observation=f"Tool '{tool_name}' not found in available tools",
-                tool_name=tool_name,
-                tool_args=tool_args,
-            )
+            if not tool_data.get("action"):
+                return ToolError(
+                    observation=tool_data.get("error", "Tool validation failed"),
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                )
             
-        except json.JSONDecodeError as e:
-            return ToolError(
-                observation=f"Invalid JSON in tool call: {str(e)}",
-                tool_name="N/A",
-                tool_args={},
+            return ToolCallResult(
+                tool_executor=tool_executor,
+                tool_name=tool_data.get("tool_name"),
+                tool_args=tool_data.get("tool_args"),
             )
         except Exception as e:
+            logger.error(f"Error resolving tool call request: {e}")
             return ToolError(
-                observation=f"Error resolving tool call: {str(e)}",
-                tool_name="N/A",
-                tool_args={},
+                observation=f"Error resolving tool call request: {e}",
+                tool_name=tool_name,
+                tool_args=tool_args,
             )
 
     async def act(
@@ -388,13 +356,13 @@ class BaseReactAgent:
         system_prompt: str,
         debug: bool = False,
         sessions: dict = None,
-        available_tools: dict = None,
+        mcp_tools: dict = None,
         local_tools: Any = None,  # LocalToolsIntegration instance
         session_id: str = None,
     ):
         tool_call_result = await self.resolve_tool_call_request(
             parsed_response=parsed_response,
-            available_tools=available_tools,
+            mcp_tools=mcp_tools,
             sessions=sessions,
             local_tools=local_tools,
         )
@@ -424,7 +392,7 @@ class BaseReactAgent:
                
                 role="assistant",
                 content=response,
-                metadata=tool_calls_metadata,
+                metadata=tool_calls_metadata.model_dump(),
                 session_id=session_id,
             )
 
@@ -576,37 +544,66 @@ class BaseReactAgent:
     ) -> str:
         tools_section = []
         try:
-            if agent_name:
-                tools = available_tools.get(agent_name, [])
-            else:
-                # Flatten all tools across agents (ignoring server/agent names)
-                tools = [
-                    tool
-                    for tools_list in available_tools.values()
-                    for tool in tools_list
-                ]
-
-            for tool in tools:
-                tool_name = str(tool.name)
-                tool_description = str(tool.description)
-                tool_md = f"### `{tool_name}`\n{tool_description}"
-
-                if hasattr(tool, "inputSchema") and tool.inputSchema:
-                    params = tool.inputSchema.get("properties", {})
-                    if params:
-                        tool_md += "\n\n**Parameters:**\n"
-                        tool_md += "| Name | Type | Description |\n"
-                        tool_md += "|------|------|-------------|\n"
-                        for param_name, param_info in params.items():
-                            param_desc = param_info.get(
-                                "description", "**No description**"
-                            )
-                            param_type = param_info.get("type", "any")
-                            tool_md += (
-                                f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-                            )
-
-                tools_section.append(tool_md)
+            if not available_tools:
+                return "No tools available"
+            
+            # Process each server/group of tools
+            for server_name, tools in available_tools.items():
+                if not tools:
+                    continue
+                
+                # Add server/group header
+                tools_section.append(f"## {server_name.upper()} TOOLS")
+                
+                # Handle different tool formats
+                for tool in tools:
+                    if hasattr(tool, 'name'):  # MCP Tool object
+                        tool_name = str(tool.name)
+                        tool_description = str(tool.description)
+                        
+                        tool_md = f"### `{tool_name}`\n{tool_description}"
+                        
+                        if hasattr(tool, "inputSchema") and tool.inputSchema:
+                            params = tool.inputSchema.get("properties", {})
+                            if params:
+                                tool_md += "\n\n**Parameters:**\n"
+                                tool_md += "| Name | Type | Description |\n"
+                                tool_md += "|------|------|-------------|\n"
+                                for param_name, param_info in params.items():
+                                    param_desc = param_info.get(
+                                        "description", "**No description**"
+                                    )
+                                    param_type = param_info.get("type", "any")
+                                    tool_md += (
+                                        f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+                                    )
+                    
+                    elif isinstance(tool, dict):  # Local tool dictionary
+                        tool_name = tool.get('name', 'Unknown')
+                        tool_description = tool.get('description', 'No description')
+                        
+                        tool_md = f"### `{tool_name}`\n{tool_description}"
+                        
+                        input_schema = tool.get('inputSchema', {})
+                        if input_schema:
+                            params = input_schema.get("properties", {})
+                            if params:
+                                tool_md += "\n\n**Parameters:**\n"
+                                tool_md += "| Name | Type | Description |\n"
+                                tool_md += "|------|------|-------------|\n"
+                                for param_name, param_info in params.items():
+                                    param_desc = param_info.get(
+                                        "description", "**No description**"
+                                    )
+                                    param_type = param_info.get("type", "any")
+                                    tool_md += (
+                                        f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+                                    )
+                    
+                    else:  # Unknown format
+                        tool_md = f"### Unknown Tool\n{str(tool)}"
+                    
+                    tools_section.append(tool_md)
 
         except Exception as e:
             logger.error(f"Error getting tools registry: {e}")
@@ -624,6 +621,7 @@ class BaseReactAgent:
         debug: bool = False,
         sessions: dict = None,
         available_tools: dict = None,
+        mcp_tools: dict = None,
         local_tools: Any = None,  # LocalToolsIntegration instance
         session_id: str = None,
     ) -> str | None:
@@ -634,6 +632,7 @@ class BaseReactAgent:
         tools_section = await self.get_tools_registry(
             available_tools, agent_name=self.agent_name
         )
+        # logger.info(f"tools section: {tools_section}")
         system_updated_prompt = (
             system_prompt + f"[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
         )
@@ -773,7 +772,7 @@ class BaseReactAgent:
                         system_prompt=system_prompt,
                         debug=debug,
                         sessions=sessions,
-                        available_tools=available_tools,
+                        mcp_tools=mcp_tools,
                         local_tools=local_tools,
                         session_id=session_id,
                     )

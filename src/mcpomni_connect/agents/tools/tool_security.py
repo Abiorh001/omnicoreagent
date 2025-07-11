@@ -279,6 +279,12 @@ class SecureToolRegistry(ToolRegistry):
     def get_security_report(self) -> Dict[str, Any]:
         """Get security report"""
         return self.security_manager.generate_security_report()
+    
+    def validate_execution(self, tool_name: str, parameters: Dict[str, Any]) -> bool:
+        """Validate tool execution against security policies"""
+        return self.security_manager.validate_execution(
+            tool_name, parameters, self.current_user, self.current_roles
+        )
 
 
 # Global secure tool registry

@@ -159,7 +159,7 @@ class InMemoryStore:
             if agent_name:
                 messages = [
                     msg for msg in messages 
-                    if msg.get("metadata", {}).get("agent_name") == agent_name
+                    if self._get_agent_name_from_metadata(msg.get("metadata")) == agent_name
                 ]
             
             return messages
@@ -177,7 +177,7 @@ class InMemoryStore:
                     # Filter by agent_name in metadata
                     filtered_messages = [
                         msg for msg in session_messages 
-                        if msg.get("metadata", {}).get("agent_name") == agent_name
+                        if self._get_agent_name_from_metadata(msg.get("metadata")) == agent_name
                     ]
                     all_messages.extend(filtered_messages)
                 else:
@@ -201,7 +201,7 @@ class InMemoryStore:
                     # Remove only messages for specific agent in this session
                     self.sessions_history[session_id] = [
                         msg for msg in self.sessions_history[session_id]
-                        if msg.get("metadata", {}).get("agent_name") != agent_name
+                        if self._get_agent_name_from_metadata(msg.get("metadata")) != agent_name
                     ]
                 else:
                     # Remove entire session
@@ -211,7 +211,7 @@ class InMemoryStore:
                 for session_id in list(self.sessions_history.keys()):
                     self.sessions_history[session_id] = [
                         msg for msg in self.sessions_history[session_id]
-                        if msg.get("metadata", {}).get("agent_name") != agent_name
+                        if self._get_agent_name_from_metadata(msg.get("metadata")) != agent_name
                     ]
                     # Remove empty sessions
                     if not self.sessions_history[session_id]:
@@ -222,6 +222,21 @@ class InMemoryStore:
 
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")
+
+    def _get_agent_name_from_metadata(self, metadata) -> str:
+        """Extract agent name from metadata, handling both dict and ToolCallMetadata objects"""
+        if not metadata:
+            return None
+        
+        # Handle ToolCallMetadata objects (Pydantic models)
+        if hasattr(metadata, 'agent_name'):
+            return metadata.agent_name
+        
+        # Handle dictionary metadata
+        if isinstance(metadata, dict):
+            return metadata.get("agent_name")
+        
+        return None
 
     async def save_message_history_to_file(
         self, file_path: str, session_id: str = None, agent_name: str = None

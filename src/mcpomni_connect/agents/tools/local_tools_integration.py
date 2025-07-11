@@ -1,35 +1,19 @@
 from typing import Dict, Any, List, Optional
 from .local_tools_registry import ToolRegistry
-from .tool_discovery import ToolDiscovery
-from .tool_templates import ToolTemplates
-from .tool_composition import ToolCompositionManager
-from .tool_caching import CachedToolRegistry
 from .tool_monitoring import MonitoredToolRegistry
 from .tool_security import SecureToolRegistry
-from .tool_sdk import ToolBuilder
-from .tool_testing import ToolTestSuite, ToolPerformanceTester, ToolIntegrationTester
-from .tool_documentation import DocumentationGenerator
 
 
 class LocalToolsIntegration:
-    """Comprehensive integration layer for local tools with all Phase 2 features"""
+    """Simplified integration layer for local tools with registry, monitoring, and security"""
     
     def __init__(self, tool_registry: ToolRegistry = None):
         # Initialize core registry
         self.tool_registry = tool_registry or ToolRegistry()
         
-        # Initialize all Phase 2 components
-        self.discovery = ToolDiscovery(self.tool_registry)
-        self.templates = ToolTemplates(self.tool_registry)
-        self.composition_manager = ToolCompositionManager(self.tool_registry)
-        self.cached_registry = CachedToolRegistry()
+        # Initialize monitoring and security
         self.monitored_registry = MonitoredToolRegistry()
         self.secure_registry = SecureToolRegistry()
-        self.tool_builder = ToolBuilder(self.tool_registry)
-        self.test_suite = ToolTestSuite(self.tool_registry)
-        self.performance_tester = ToolPerformanceTester(self.tool_registry)
-        self.integration_tester = ToolIntegrationTester(self.tool_registry)
-        self.doc_generator = DocumentationGenerator(self.tool_registry)
         
         self._registered_tools: Dict[str, Any] = {}
     
@@ -56,8 +40,29 @@ class LocalToolsIntegration:
         return tools
     
     async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
-        """Execute a local tool"""
-        return await self.tool_registry.execute_tool(tool_name, parameters)
+        """Execute a local tool with monitoring and security"""
+        # Security check - use the secure registry's validation
+        try:
+            self.secure_registry.validate_execution(tool_name, parameters)
+        except Exception as e:
+            raise PermissionError(f"Security check failed for tool '{tool_name}': {str(e)}")
+        
+        # Start monitoring
+        self.monitored_registry.monitor.start_tool_execution(tool_name)
+        
+        try:
+            # Execute tool
+            result = await self.tool_registry.execute_tool(tool_name, parameters)
+            
+            # Record success
+            self.monitored_registry.monitor.record_tool_success(tool_name)
+            
+            return result
+            
+        except Exception as e:
+            # Record failure
+            self.monitored_registry.monitor.record_tool_failure(tool_name, str(e))
+            raise
     
     def get_tool_schemas(self) -> Dict[str, Dict[str, Any]]:
         """Get all tool schemas for MCP integration"""
@@ -66,70 +71,6 @@ class LocalToolsIntegration:
     def list_tool_names(self) -> List[str]:
         """Get list of registered tool names"""
         return list(self.tool_registry.tools.keys())
-    
-    # Tool Discovery
-    def discover_tools_from_module(self, module_name: str) -> List[str]:
-        """Discover tools from a Python module"""
-        return self.discovery.discover_from_module(module_name)
-    
-    def discover_tools_from_directory(self, directory_path: str, pattern: str = "*.py") -> List[str]:
-        """Discover tools from a directory of Python files"""
-        return self.discovery.discover_from_directory(directory_path, pattern)
-    
-    def auto_register_discovered_tools(self) -> int:
-        """Automatically register all discovered tools"""
-        return self.discovery.auto_register_discovered_tools()
-    
-    def get_discovery_summary(self) -> Dict[str, Any]:
-        """Get a summary of discovered tools"""
-        return self.discovery.get_discovery_summary()
-    
-    # Tool Templates
-    def load_template(self, template_name: str) -> int:
-        """Load all tools from a template into the registry"""
-        return self.templates.load_template(template_name)
-    
-    def load_all_templates(self) -> Dict[str, int]:
-        """Load all templates into the registry"""
-        return self.templates.load_all_templates()
-    
-    def list_templates(self) -> List[str]:
-        """List all available template names"""
-        return self.templates.list_templates()
-    
-    def get_template(self, template_name: str):
-        """Get a specific template by name"""
-        return self.templates.get_template(template_name)
-    
-    # Tool Composition
-    def create_composition(self, name: str):
-        """Create a new tool composition"""
-        return self.composition_manager.create_composition(name)
-    
-    def get_composition(self, name: str):
-        """Get a composition by name"""
-        return self.composition_manager.get_composition(name)
-    
-    def list_compositions(self) -> List[str]:
-        """List all composition names"""
-        return self.composition_manager.list_compositions()
-    
-    def register_composition_as_tool(self, composition_name: str, tool_name: str = None) -> str:
-        """Register a composition as a tool in the registry"""
-        return self.composition_manager.register_composition_as_tool(composition_name, tool_name)
-    
-    # Tool Caching
-    def set_tool_ttl(self, tool_name: str, ttl: Optional[float]) -> None:
-        """Set TTL for a specific tool"""
-        self.cached_registry.set_tool_ttl(tool_name, ttl)
-    
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
-        return self.cached_registry.get_cache_stats()
-    
-    def clear_cache(self) -> None:
-        """Clear the tool cache"""
-        self.cached_registry.clear_cache()
     
     # Tool Monitoring
     def get_monitoring_summary(self) -> Dict[str, Any]:
@@ -183,78 +124,28 @@ class LocalToolsIntegration:
         """Get security report"""
         return self.secure_registry.get_security_report()
     
-    # Tool SDK
-    def get_tool_metadata(self, tool_name: str):
-        """Get metadata for a tool"""
-        return self.tool_builder.get_tool_metadata(tool_name)
-    
-    def list_tools_with_metadata(self) -> Dict[str, Any]:
-        """List all tools with their metadata"""
-        return self.tool_builder.list_tools_with_metadata()
-    
-    # Tool Testing
-    async def run_basic_tests(self) -> Dict[str, Any]:
-        """Run basic tests for all registered tools"""
-        return await self.test_suite.run_all_tests()
-    
-    async def benchmark_all_tools(self, iterations: int = 50) -> Dict[str, Any]:
-        """Benchmark all registered tools"""
-        return await self.performance_tester.compare_tools([], iterations)
-    
-    def generate_test_report(self) -> str:
-        """Generate a test report in markdown format"""
-        return self.test_suite.get_test_summary()
-    
-    # Tool Documentation
-    def generate_markdown_docs(self, output_file: str = "tools_documentation.md") -> str:
-        """Generate markdown documentation for all tools"""
-        return self.doc_generator.generate_markdown_docs(output_file)
-    
-    def generate_json_schema(self, output_file: str = "tools_schema.json") -> str:
-        """Generate JSON schema for all tools"""
-        return self.doc_generator.generate_json_schema(output_file)
-    
-    def generate_all_documentation(self) -> Dict[str, str]:
-        """Generate all documentation formats"""
-        return self.doc_generator.generate_all_documentation()
-    
     # Convenience methods for easy setup
-    def setup_complete_tool_ecosystem(self):
-        """Setup a complete tool ecosystem with all features"""
-        print("🚀 Setting up complete tool ecosystem...")
-        
-        # Load all templates
-        print("📦 Loading tool templates...")
-        template_results = self.load_all_templates()
-        for template, count in template_results.items():
-            print(f"  • {template}: {count} tools loaded")
+    def setup_basic_tool_ecosystem(self):
+        """Setup basic tool ecosystem with monitoring and security"""
+        print("🚀 Setting up basic tool ecosystem...")
         
         # Setup default security policies
         print("🔒 Setting up security policies...")
         from .tool_security import setup_default_security_policies
         setup_default_security_policies()
         
-        # Configure caching
-        print("⚡ Configuring caching...")
-        from .tool_caching import configure_tool_caching
-        configure_tool_caching()
-        
         # Start monitoring
         print("📊 Starting monitoring...")
         self.monitored_registry.monitor.start_monitoring()
         
-        print("✅ Tool ecosystem setup complete!")
+        print("✅ Basic tool ecosystem setup complete!")
     
     def get_ecosystem_status(self) -> Dict[str, Any]:
-        """Get status of all tool ecosystem components"""
+        """Get status of tool ecosystem components"""
         return {
             "tools_registered": len(self.tool_registry.tools),
-            "templates_available": len(self.templates.templates),
-            "compositions_available": len(self.composition_manager.compositions),
-            "cache_stats": self.get_cache_stats(),
             "monitoring_summary": self.get_monitoring_summary(),
-            "security_report": self.get_security_report(),
-            "discovery_summary": self.get_discovery_summary()
+            "security_report": self.get_security_report()
         }
 
 
@@ -283,23 +174,13 @@ async def execute_local_tool(tool_name: str, parameters: Dict[str, Any]) -> Any:
 
 # High-level convenience functions
 def setup_tool_ecosystem():
-    """Setup complete tool ecosystem"""
-    local_tools.setup_complete_tool_ecosystem()
+    """Setup basic tool ecosystem"""
+    local_tools.setup_basic_tool_ecosystem()
 
 
 def get_ecosystem_status() -> Dict[str, Any]:
     """Get tool ecosystem status"""
     return local_tools.get_ecosystem_status()
-
-
-async def run_tool_tests() -> Dict[str, Any]:
-    """Run comprehensive tool tests"""
-    return await local_tools.run_basic_tests()
-
-
-def generate_tool_docs() -> str:
-    """Generate comprehensive tool documentation"""
-    return local_tools.generate_markdown_docs()
 
 
 def get_tool_insights() -> List[str]:

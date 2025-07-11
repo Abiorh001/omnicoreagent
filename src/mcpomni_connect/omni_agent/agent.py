@@ -10,7 +10,7 @@ from mcpomni_connect.agents.types import AgentConfig as ReactAgentConfig
 from mcpomni_connect.client import Configuration, MCPClient
 from mcpomni_connect.llm import LLMConnection
 from mcpomni_connect.memory import InMemoryStore
-from mcpomni_connect.config import config_transformer, ModelConfig, MCPToolConfig, TransportType, AgentConfig
+from mcpomni_connect.omni_agent.config import config_transformer, ModelConfig, MCPToolConfig, TransportType, AgentConfig
 from mcpomni_connect.system_prompts import generate_react_agent_prompt
 from mcpomni_connect.constants import date_time_func
 
@@ -233,11 +233,12 @@ class OmniAgent:
         
         # Combine available tools from both MCP and local sources
         available_tools = self._combine_available_tools()
-        
+        #print(f"Available tools: {available_tools}")
         # Prepare extra kwargs
         extra_kwargs = {
             "sessions": self.mcp_client.sessions if self.mcp_client else {},
             "available_tools": available_tools,
+            "mcp_tools": self.mcp_client.available_tools,
             "local_tools": self.local_tools,  # Pass local tools for execution
             "session_id": chat_id,
         }

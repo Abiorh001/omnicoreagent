@@ -46,7 +46,6 @@ dependencies = [
     "python-multipart>=0.0.20",
     "colorama>=0.4.6",
     "mcp[cli]>=1.9.1",
-    
 ]
 
 [project.scripts]
