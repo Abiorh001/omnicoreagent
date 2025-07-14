@@ -46,14 +46,13 @@ class BaseReactAgent:
         tool_call_timeout: int,
         request_limit: int,
         total_tokens_limit: int,
-    
     ):
         self.agent_name = agent_name
         self.max_steps = max_steps
         self.tool_call_timeout = tool_call_timeout
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
-       
+
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
 
@@ -271,7 +270,7 @@ class BaseReactAgent:
     ) -> ToolError | ToolCallResult:
         """
         Resolve tool call request for both MCP and local tools.
-        
+
         Args:
             parsed_response: Parsed response from LLM
             sessions: MCP sessions dict
@@ -282,14 +281,14 @@ class BaseReactAgent:
             action = json.loads(parsed_response.data)
             tool_name = action.get("tool", "").strip()
             tool_args = action.get("parameters", {})
-            
+
             if not tool_name:
                 return ToolError(
                     observation="No tool name provided in the request",
                     tool_name="N/A",
                     tool_args=tool_args,
                 )
-            
+
             # First, check if tool exists in MCP tools
             mcp_tool_found = False
             if mcp_tools:
@@ -303,15 +302,17 @@ class BaseReactAgent:
                                 mcp_tools=mcp_tools,
                             )
                             tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
-                            tool_data = await mcp_tool_handler.validate_tool_call_request(
-                                tool_data=parsed_response.data,
-                                mcp_tools=mcp_tools,
+                            tool_data = (
+                                await mcp_tool_handler.validate_tool_call_request(
+                                    tool_data=parsed_response.data,
+                                    mcp_tools=mcp_tools,
+                                )
                             )
                             mcp_tool_found = True
                             break
                     if mcp_tool_found:
                         break
-            
+
             # If not found in MCP tools, check local tools
             if not mcp_tool_found and local_tools:
                 local_tool_handler = LocalToolHandler(local_tools=local_tools)
@@ -327,14 +328,14 @@ class BaseReactAgent:
                     tool_name=tool_name,
                     tool_args=tool_args,
                 )
-            
+
             if not tool_data.get("action"):
                 return ToolError(
                     observation=tool_data.get("error", "Tool validation failed"),
                     tool_name=tool_name,
                     tool_args=tool_args,
                 )
-            
+
             return ToolCallResult(
                 tool_executor=tool_executor,
                 tool_name=tool_data.get("tool_name"),
@@ -389,7 +390,6 @@ class BaseReactAgent:
             )
 
             await add_message_to_history(
-               
                 role="assistant",
                 content=response,
                 metadata=tool_calls_metadata.model_dump(),
@@ -425,10 +425,12 @@ class BaseReactAgent:
                 )
                 logger.warning(observation)
                 await add_message_to_history(
-                   
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id, "agent_name": self.agent_name},
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "agent_name": self.agent_name,
+                    },
                     session_id=session_id,
                 )
                 self.messages[self.agent_name].append(
@@ -441,10 +443,12 @@ class BaseReactAgent:
                 observation = f"Error executing tool: {str(e)}"
                 logger.error(observation)
                 await add_message_to_history(
-                   
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id, "agent_name": self.agent_name},
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "agent_name": self.agent_name,
+                    },
                     session_id=session_id,
                 )
 
@@ -475,7 +479,6 @@ class BaseReactAgent:
             )
         )
         await add_message_to_history(
-           
             role="user",
             content=f"OBSERVATION(RESULT FROM {tool_call_result.tool_name} TOOL CALL): \n{observation}",
             session_id=session_id,
@@ -546,23 +549,23 @@ class BaseReactAgent:
         try:
             if not available_tools:
                 return "No tools available"
-            
+
             # Process each server/group of tools
             for server_name, tools in available_tools.items():
                 if not tools:
                     continue
-                
+
                 # Add server/group header
                 tools_section.append(f"## {server_name.upper()} TOOLS")
-                
+
                 # Handle different tool formats
                 for tool in tools:
-                    if hasattr(tool, 'name'):  # MCP Tool object
+                    if hasattr(tool, "name"):  # MCP Tool object
                         tool_name = str(tool.name)
                         tool_description = str(tool.description)
-                        
+
                         tool_md = f"### `{tool_name}`\n{tool_description}"
-                        
+
                         if hasattr(tool, "inputSchema") and tool.inputSchema:
                             params = tool.inputSchema.get("properties", {})
                             if params:
@@ -574,17 +577,15 @@ class BaseReactAgent:
                                         "description", "**No description**"
                                     )
                                     param_type = param_info.get("type", "any")
-                                    tool_md += (
-                                        f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-                                    )
-                    
+                                    tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
                     elif isinstance(tool, dict):  # Local tool dictionary
-                        tool_name = tool.get('name', 'Unknown')
-                        tool_description = tool.get('description', 'No description')
-                        
+                        tool_name = tool.get("name", "Unknown")
+                        tool_description = tool.get("description", "No description")
+
                         tool_md = f"### `{tool_name}`\n{tool_description}"
-                        
-                        input_schema = tool.get('inputSchema', {})
+
+                        input_schema = tool.get("inputSchema", {})
                         if input_schema:
                             params = input_schema.get("properties", {})
                             if params:
@@ -596,13 +597,11 @@ class BaseReactAgent:
                                         "description", "**No description**"
                                     )
                                     param_type = param_info.get("type", "any")
-                                    tool_md += (
-                                        f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-                                    )
-                    
+                                    tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
                     else:  # Unknown format
                         tool_md = f"### Unknown Tool\n{str(tool)}"
-                    
+
                     tools_section.append(tool_md)
 
         except Exception as e:
@@ -642,7 +641,10 @@ class BaseReactAgent:
         ]
         # Add initial user message to message history
         await add_message_to_history(
-            role="user", content=query, session_id=session_id, metadata={"agent_name": self.agent_name}
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
         # Initialize messages with current message history (only once at start)
         await self.update_llm_working_memory(
@@ -787,7 +789,6 @@ class BaseReactAgent:
                     Message(role="user", content=error_message)
                 )
                 await add_message_to_history(
-                    
                     role="user",
                     content=error_message,
                     session_id=session_id,

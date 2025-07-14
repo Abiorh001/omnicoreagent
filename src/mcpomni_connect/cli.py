@@ -1031,6 +1031,7 @@ class MCPClientCLI:
                     extra_kwargs = {
                         "sessions": self.client.sessions,
                         "available_tools": self.client.available_tools,
+                        "mcp_tools": self.client.available_tools,
                         "is_generic_agent": True,
                         "chat_id": CLIENT_MAC_ADDRESS,
                     }
@@ -1078,7 +1079,6 @@ class MCPClientCLI:
                         config=agent_config,
                         agents_registry=AGENTS_REGISTRY,
                         current_date_time=date_time_func["format_date"](),
-                        chat_id=CLIENT_MAC_ADDRESS,
                         debug=self.client.debug,
                     )
                     response = await orchestrator_agent.run(
@@ -1091,6 +1091,7 @@ class MCPClientCLI:
                         ),
                         llm_connection=self.llm_connection,
                         available_tools=self.client.available_tools,
+                        mcp_tools=self.client.available_tools,
                         message_history=(
                             self.redis_short_term_memory.get_messages
                             if self.USE_MEMORY["redis"]
@@ -1101,6 +1102,7 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
+                        session_id=CLIENT_MAC_ADDRESS,
                     )
                 else:
                     response = "Your current model doesn't support function calling. You must use '/mode:auto' to switch to Auto Mode - it works with both function-calling and non-function-calling models, providing seamless tool execution through our ReAct Agent. For advanced tool orchestration, use '/mode:orchestrator'."

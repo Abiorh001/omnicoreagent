@@ -21,7 +21,6 @@ class OrchestratorAgent(BaseReactAgent):
         self,
         config: AgentConfig,
         agents_registry: AGENTS_REGISTRY,
-        chat_id: int,
         current_date_time: str,
         debug: bool = False,
     ):
@@ -31,10 +30,8 @@ class OrchestratorAgent(BaseReactAgent):
             tool_call_timeout=config.tool_call_timeout,
             request_limit=config.request_limit,
             total_tokens_limit=config.total_tokens_limit,
-            mcp_enabled=config.mcp_enabled,
         )
         self.agents_registry = agents_registry
-        self.chat_id = chat_id
         self.current_date_time = current_date_time
         self.orchestrator_messages = []
         self.max_steps = 20
@@ -99,10 +96,12 @@ class OrchestratorAgent(BaseReactAgent):
         )
         return agent_system_prompt
 
-    async def update_llm_working_memory(self, message_history: Callable[[], Any]):
+    async def update_llm_working_memory(
+        self, message_history: Callable[[], Any], session_id: str
+    ):
         """Update the LLM's working memory with the current message history"""
         short_term_memory_message_history = await message_history(
-            agent_name="orchestrator", chat_id=self.chat_id
+            agent_name="orchestrator", session_id=session_id
         )
 
         for _, message in enumerate(short_term_memory_message_history):
@@ -133,11 +132,13 @@ class OrchestratorAgent(BaseReactAgent):
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
         available_tools: dict[str, Any],
+        mcp_tools: dict[str, Any],
         message_history: Callable[[], Any],
         tool_call_timeout: int,
         max_steps: int,
         request_limit: int,
         total_tokens_limit: int,
+        session_id: str,
     ) -> str:
         """Execute agent and return JSON-formatted observation"""
         try:
@@ -152,14 +153,14 @@ class OrchestratorAgent(BaseReactAgent):
                 max_steps=max_steps,
                 request_limit=request_limit,
                 total_tokens_limit=total_tokens_limit,
-                mcp_enabled=True,
             )
             extra_kwargs = {
                 "sessions": sessions,
                 "available_tools": available_tools,
+                "mcp_tools": mcp_tools,
                 "local_tools": None,  # No local tools in orchestrator mode
                 "is_generic_agent": False,
-                "chat_id": self.chat_id,
+                "session_id": session_id,
             }
             react_agent = ReactAgent(config=agent_config)
             observation = await react_agent._run(
@@ -183,10 +184,10 @@ class OrchestratorAgent(BaseReactAgent):
                 }
             )
             await add_message_to_history(
-                agent_name="orchestrator",
                 role="user",
                 content=f"{agent_name} Agent Observation:\n{observation}",
-                chat_id=self.chat_id,
+                session_id=session_id,
+                metadata={"agent_name": agent_name},
             )
             return observation
         except Exception as e:
@@ -232,12 +233,14 @@ class OrchestratorAgent(BaseReactAgent):
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
         available_tools: dict[str, Any],
+        mcp_tools: dict[str, Any],
         message_history: Callable[[], Any],
         orchestrator_system_prompt: str,
         tool_call_timeout: int,
         max_steps: int,
         request_limit: int,
         total_tokens_limit: int,
+        session_id: str,
     ) -> str | None:
         """Execute ReAct loop with JSON communication"""
         # Initialize messages with system prompt
@@ -252,9 +255,12 @@ class OrchestratorAgent(BaseReactAgent):
 
         # Add initial user message to message history
         await add_message_to_history(
-            agent_name="orchestrator", role="user", content=query, chat_id=self.chat_id
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": "orchestrator"},
         )
-        await self.update_llm_working_memory(message_history)
+        await self.update_llm_working_memory(message_history, session_id)
         current_steps = 0
         while current_steps < self.max_steps:
             current_steps += 1
@@ -329,10 +335,10 @@ class OrchestratorAgent(BaseReactAgent):
                     }
                 )
                 await add_message_to_history(
-                    agent_name="orchestrator",
                     role="assistant",
                     content=parsed_response.answer,
-                    chat_id=self.chat_id,
+                    session_id=session_id,
+                    metadata={"agent_name": "orchestrator"},
                 )
                 # reset the steps
                 current_steps = 0
@@ -349,11 +355,13 @@ class OrchestratorAgent(BaseReactAgent):
                     add_message_to_history=add_message_to_history,
                     llm_connection=llm_connection,
                     available_tools=available_tools,
+                    mcp_tools=mcp_tools,
                     message_history=message_history,
                     max_steps=max_steps,
                     tool_call_timeout=tool_call_timeout,
                     total_tokens_limit=total_tokens_limit,
                     request_limit=request_limit,
+                    session_id=session_id,
                 )
                 continue
             elif parsed_response.error is not None:
@@ -370,8 +378,8 @@ class OrchestratorAgent(BaseReactAgent):
                 }
             )
             await add_message_to_history(
-                agent_name="orchestrator",
                 role="user",
                 content=error_message,
-                chat_id=self.chat_id,
+                session_id=session_id,
+                metadata={"agent_name": "orchestrator"},
             )

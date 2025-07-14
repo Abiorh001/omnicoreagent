@@ -52,7 +52,6 @@ class MCPClientConnect:
             max_steps=15,
             request_limit=100,
             total_tokens_limit=1000000,
-           
         )
         if self.MODE["auto"]:
             react_agent_prompt = generate_react_agent_prompt(
@@ -62,7 +61,6 @@ class MCPClientConnect:
             extra_kwargs = {
                 "sessions": self.client.sessions,
                 "available_tools": self.client.available_tools,
-                
                 "session_id": chat_id,
             }
             react_agent = ReactAgent(config=agent_config)

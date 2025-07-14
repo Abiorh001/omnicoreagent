@@ -122,15 +122,15 @@ class LocalToolHandler(BaseToolHandler):
 
             # Check if tool exists in local tools
             available_local_tools = local_tools.get_available_tools()
-            tool_names = [tool['name'] for tool in available_local_tools]
-            
+            tool_names = [tool["name"] for tool in available_local_tools]
+
             if tool_name in tool_names:
                 return {
                     "action": True,
                     "tool_name": tool_name,
                     "tool_args": tool_args,
                 }
-            
+
             error_message = (
                 f"The tool named '{tool_name}' does not exist in the current available tools. "
                 "Please double-check the available tools before attempting another action.\n\n"
@@ -158,9 +158,6 @@ class LocalToolHandler(BaseToolHandler):
         return await self.local_tools.execute_tool(tool_name, tool_args)
 
 
-
-
-
 class ToolExecutor:
     def __init__(self, tool_handler: BaseToolHandler):
         self.tool_handler = tool_handler
@@ -169,7 +166,7 @@ class ToolExecutor:
         self,
         agent_name: str,
         tool_name: str,
-        tool_args: dict[str, Any],  
+        tool_args: dict[str, Any],
         tool_call_id: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         session_id: str = None,

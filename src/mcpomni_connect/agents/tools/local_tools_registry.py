@@ -31,7 +31,7 @@ class Tool:
         # Extract parameters from the dict based on function signature
         sig = inspect.signature(self.function)
         func_params = {}
-        
+
         for param_name, param in sig.parameters.items():
             if param_name in parameters:
                 func_params[param_name] = parameters[param_name]
@@ -39,7 +39,7 @@ class Tool:
                 func_params[param_name] = param.default
             else:
                 raise ValueError(f"Missing required parameter: {param_name}")
-        
+
         # Execute the function
         if self.is_async:
             return await self.function(**func_params)
@@ -81,19 +81,19 @@ class ToolRegistry:
 
     def list_tools(self) -> list[Tool]:
         return list(self.tools.values())
-    
-
 
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """Get list of available tools for OmniAgent"""
         tools = []
         for tool in self.list_tools():
-            tools.append({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.inputSchema,
-                "type": "local"
-            })
+            tools.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.inputSchema,
+                    "type": "local",
+                }
+            )
         return tools
 
     def get_tool_schemas(self) -> Dict[str, Dict[str, Any]]:
@@ -112,39 +112,39 @@ class ToolRegistry:
         tool = self.get_tool(tool_name)
         if not tool:
             raise ValueError(f"Tool '{tool_name}' not found")
-        
+
         return await tool.execute(parameters)
 
     def _infer_schema(self, func: Callable) -> dict[str, Any]:
         sig = inspect.signature(func)
         props = {}
         required = []
-        
+
         for param_name, param in sig.parameters.items():
             # Skip 'self' parameter for methods
-            if param_name == 'self':
+            if param_name == "self":
                 continue
-                
+
             param_type = (
                 param.annotation
                 if param.annotation is not inspect.Parameter.empty
                 else str
             )
-            
+
             props[param_name] = {"type": self._map_type(param_type)}
-            
+
             # Add description if available from docstring
             if func.__doc__:
                 # Simple docstring parsing for parameter descriptions
-                doc_lines = func.__doc__.split('\n')
+                doc_lines = func.__doc__.split("\n")
                 for line in doc_lines:
-                    if line.strip().startswith(f'{param_name}:'):
-                        props[param_name]["description"] = line.split(':', 1)[1].strip()
+                    if line.strip().startswith(f"{param_name}:"):
+                        props[param_name]["description"] = line.split(":", 1)[1].strip()
                         break
-            
+
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)
-        
+
         return {
             "type": "object",
             "properties": props,
@@ -154,11 +154,11 @@ class ToolRegistry:
 
     def _map_type(self, typ: Any) -> str:
         type_map = {
-            int: "integer", 
-            float: "number", 
-            str: "string", 
+            int: "integer",
+            float: "number",
+            str: "string",
             bool: "boolean",
             list: "array",
-            dict: "object"
+            dict: "object",
         }
         return type_map.get(typ, "string")

@@ -67,7 +67,7 @@ class InMemoryStore:
     ) -> list[dict[str, Any]]:
         """Truncate message history to stay within token limits.
 
-        Args:   
+        Args:
             session_id: Session ID to truncate
 
         Returns:
@@ -118,11 +118,11 @@ class InMemoryStore:
             # Ensure metadata exists
             if metadata is None:
                 metadata = {}
-            
+
             # Use session-based storage for database compatibility
             if session_id not in self.sessions_history:
                 self.sessions_history[session_id] = []
-            
+
             message = {
                 "role": role,
                 "content": content,
@@ -148,20 +148,22 @@ class InMemoryStore:
         Returns:
             List of messages
         """
-        
+
         try:
             if session_id not in self.sessions_history:
                 self.sessions_history[session_id] = []
-            
+
             messages = await self.truncate_message_history(session_id=session_id)
-            
+
             # Filter by agent_name if provided
             if agent_name:
                 messages = [
-                    msg for msg in messages 
-                    if self._get_agent_name_from_metadata(msg.get("metadata")) == agent_name
+                    msg
+                    for msg in messages
+                    if self._get_agent_name_from_metadata(msg.get("metadata"))
+                    == agent_name
                 ]
-            
+
             return messages
 
         except Exception as e:
@@ -176,19 +178,23 @@ class InMemoryStore:
                 if agent_name:
                     # Filter by agent_name in metadata
                     filtered_messages = [
-                        msg for msg in session_messages 
-                        if self._get_agent_name_from_metadata(msg.get("metadata")) == agent_name
+                        msg
+                        for msg in session_messages
+                        if self._get_agent_name_from_metadata(msg.get("metadata"))
+                        == agent_name
                     ]
                     all_messages.extend(filtered_messages)
                 else:
                     all_messages.extend(session_messages)
-            
+
             return all_messages
         except Exception as e:
             logger.error(f"error getting all messages: {e}")
             return []
 
-    async def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
+    async def clear_memory(
+        self, session_id: str = None, agent_name: str = None
+    ) -> None:
         """Clear memory for a session or all memory.
 
         Args:
@@ -200,8 +206,10 @@ class InMemoryStore:
                 if agent_name:
                     # Remove only messages for specific agent in this session
                     self.sessions_history[session_id] = [
-                        msg for msg in self.sessions_history[session_id]
-                        if self._get_agent_name_from_metadata(msg.get("metadata")) != agent_name
+                        msg
+                        for msg in self.sessions_history[session_id]
+                        if self._get_agent_name_from_metadata(msg.get("metadata"))
+                        != agent_name
                     ]
                 else:
                     # Remove entire session
@@ -210,8 +218,10 @@ class InMemoryStore:
                 # Remove messages for specific agent across all sessions
                 for session_id in list(self.sessions_history.keys()):
                     self.sessions_history[session_id] = [
-                        msg for msg in self.sessions_history[session_id]
-                        if self._get_agent_name_from_metadata(msg.get("metadata")) != agent_name
+                        msg
+                        for msg in self.sessions_history[session_id]
+                        if self._get_agent_name_from_metadata(msg.get("metadata"))
+                        != agent_name
                     ]
                     # Remove empty sessions
                     if not self.sessions_history[session_id]:
@@ -227,15 +237,15 @@ class InMemoryStore:
         """Extract agent name from metadata, handling both dict and ToolCallMetadata objects"""
         if not metadata:
             return None
-        
+
         # Handle ToolCallMetadata objects (Pydantic models)
-        if hasattr(metadata, 'agent_name'):
+        if hasattr(metadata, "agent_name"):
             return metadata.agent_name
-        
+
         # Handle dictionary metadata
         if isinstance(metadata, dict):
             return metadata.get("agent_name")
-        
+
         return None
 
     async def save_message_history_to_file(
@@ -258,14 +268,19 @@ class InMemoryStore:
                     messages = self.sessions_history.get(session_id, [])
                     if agent_name:
                         messages = [
-                            msg for msg in messages 
+                            msg
+                            for msg in messages
                             if msg.get("metadata", {}).get("agent_name") == agent_name
                         ]
                     if messages:
                         f.write(f"Session: {session_id}\n")
                         for message in messages:
-                            agent = message.get("metadata", {}).get("agent_name", "unknown")
-                            f.write(f"[{agent}] {message['role']}: {message['content']}\n")
+                            agent = message.get("metadata", {}).get(
+                                "agent_name", "unknown"
+                            )
+                            f.write(
+                                f"[{agent}] {message['role']}: {message['content']}\n"
+                            )
                 else:
                     logger.info(
                         f"Saving messages for all sessions: {self.sessions_history}"
@@ -273,15 +288,21 @@ class InMemoryStore:
                     for session_id, messages in self.sessions_history.items():
                         if agent_name:
                             messages = [
-                                msg for msg in messages 
-                                if msg.get("metadata", {}).get("agent_name") == agent_name
+                                msg
+                                for msg in messages
+                                if msg.get("metadata", {}).get("agent_name")
+                                == agent_name
                             ]
                         if messages:
                             logger.info(f"Saving messages for session: {session_id}")
                             f.write(f"Session: {session_id}\n")
                             for message in messages:
-                                agent = message.get("metadata", {}).get("agent_name", "unknown")
-                                f.write(f"[{agent}] {message['role']}: {message['content']}\n")
+                                agent = message.get("metadata", {}).get(
+                                    "agent_name", "unknown"
+                                )
+                                f.write(
+                                    f"[{agent}] {message['role']}: {message['content']}\n"
+                                )
                             f.write("\n")
             if self.debug:
                 logger.info(f"Message history saved to {file_path}")
@@ -321,7 +342,7 @@ class InMemoryStore:
                                 agent_end = msg.find("]")
                                 if agent_end > 0:
                                     agent = msg[1:agent_end]
-                                    role_content = msg[agent_end + 1:].strip()
+                                    role_content = msg[agent_end + 1 :].strip()
                                     if ":" in role_content:
                                         role, content = role_content.split(":", 1)
                                         metadata = {"agent_name": agent}
@@ -329,7 +350,7 @@ class InMemoryStore:
                                             role=role.strip(),
                                             content=content.strip(),
                                             metadata=metadata,
-                                            session_id=current_session
+                                            session_id=current_session,
                                         )
 
             if self.debug:
