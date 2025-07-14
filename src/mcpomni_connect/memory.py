@@ -41,7 +41,7 @@ class InMemoryStore:
             "value": self.short_term_limit,  # default token budget
         }
 
-    def set_memory_config(self, mode: str, value: int = None) -> None:
+    def set_memory_config(self, mode: str, value: int | None = None) -> None:
         """Set global memory strategy.
 
         Args:
@@ -63,11 +63,11 @@ class InMemoryStore:
             logger.info(f"[Memory] Config set to: {self.memory_config}")
 
     async def truncate_message_history(
-        self, session_id: str = None
+        self, session_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Truncate message history to stay within token limits.
 
-        Args:   
+        Args:
             session_id: Session ID to truncate
 
         Returns:
@@ -76,14 +76,14 @@ class InMemoryStore:
         logger.info(f"memory config: {self.memory_config}")
         try:
             if session_id not in self.sessions_history:
-                self.sessions_history[session_id] = []
+                self.sessions_history[session_id] = []  # type: ignore
                 return []
 
             messages = self.sessions_history[session_id]
             mode = self.memory_config.get("mode", "token_budget")
             value = self.memory_config.get("value")
             if mode.lower() == "sliding_window":
-                messages = messages[-value:]
+                messages = messages[-value:] if value is not None else messages
 
             elif mode.lower() == "token_budget":
                 total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
@@ -96,7 +96,7 @@ class InMemoryStore:
             return messages
         except Exception as e:
             logger.error(f"Failed to truncate message history: {e}")
-            self.sessions_history[session_id] = []
+            self.sessions_history[session_id] = []  # type: ignore
             return []
 
     async def store_message(
@@ -104,7 +104,7 @@ class InMemoryStore:
         role: str,
         content: str,
         metadata: dict | None = None,
-        session_id: str = None,
+        session_id: str | None = None,
     ) -> None:
         """Store a message in memory.
 
@@ -118,11 +118,11 @@ class InMemoryStore:
             # Ensure metadata exists
             if metadata is None:
                 metadata = {}
-            
+
             # Use session-based storage for database compatibility
             if session_id not in self.sessions_history:
-                self.sessions_history[session_id] = []
-            
+                self.sessions_history[session_id] = []  # type: ignore
+
             message = {
                 "role": role,
                 "content": content,
@@ -131,13 +131,13 @@ class InMemoryStore:
                 "metadata": metadata,
             }
 
-            self.sessions_history[session_id].append(message)
+            self.sessions_history[session_id].append(message)  # type: ignore
 
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
     async def get_messages(
-        self, session_id: str = None, agent_name: str = None
+        self, session_id: str | None = None, agent_name: str | None = None
     ) -> list[dict[str, Any]]:
         """Get messages from memory.
 
@@ -148,27 +148,29 @@ class InMemoryStore:
         Returns:
             List of messages
         """
-        
+
         try:
             if session_id not in self.sessions_history:
-                self.sessions_history[session_id] = []
-            
+                self.sessions_history[session_id] = []  # type: ignore
+
             messages = await self.truncate_message_history(session_id=session_id)
-            
+
             # Filter by agent_name if provided
             if agent_name:
                 messages = [
-                    msg for msg in messages 
-                    if self._get_agent_name_from_metadata(msg.get("metadata")) == agent_name
+                    msg
+                    for msg in messages
+                    if self._get_agent_name_from_metadata(msg.get("metadata"))
+                    == agent_name
                 ]
-            
+
             return messages
 
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
 
-    async def get_all_messages(self, agent_name: str = None):
+    async def get_all_messages(self, agent_name: str | None = None):
         """Get all messages across all sessions, optionally filtered by agent_name"""
         try:
             all_messages = []
@@ -176,19 +178,23 @@ class InMemoryStore:
                 if agent_name:
                     # Filter by agent_name in metadata
                     filtered_messages = [
-                        msg for msg in session_messages 
-                        if self._get_agent_name_from_metadata(msg.get("metadata")) == agent_name
+                        msg
+                        for msg in session_messages
+                        if self._get_agent_name_from_metadata(msg.get("metadata"))
+                        == agent_name
                     ]
                     all_messages.extend(filtered_messages)
                 else:
                     all_messages.extend(session_messages)
-            
+
             return all_messages
         except Exception as e:
             logger.error(f"error getting all messages: {e}")
             return []
 
-    async def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
+    async def clear_memory(
+        self, session_id: str | None = None, agent_name: str | None = None
+    ) -> None:
         """Clear memory for a session or all memory.
 
         Args:
@@ -200,8 +206,10 @@ class InMemoryStore:
                 if agent_name:
                     # Remove only messages for specific agent in this session
                     self.sessions_history[session_id] = [
-                        msg for msg in self.sessions_history[session_id]
-                        if self._get_agent_name_from_metadata(msg.get("metadata")) != agent_name
+                        msg
+                        for msg in self.sessions_history[session_id]
+                        if self._get_agent_name_from_metadata(msg.get("metadata"))
+                        != agent_name
                     ]
                 else:
                     # Remove entire session
@@ -210,8 +218,10 @@ class InMemoryStore:
                 # Remove messages for specific agent across all sessions
                 for session_id in list(self.sessions_history.keys()):
                     self.sessions_history[session_id] = [
-                        msg for msg in self.sessions_history[session_id]
-                        if self._get_agent_name_from_metadata(msg.get("metadata")) != agent_name
+                        msg
+                        for msg in self.sessions_history[session_id]
+                        if self._get_agent_name_from_metadata(msg.get("metadata"))
+                        != agent_name
                     ]
                     # Remove empty sessions
                     if not self.sessions_history[session_id]:
@@ -223,23 +233,26 @@ class InMemoryStore:
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")
 
-    def _get_agent_name_from_metadata(self, metadata) -> str:
+    def _get_agent_name_from_metadata(self, metadata) -> str | None:
         """Extract agent name from metadata, handling both dict and ToolCallMetadata objects"""
         if not metadata:
             return None
-        
+
         # Handle ToolCallMetadata objects (Pydantic models)
-        if hasattr(metadata, 'agent_name'):
+        if hasattr(metadata, "agent_name"):
             return metadata.agent_name
-        
+
         # Handle dictionary metadata
         if isinstance(metadata, dict):
             return metadata.get("agent_name")
-        
+
         return None
 
     async def save_message_history_to_file(
-        self, file_path: str, session_id: str = None, agent_name: str = None
+        self,
+        file_path: str,
+        session_id: str | None = None,
+        agent_name: str | None = None,
     ) -> None:
         """Save message history to a file, appending to existing content.
 
@@ -258,14 +271,19 @@ class InMemoryStore:
                     messages = self.sessions_history.get(session_id, [])
                     if agent_name:
                         messages = [
-                            msg for msg in messages 
+                            msg
+                            for msg in messages
                             if msg.get("metadata", {}).get("agent_name") == agent_name
                         ]
                     if messages:
                         f.write(f"Session: {session_id}\n")
                         for message in messages:
-                            agent = message.get("metadata", {}).get("agent_name", "unknown")
-                            f.write(f"[{agent}] {message['role']}: {message['content']}\n")
+                            agent = message.get("metadata", {}).get(
+                                "agent_name", "unknown"
+                            )
+                            f.write(
+                                f"[{agent}] {message['role']}: {message['content']}\n"
+                            )
                 else:
                     logger.info(
                         f"Saving messages for all sessions: {self.sessions_history}"
@@ -273,15 +291,21 @@ class InMemoryStore:
                     for session_id, messages in self.sessions_history.items():
                         if agent_name:
                             messages = [
-                                msg for msg in messages 
-                                if msg.get("metadata", {}).get("agent_name") == agent_name
+                                msg
+                                for msg in messages
+                                if msg.get("metadata", {}).get("agent_name")
+                                == agent_name
                             ]
                         if messages:
                             logger.info(f"Saving messages for session: {session_id}")
                             f.write(f"Session: {session_id}\n")
                             for message in messages:
-                                agent = message.get("metadata", {}).get("agent_name", "unknown")
-                                f.write(f"[{agent}] {message['role']}: {message['content']}\n")
+                                agent = message.get("metadata", {}).get(
+                                    "agent_name", "unknown"
+                                )
+                                f.write(
+                                    f"[{agent}] {message['role']}: {message['content']}\n"
+                                )
                             f.write("\n")
             if self.debug:
                 logger.info(f"Message history saved to {file_path}")
@@ -291,7 +315,10 @@ class InMemoryStore:
             raise
 
     async def load_message_history_from_file(
-        self, file_path: str, session_id: str = None, agent_name: str = None
+        self,
+        file_path: str,
+        session_id: str | None = None,
+        agent_name: str | None = None,
     ) -> None:
         """Load message history from a file and store in memory.
 
@@ -321,7 +348,7 @@ class InMemoryStore:
                                 agent_end = msg.find("]")
                                 if agent_end > 0:
                                     agent = msg[1:agent_end]
-                                    role_content = msg[agent_end + 1:].strip()
+                                    role_content = msg[agent_end + 1 :].strip()
                                     if ":" in role_content:
                                         role, content = role_content.split(":", 1)
                                         metadata = {"agent_name": agent}
@@ -329,7 +356,7 @@ class InMemoryStore:
                                             role=role.strip(),
                                             content=content.strip(),
                                             metadata=metadata,
-                                            session_id=current_session
+                                            session_id=current_session,
                                         )
 
             if self.debug:
@@ -353,7 +380,7 @@ class RedisShortTermMemory:
     ) -> None:
         """Initialize."""
         self._redis_client = redis_client or redis.Redis(
-            host=self.REDIS_HOST,
+            host=self.REDIS_HOST,  # type: ignore
             port=self.REDIS_PORT,
             db=self.REDIS_DB,
             decode_responses=True,
@@ -367,7 +394,9 @@ class RedisShortTermMemory:
             f"Initialized RedisShortTermMemory with client ID: {self.client_id}"
         )
 
-    async def store_message(self, role: str, content: str, metadata: dict = None):
+    async def store_message(
+        self, role: str, content: str, metadata: dict | None = None
+    ):
         """Store a message in Redis with a timestamp using the client's MAC address as ID."""
         metadata = metadata or {}
         logger.info(f"Storing message for client {self.client_id}: {content}")
@@ -400,7 +429,7 @@ class RedisShortTermMemory:
         # Deserialize messages and reconstruct tool calls if necessary
         return [self._deserialize(json.loads(msg)) for msg in messages]
 
-    def _serialize(self, data):
+    def _serialize(self, data: Any) -> str:
         """Convert any non-serializable data into a JSON-compatible format."""
         try:
             return json.dumps(data, default=lambda o: o.__dict__)
@@ -408,7 +437,7 @@ class RedisShortTermMemory:
             logger.error(f"Serialization failed: {e}")
             return json.dumps({"error": "Serialization failed"})
 
-    def _deserialize(self, data):
+    def _deserialize(self, data: Any) -> Any:
         """Convert stored JSON strings back to their original format if needed."""
         try:
             if "metadata" in data:
@@ -823,3 +852,305 @@ class RedisShortTermMemory:
 #         except Exception as e:
 #             logger.error(f"Failed to retrieve episodic memories: {e}")
 #             return []
+
+
+class DatabaseSessionMemory:
+    """Database-backed session memory using DatabaseSessionService."""
+
+    def __init__(
+        self,
+        db_url: str = None,
+        max_context_tokens: int = 30000,
+        debug: bool = False,
+    ) -> None:
+        """Initialize database session memory.
+
+        Args:
+            db_url: Database URL (defaults to SQLite if not provided)
+            max_context_tokens: Maximum tokens to keep in memory
+            debug: Enable debug logging
+        """
+        from mcpomni_connect.session.database_session import DatabaseSessionService
+        from mcpomni_connect.events.event import Event, EventActions
+        from mcpomni_connect.session._session_util import UserContent, AssistantContent
+
+        self.max_context_tokens = max_context_tokens
+        self.debug = debug
+        self.short_term_limit = int(0.7 * max_context_tokens)
+        self.client_id = CLIENT_MAC_ADDRESS
+
+        if not db_url:
+            db_url = f"sqlite:///mcp_memory_{self.client_id}.db"
+
+        self.db_service = DatabaseSessionService(db_url)
+        self.app_name = "mcp_omni_connect"
+        self.user_id = self.client_id
+        self.session_id = None
+
+        self.Event = Event
+        self.EventActions = EventActions
+        self.UserContent = UserContent
+        self.AssistantContent = AssistantContent
+
+        self.memory_config: dict[str, Any] = {
+            "mode": "token_budget",
+            "value": self.short_term_limit,
+        }
+
+        logger.info(
+            f"Initialized DatabaseSessionMemory with client ID: {self.client_id}, DB: {db_url}"
+        )
+
+    def set_memory_config(self, mode: str, value: int = None) -> None:
+        """Set global memory strategy.
+
+        Args:
+            mode: Memory mode ('sliding_window', 'token_budget')
+            value: Optional value (e.g., window size or token limit)
+        """
+        valid_modes = {"sliding_window", "token_budget"}
+        if mode.lower() not in valid_modes:
+            raise ValueError(
+                f"Invalid memory mode: {mode}. Must be one of {valid_modes}."
+            )
+
+        self.memory_config = {
+            "mode": mode,
+            "value": value,
+        }
+
+        if self.debug:
+            logger.info(f"[DatabaseMemory] Config set to: {self.memory_config}")
+
+    async def _ensure_session(self):
+        """Ensure we have an active session."""
+        if not self.session_id:
+            session = await self.db_service.create_session(
+                app_name=self.app_name,
+                user_id=self.user_id,
+                state={"memory_type": "database", "client_id": self.client_id},
+            )
+            self.session_id = session.id
+            logger.debug(f"Created database session: {self.session_id}")
+
+    async def store_message(
+        self,
+        agent_name: str = None,
+        role: str = None,
+        content: str = None,
+        metadata: dict = None,
+        chat_id: str = None,
+    ):
+        """Store a message in the database with session management.
+
+        Compatible with both old signature (role, content, metadata) and new signature (agent_name, role, content, metadata, chat_id).
+        """
+        # Handle different call signatures for backward compatibility
+        if agent_name is not None and role is not None and content is not None:
+            # New signature: (agent_name, role, content, metadata, chat_id)
+            actual_agent_name = agent_name
+            actual_role = role
+            actual_content = content
+        elif isinstance(agent_name, str) and role is not None and content is not None:
+            # Could be old signature: (role, content, metadata) where agent_name is actually role
+            if metadata is None and chat_id is None:
+                # Likely old signature
+                actual_agent_name = "default"
+                actual_role = agent_name
+                actual_content = role
+                metadata = content if isinstance(content, dict) else {}
+            else:
+                # New signature
+                actual_agent_name = agent_name
+                actual_role = role
+                actual_content = content
+        else:
+            raise ValueError("Invalid arguments to store_message")
+
+        metadata = metadata or {}
+        # Add agent_name to metadata for tracking
+        metadata["agent_name"] = actual_agent_name
+        metadata["chat_id"] = chat_id
+
+        if self.debug:
+            logger.info(
+                f"Storing message for client {self.client_id} (agent: {actual_agent_name}): {actual_content}"
+            )
+
+        await self._ensure_session()
+
+        session = await self.db_service.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+
+        if not session:
+            self.session_id = None
+            await self._ensure_session()
+            session = await self.db_service.get_session(
+                app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+            )
+
+        if actual_role.lower() == "user":
+            event_content = self.UserContent(text=actual_content)
+        elif actual_role.lower() in ["assistant", "system"]:
+            event_content = self.AssistantContent(text=actual_content)
+        else:
+            event_content = self.UserContent(text=actual_content)
+
+        event = self.Event(
+            invocation_id=f"msg_{time.time()}",
+            author=actual_role,
+            content=event_content,
+            actions=self.EventActions(
+                state_delta={
+                    "last_message": actual_content,
+                    "last_role": actual_role,
+                    "message_count": len(session.events) + 1,
+                    **metadata,
+                }
+            ),
+        )
+
+        await self.db_service.append_event(session, event)
+
+        await self.enforce_short_term_limit()
+
+    async def get_messages(self, agent_name: str = None, chat_id: str = None):
+        """Retrieve messages from the database session.
+
+        Args:
+            agent_name: Optional agent name filter
+            chat_id: Optional chat ID filter
+        """
+        await self._ensure_session()
+
+        await self.enforce_short_term_limit()
+
+        session = await self.db_service.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+
+        if not session:
+            return []
+
+        messages = []
+        for event in session.events:
+            message = {
+                "role": event.author,
+                "content": event.content.text
+                if hasattr(event.content, "text")
+                else str(event.content),
+                "metadata": event.actions.state_delta if event.actions else {},
+                "timestamp": event.timestamp,
+            }
+
+            # Filter by agent_name if specified
+            if agent_name:
+                msg_agent_name = message["metadata"].get("agent_name")
+                if msg_agent_name != agent_name:
+                    continue
+
+            # Filter by chat_id if specified
+            if chat_id:
+                msg_chat_id = message["metadata"].get("chat_id")
+                if msg_chat_id != chat_id:
+                    continue
+
+            messages.append(message)
+
+        return messages
+
+    async def get_last_active(self):
+        """Get last active timestamp for this client."""
+        await self._ensure_session()
+
+        session = await self.db_service.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+
+        if session:
+            return session.last_update_time
+        return None
+
+    async def enforce_short_term_limit(self):
+        """Enforce memory limits based on configured strategy."""
+        await self._ensure_session()
+
+        session = await self.db_service.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+
+        if not session or not session.events:
+            return
+
+        mode = self.memory_config.get("mode", "token_budget")
+        value = self.memory_config.get("value", self.short_term_limit)
+
+        if mode == "sliding_window":
+            if value and len(session.events) > value:
+                logger.debug(
+                    f"Session has {len(session.events)} events, limit is {value}"
+                )
+
+        elif mode == "token_budget":
+            total_tokens = 0
+            for event in session.events:
+                if hasattr(event.content, "text") and event.content.text:
+                    total_tokens += len(event.content.text.split())
+
+            if total_tokens > value:
+                logger.debug(f"Token budget exceeded: {total_tokens}/{value} tokens")
+
+        logger.debug(f"Memory limit check complete for session {self.session_id}")
+
+    async def clear_memory(self):
+        """Clear the memory by deleting the current session."""
+        if self.session_id:
+            try:
+                await self.db_service.delete_session(
+                    app_name=self.app_name,
+                    user_id=self.user_id,
+                    session_id=self.session_id,
+                )
+                logger.info(f"Cleared database memory for client {self.client_id}")
+            except Exception as e:
+                logger.error(f"Failed to clear database memory: {e}")
+            finally:
+                self.session_id = None
+
+    async def get_all_messages(self, agent_name: str = None):
+        """Get all messages, optionally filtered by agent."""
+        messages = await self.get_messages()
+
+        if agent_name:
+            return [
+                msg
+                for msg in messages
+                if msg.get("metadata", {}).get("agent_name") == agent_name
+            ]
+
+        return messages
+
+    async def save_message_history_to_file(self, filename: str, agent_name: str = None):
+        """Save message history to a JSON file."""
+        messages = await self.get_all_messages(agent_name)
+        import json
+
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(messages, f, ensure_ascii=False, indent=2)
+
+    async def load_message_history_from_file(
+        self, filename: str, agent_name: str = None
+    ):
+        """Load message history from a JSON file."""
+        import json
+
+        with open(filename, "r", encoding="utf-8") as f:
+            loaded_messages = json.load(f)
+        for msg in loaded_messages:
+            await self.store_message(
+                agent_name=agent_name or "default",
+                role=msg["role"],
+                content=msg["content"],
+                metadata=msg.get("metadata", {}),
+            )
