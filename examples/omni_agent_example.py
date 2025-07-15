@@ -109,17 +109,17 @@ async def example_session_management():
             "max_context_length": 50000,
         },
         mcp_tools=[
-            {
-                "name": "filesystem",
-                "transport_type": "stdio",
-                "command": "npx",
-                "args": [
-                    "-y",
-                    "@modelcontextprotocol/server-filesystem",
-                    "/home/abiorh/Desktop",
-                    "/home/abiorh/ai/",
-                ],
-            }
+            # {
+            #     "name": "filesystem",
+            #     "transport_type": "stdio",
+            #     "command": "npx",
+            #     "args": [
+            #         "-y",
+            #         "@modelcontextprotocol/server-filesystem",
+            #         "/home/abiorh/Desktop",
+            #         "/home/abiorh/ai/",
+            #     ],
+            # }
         ],
         local_tools=local_tools,
         memory_store=custom_memory,

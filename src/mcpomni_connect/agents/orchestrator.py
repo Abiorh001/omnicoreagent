@@ -1,4 +1,3 @@
-import json
 from collections.abc import Callable
 from typing import Any
 
@@ -14,7 +13,8 @@ from mcpomni_connect.agents.types import AgentConfig, ParsedResponse
 from mcpomni_connect.constants import AGENTS_REGISTRY
 from mcpomni_connect.system_prompts import generate_react_agent_prompt_template
 from mcpomni_connect.utils import logger
-
+import json
+import re
 
 class OrchestratorAgent(BaseReactAgent):
     def __init__(
@@ -37,56 +37,60 @@ class OrchestratorAgent(BaseReactAgent):
         self.max_steps = 20
         self.debug = debug
 
-    async def extract_action_json(self, response: ParsedResponse):
-        action_data = await super().extract_action_json(response=response)
-        # Parse the JSON
-
+    async def extract_agent_action_or_answer(
+        self,
+        response: str,
+        debug: bool = False,
+    ) -> ParsedResponse:
+        """Parse LLM response to extract XML-formatted agent calls or final answers."""
         try:
-            action_json = action_data.get("data")
-            action = json.loads(action_json)
-            agent_name_to_act = action.get("agent_name")
-            # strip away if Agent or agent is part of the agent name
-            agent_name_to_act = (
-                agent_name_to_act.replace("Agent", "").replace("agent", "").strip()
-            )
-            task_to_act = action.get("task")
-            # if tool_name is None or tool_args is None, return an error
-            if agent_name_to_act is None or task_to_act is None:
-                return {
-                    "error": "Invalid JSON format",
-                    "action": False,
-                }
-
-            # Validate JSON structure and tool exists
-            if "agent_name" in action and "task" in action:
-                for (
-                    agent_name,
-                    agent_description,
-                ) in self.agents_registry.items():
-                    agent_names = [
-                        agent_name.lower() for agent_name in self.agents_registry.keys()
-                    ]
-                    if agent_name_to_act.lower() in agent_names:
-                        return {
-                            "action": True,
-                            "agent_name": agent_name_to_act,
-                            "task": task_to_act,
-                        }
-            logger.warning("Agent not found: %s", agent_name_to_act)
-            return {
-                "action": False,
-                "error": f"Agent {agent_name_to_act} not found",
-            }
-        except json.JSONDecodeError:
-            return {
-                "error": "Invalid JSON format",
-                "action": False,
-            }
+            # Check for XML-style agent call format
+            if "<agent_call>" in response and "</agent_call>" in response:
+                if debug:
+                    logger.info("XML agent call format detected in response: %s", response)
+                agent_name_match = re.search(r'<agent_name>(.*?)</agent_name>', response, re.DOTALL)
+                task_match = re.search(r'<task>(.*?)</task>', response, re.DOTALL)
+                if agent_name_match and task_match:
+                    agent_name = agent_name_match.group(1).strip()
+                    task = task_match.group(1).strip()
+                    # strip away if Agent or agent is part of the agent name
+                    agent_name = agent_name.replace("Agent", "").replace("agent", "").strip()
+                    
+                    # Validate agent exists in registry
+                    agent_names = [name.lower() for name in self.agents_registry.keys()]
+                    if agent_name.lower() in agent_names:
+                        action_json = json.dumps({"agent_name": agent_name, "task": task})
+                        return ParsedResponse(action=True, data=action_json)
+                    else:
+                        logger.warning("Agent not found: %s", agent_name)
+                        return ParsedResponse(error=f"Agent {agent_name} not found")
+                else:
+                    return ParsedResponse(error="Invalid XML agent call format - missing agent_name or task")
+            
+            # Check for XML-style final answer format
+            if "<final_answer>" in response and "</final_answer>" in response:
+                if debug:
+                    logger.info("XML final answer format detected in response: %s", response)
+                final_answer_match = re.search(r'<final_answer>(.*?)</final_answer>', response, re.DOTALL)
+                if final_answer_match:
+                    answer = final_answer_match.group(1).strip()
+                    return ParsedResponse(answer=answer)
+                else:
+                    return ParsedResponse(error="Invalid XML final answer format")
+            
+            # If no XML tags found, treat as conversational response (likely final answer after agent observation)
+            if debug:
+                logger.info("No XML tags found, treating as conversational response: %s", response)
+            return ParsedResponse(answer=response.strip())
+            
+        except Exception as e:
+            logger.error("Error parsing model response: %s", str(e))
+            return ParsedResponse(error=str(e))
 
     async def create_agent_system_prompt(
         self,
         agent_name: str,
-        available_tools: dict[str, Any],
+        mcp_tools: dict[str, Any],
     ) -> str:
         server_name = agent_name
         agent_role = self.agents_registry[server_name]
@@ -131,7 +135,6 @@ class OrchestratorAgent(BaseReactAgent):
         task: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
-        available_tools: dict[str, Any],
         mcp_tools: dict[str, Any],
         message_history: Callable[[], Any],
         tool_call_timeout: int,
@@ -144,7 +147,7 @@ class OrchestratorAgent(BaseReactAgent):
         try:
             agent_system_prompt = await self.create_agent_system_prompt(
                 agent_name=agent_name,
-                available_tools=available_tools,
+                mcp_tools=mcp_tools,
             )
             logger.info(f"request limit: {request_limit}")
             agent_config = AgentConfig(
@@ -156,10 +159,7 @@ class OrchestratorAgent(BaseReactAgent):
             )
             extra_kwargs = {
                 "sessions": sessions,
-                "available_tools": available_tools,
                 "mcp_tools": mcp_tools,
-                "local_tools": None,  # No local tools in orchestrator mode
-                "is_generic_agent": False,
                 "session_id": session_id,
             }
             react_agent = ReactAgent(config=agent_config)
@@ -193,13 +193,13 @@ class OrchestratorAgent(BaseReactAgent):
         except Exception as e:
             logger.error("Error executing agent: %s", str(e))
 
-    async def agent_registry_tool(self, available_tools: dict[str, Any]) -> str:
+    async def agent_registry_tool(self, mcp_tools: dict[str, Any]) -> str:
         """
         This function is used to create a tool that will return the agent registry
         """
         try:
             agent_registries = []
-            for server_name, tools in available_tools.items():
+            for server_name, tools in mcp_tools.items():
                 if server_name not in self.agents_registry:
                     logger.warning(f"No agent registry entry for {server_name}")
                     continue
@@ -232,7 +232,6 @@ class OrchestratorAgent(BaseReactAgent):
         query: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
-        available_tools: dict[str, Any],
         mcp_tools: dict[str, Any],
         message_history: Callable[[], Any],
         orchestrator_system_prompt: str,
@@ -242,9 +241,9 @@ class OrchestratorAgent(BaseReactAgent):
         total_tokens_limit: int,
         session_id: str,
     ) -> str | None:
-        """Execute ReAct loop with JSON communication"""
+        """Execute ReAct loop with XML communication"""
         # Initialize messages with system prompt
-        agent_registry_output = await self.agent_registry_tool(available_tools)
+        agent_registry_output = await self.agent_registry_tool(mcp_tools)
         updated_systm_prompt = (
             orchestrator_system_prompt
             + f"[AVAILABLE AGENTS REGISTRY]\n\n{agent_registry_output}"
@@ -322,10 +321,10 @@ class OrchestratorAgent(BaseReactAgent):
                 logger.error(error_message)
                 return error_message
 
-            parsed_response = await self.extract_action_or_answer(
+            parsed_response = await self.extract_agent_action_or_answer(
                 response=response, debug=self.debug
             )
-            # check for final answe
+            # check for final answer
             if parsed_response.answer is not None:
                 # add the final answer to the message history and the messages that will be sent to LLM
                 self.orchestrator_messages.append(
@@ -345,16 +344,14 @@ class OrchestratorAgent(BaseReactAgent):
                 return parsed_response.answer
 
             elif parsed_response.action is not None:
-                extract_action_json_data = await self.extract_action_json(
-                    response=response
-                )
+                # Parse the action data from the XML response
+                action_data = json.loads(parsed_response.data)
                 await self.act(
                     sessions=sessions,
-                    agent_name=extract_action_json_data["agent_name"],
-                    task=extract_action_json_data["task"],
+                    agent_name=action_data["agent_name"],
+                    task=action_data["task"],
                     add_message_to_history=add_message_to_history,
                     llm_connection=llm_connection,
-                    available_tools=available_tools,
                     mcp_tools=mcp_tools,
                     message_history=message_history,
                     max_steps=max_steps,

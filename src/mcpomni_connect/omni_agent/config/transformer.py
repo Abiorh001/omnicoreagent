@@ -32,8 +32,8 @@ class ModelConfig:
 class MCPToolConfig:
     """User-friendly MCP tool configuration"""
 
-    name: str
-    transport_type: TransportType
+    name: str = "mcp_tool"
+    transport_type: TransportType = TransportType.STDIO
     url: Optional[str] = None
     command: Optional[str] = None
     args: Optional[List[str]] = None
@@ -185,7 +185,9 @@ class ConfigTransformer:
     def _validate_tools_config(self, tools: List[MCPToolConfig]):
         """Validate MCP tools configuration"""
         if not tools:
-            raise ValueError("At least one MCP tool is required")
+            logger.warning("No MCP tools provided, using local tools only")
+            return
+            # raise ValueError("At least one MCP tool is required")
 
         tool_names = set()
         for tool in tools:

@@ -149,36 +149,20 @@ class OmniAgent:
         # Create ReactAgent
         self.agent = ReactAgent(config=agent_settings)
 
-    def _combine_available_tools(self) -> Dict[str, Any]:
-        """Combine MCP tools and local tools into a single available_tools dict"""
-        combined_tools = {}
-
-        # Add MCP tools if available
-        if self.mcp_client and self.mcp_client.available_tools:
-            combined_tools.update(self.mcp_client.available_tools)
-
-        # Add local tools if available
-        if self.local_tools:
-            local_tools_list = self.local_tools.get_available_tools()
-            if local_tools_list:
-                combined_tools["local_tools"] = local_tools_list
-
-        return combined_tools
-
     def generate_session_id(self) -> str:
         """Generate a new session ID for the session"""
         return f"omni_agent_{self.name}_{uuid.uuid4().hex[:8]}"
 
     async def run(self, query: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Run the agent with a query and optional chat ID.
+        Run the agent with a query and optional session ID.
 
         Args:
             query: The user query
             session_id: Optional session ID for session continuity
 
         Returns:
-            Dict containing response and chat_id
+            Dict containing response and session_id
         """
         # Generate session ID if not provided
         if not session_id:
@@ -191,14 +175,10 @@ class OmniAgent:
         omni_agent_prompt = self.prompt_builder.build(
             system_instruction=self.system_instruction
         )
-
-        # Combine available tools from both MCP and local sources
-        available_tools = self._combine_available_tools()
-
-        # Prepare extra kwargs
+        #print(omni_agent_prompt)
+        # Prepare extra kwargs - pass tools separately
         extra_kwargs = {
             "sessions": self.mcp_client.sessions if self.mcp_client else {},
-            "available_tools": available_tools,
             "mcp_tools": self.mcp_client.available_tools if self.mcp_client else {},
             "local_tools": self.local_tools,
             "session_id": session_id,

@@ -12,15 +12,13 @@ class OmniAgentPromptBuilder:
         if not system_instruction.strip():
             raise ValueError("System instruction is required.")
 
-        return f"""{system_instruction.strip()}
-
----
+        return f"""<system_instruction>
+{system_instruction.strip()}
+</system_instruction>
 
 {self.system_suffix}
 
-The current date and time is: {self.current_date_time}
-You do not need a tool to get the current Date and Time. Use the information available here.
+<current_date_time>
+{self.current_date_time}
+</current_date_time>
 """.strip()
-
-
-# omniagent/prompts/react_suffix.py
