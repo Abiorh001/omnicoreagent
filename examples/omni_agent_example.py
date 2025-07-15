@@ -92,7 +92,7 @@ async def example_session_management():
     print("=" * 60)
 
     # Create agent with custom session store
-    custom_memory = MemoryRouter(memory_store_type="in_memory")
+    custom_memory = MemoryRouter(memory_store_type="database")
 
     agent = OmniAgent(
         name="session_agent",
