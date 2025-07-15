@@ -4,6 +4,10 @@ from typing import Any
 from dotenv import load_dotenv
 import litellm
 from mcpomni_connect.utils import logger
+import warnings
+
+# Suppress Pydantic serialization warnings
+warnings.filterwarnings("ignore", message="PydanticSerializationUnexpectedValue")
 
 load_dotenv()
 

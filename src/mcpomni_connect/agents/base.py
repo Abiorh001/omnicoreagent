@@ -46,14 +46,13 @@ class BaseReactAgent:
         tool_call_timeout: int,
         request_limit: int,
         total_tokens_limit: int,
-    
     ):
         self.agent_name = agent_name
         self.max_steps = max_steps
         self.tool_call_timeout = tool_call_timeout
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
-       
+
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
 
@@ -64,108 +63,76 @@ class BaseReactAgent:
             request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
         )
 
-    async def extract_action_json(self, response: str) -> dict[str, Any]:
-        """
-        Extract a JSON-formatted action from a model response string.
-        Returns a dictionary with the parsed content or an error structure.
-        """
-        try:
-            action_start = response.find("Action:")
-            if action_start == -1:
-                return {
-                    "error": "No 'Action:' section found in response",
-                    "action": False,
-                }
-
-            action_text = response[action_start + len("Action:") :].strip()
-
-            # Find start of JSON
-            if "{" not in action_text:
-                return {
-                    "error": "No JSON object found after 'Action:'",
-                    "action": False,
-                }
-
-            json_start = action_text.find("{")
-            json_text = action_text[json_start:]
-
-            # Track balanced braces
-            open_braces = 0
-            json_end_pos = 0
-
-            for i, char in enumerate(json_text):
-                if char == "{":
-                    open_braces += 1
-                elif char == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        json_end_pos = i + 1
-                        break
-
-            if json_end_pos == 0:
-                return {"error": "Unbalanced JSON braces", "action": False}
-
-            json_str = json_text[:json_end_pos]
-
-            # Clean up LLM quirks safely
-            json_str = strip_json_comments(json_str)
-            json_str = re.sub(r",\s*([\]}])", r"\1", json_str)
-
-            logger.debug("Extracted JSON: %s", json_str)
-
-            return {"action": True, "data": json_str}
-
-        except json.JSONDecodeError as e:
-            logger.error("JSON decode error: %s", str(e))
-            return {"error": f"Invalid JSON format: {str(e)}", "action": False}
-
-        except Exception as e:
-            logger.error("Error parsing response: %s", str(e))
-            return {"error": str(e), "action": False}
-
     async def extract_action_or_answer(
         self,
         response: str,
         debug: bool = False,
     ) -> ParsedResponse:
-        """Parse LLM response to extract a final answer or a tool action."""
+        """Parse LLM response to extract a final answer or a tool action using XML format only."""
         try:
-            # Final answer present
-            if "Final Answer:" in response or "Answer:" in response:
+            
+            # Check for XML-style tool call format first
+            if "<tool_call>" in response and "</tool_call>" in response:
                 if debug:
-                    logger.info("Final answer detected in response: %s", response)
-
-                parts = re.split(
-                    r"(?:Final Answer:|Answer:)", response, flags=re.IGNORECASE
-                )
-                if len(parts) > 1:
-                    return ParsedResponse(answer=parts[-1].strip())
-
-            # Tool action present
-            if "Action" in response:
+                    logger.info("XML tool call format detected in response: %s", response)
+                try:
+                    # Extract single tool call
+                    tool_call_match = re.search(r"<tool_call>(.*?)</tool_call>", response, re.DOTALL)
+                    if not tool_call_match:
+                        return ParsedResponse(error="No valid <tool_call> block found")
+                    
+                    block = tool_call_match.group(1)
+                    
+                    name_match = re.search(r"<tool_name>(.*?)</tool_name>", block, re.DOTALL)
+                    args_match = re.search(r"<parameters>(.*?)</parameters>", block, re.DOTALL)
+                    
+                    
+                    if name_match and args_match:
+                        tool_name = name_match.group(1).strip()
+                        args_str = args_match.group(1).strip()
+                        
+                        try:
+                            # Handle both JSON format and XML parameter format
+                            if args_str.startswith('{') and args_str.endswith('}'):
+                                # JSON format
+                                args = json.loads(args_str)
+                            else:
+                                # XML parameter format - extract key-value pairs
+                                args = {}
+                                param_matches = re.findall(r"<(\w+)>(.*?)</\1>", args_str, re.DOTALL)
+                                for key, value in param_matches:
+                                    args[key] = value.strip()
+                            
+                            tool_call = {"tool": tool_name, "parameters": args}
+                        except json.JSONDecodeError as e:
+                            return ParsedResponse(error=f"Invalid JSON in args: {str(e)}")
+                    else:
+                        return ParsedResponse(error="Invalid tool call format - missing tool name or parameters")
+                    
+                    # Create JSON format for compatibility with existing code
+                    action_json = json.dumps(tool_call)
+                    return ParsedResponse(action=True, data=action_json)
+                    
+                except Exception as e:
+                    logger.error("Error parsing XML tool call: %s", str(e))
+                    return ParsedResponse(error=f"Error parsing XML tool call: {str(e)}")
+            
+            # Check for XML final answer format
+            if "<final_answer>" in response and "</final_answer>" in response:
                 if debug:
-                    logger.info("Tool action detected in response: %s", response)
-
-                action_result = await self.extract_action_json(response=response)
-
-                if action_result.get("action"):
-                    return ParsedResponse(
-                        action=action_result.get("action"),
-                        data=action_result.get("data"),
-                    )
-                elif "error" in action_result:
-                    return ParsedResponse(error=action_result["error"])
+                    logger.info("XML final answer format detected in response: %s", response)
+                final_answer_match = re.search(r'<final_answer>(.*?)</final_answer>', response, re.DOTALL)
+                if final_answer_match:
+                    answer = final_answer_match.group(1).strip()
+                    return ParsedResponse(answer=answer)
                 else:
-                    return ParsedResponse(
-                        error="No valid action or answer found in response"
-                    )
-
-            # Fallback to raw response
+                    return ParsedResponse(error="Invalid XML final answer format")
+            
+            # If no XML format detected, treat as conversational response
             if debug:
-                logger.info("Returning raw response as answer: %s", response)
-
+                logger.info("No XML format detected, treating as conversational response: %s", response)
             return ParsedResponse(answer=response.strip())
-
+            
         except Exception as e:
             logger.error("Error parsing model response: %s", str(e))
             return ParsedResponse(error=str(e))
@@ -271,7 +238,7 @@ class BaseReactAgent:
     ) -> ToolError | ToolCallResult:
         """
         Resolve tool call request for both MCP and local tools.
-        
+
         Args:
             parsed_response: Parsed response from LLM
             sessions: MCP sessions dict
@@ -282,14 +249,14 @@ class BaseReactAgent:
             action = json.loads(parsed_response.data)
             tool_name = action.get("tool", "").strip()
             tool_args = action.get("parameters", {})
-            
+
             if not tool_name:
                 return ToolError(
                     observation="No tool name provided in the request",
                     tool_name="N/A",
                     tool_args=tool_args,
                 )
-            
+
             # First, check if tool exists in MCP tools
             mcp_tool_found = False
             if mcp_tools:
@@ -303,15 +270,17 @@ class BaseReactAgent:
                                 mcp_tools=mcp_tools,
                             )
                             tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
-                            tool_data = await mcp_tool_handler.validate_tool_call_request(
-                                tool_data=parsed_response.data,
-                                mcp_tools=mcp_tools,
+                            tool_data = (
+                                await mcp_tool_handler.validate_tool_call_request(
+                                    tool_data=parsed_response.data,
+                                    mcp_tools=mcp_tools,
+                                )
                             )
                             mcp_tool_found = True
                             break
                     if mcp_tool_found:
                         break
-            
+
             # If not found in MCP tools, check local tools
             if not mcp_tool_found and local_tools:
                 local_tool_handler = LocalToolHandler(local_tools=local_tools)
@@ -327,14 +296,14 @@ class BaseReactAgent:
                     tool_name=tool_name,
                     tool_args=tool_args,
                 )
-            
+
             if not tool_data.get("action"):
                 return ToolError(
                     observation=tool_data.get("error", "Tool validation failed"),
                     tool_name=tool_name,
                     tool_args=tool_args,
                 )
-            
+
             return ToolCallResult(
                 tool_executor=tool_executor,
                 tool_name=tool_data.get("tool_name"),
@@ -344,8 +313,8 @@ class BaseReactAgent:
             logger.error(f"Error resolving tool call request: {e}")
             return ToolError(
                 observation=f"Error resolving tool call request: {e}",
-                tool_name=tool_name,
-                tool_args=tool_args,
+                tool_name="unknown",
+                tool_args={},
             )
 
     async def act(
@@ -389,7 +358,6 @@ class BaseReactAgent:
             )
 
             await add_message_to_history(
-               
                 role="assistant",
                 content=response,
                 metadata=tool_calls_metadata.model_dump(),
@@ -425,10 +393,12 @@ class BaseReactAgent:
                 )
                 logger.warning(observation)
                 await add_message_to_history(
-                   
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id, "agent_name": self.agent_name},
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "agent_name": self.agent_name,
+                    },
                     session_id=session_id,
                 )
                 self.messages[self.agent_name].append(
@@ -441,10 +411,12 @@ class BaseReactAgent:
                 observation = f"Error executing tool: {str(e)}"
                 logger.error(observation)
                 await add_message_to_history(
-                   
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id, "agent_name": self.agent_name},
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "agent_name": self.agent_name,
+                    },
                     session_id=session_id,
                 )
 
@@ -475,7 +447,6 @@ class BaseReactAgent:
             )
         )
         await add_message_to_history(
-           
             role="user",
             content=f"OBSERVATION(RESULT FROM {tool_call_result.tool_name} TOOL CALL): \n{observation}",
             session_id=session_id,
@@ -540,70 +511,74 @@ class BaseReactAgent:
             self.state = previous_state
 
     async def get_tools_registry(
-        self, available_tools: dict, agent_name: str = None
+        self, mcp_tools: dict = None, local_tools: Any = None
     ) -> str:
         tools_section = []
         try:
-            if not available_tools:
+            # Process MCP tools
+            if mcp_tools:
+                for server_name, tools in mcp_tools.items():
+                    if not tools:
+                        continue
+
+                    # Add server header
+                    tools_section.append(f"## {server_name.upper()} TOOLS (MCP)")
+
+                    # Handle MCP Tool objects
+                    for tool in tools:
+                        if hasattr(tool, "name"):  # MCP Tool object
+                            tool_name = str(tool.name)
+                            tool_description = str(tool.description)
+
+                            tool_md = f"### `{tool_name}`\n{tool_description}"
+
+                            if hasattr(tool, "inputSchema") and tool.inputSchema:
+                                params = tool.inputSchema.get("properties", {})
+                                if params:
+                                    tool_md += "\n\n**Parameters:**\n"
+                                    tool_md += "| Name | Type | Description |\n"
+                                    tool_md += "|------|------|-------------|\n"
+                                    for param_name, param_info in params.items():
+                                        param_desc = param_info.get(
+                                            "description", "**No description**"
+                                        )
+                                        param_type = param_info.get("type", "any")
+                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
+                            tools_section.append(tool_md)
+
+            # Process local tools
+            if local_tools:
+                local_tools_list = local_tools.get_available_tools()
+                if local_tools_list:
+                    tools_section.append("## LOCAL TOOLS")
+
+                    # Handle local tool dictionaries
+                    for tool in local_tools_list:
+                        if isinstance(tool, dict):
+                            tool_name = tool.get("name", "Unknown")
+                            tool_description = tool.get("description", "No description")
+
+                            tool_md = f"### `{tool_name}`\n{tool_description}"
+
+                            input_schema = tool.get("inputSchema", {})
+                            if input_schema:
+                                params = input_schema.get("properties", {})
+                                if params:
+                                    tool_md += "\n\n**Parameters:**\n"
+                                    tool_md += "| Name | Type | Description |\n"
+                                    tool_md += "|------|------|-------------|\n"
+                                    for param_name, param_info in params.items():
+                                        param_desc = param_info.get(
+                                            "description", "**No description**"
+                                        )
+                                        param_type = param_info.get("type", "any")
+                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
+                            tools_section.append(tool_md)
+
+            if not tools_section:
                 return "No tools available"
-            
-            # Process each server/group of tools
-            for server_name, tools in available_tools.items():
-                if not tools:
-                    continue
-                
-                # Add server/group header
-                tools_section.append(f"## {server_name.upper()} TOOLS")
-                
-                # Handle different tool formats
-                for tool in tools:
-                    if hasattr(tool, 'name'):  # MCP Tool object
-                        tool_name = str(tool.name)
-                        tool_description = str(tool.description)
-                        
-                        tool_md = f"### `{tool_name}`\n{tool_description}"
-                        
-                        if hasattr(tool, "inputSchema") and tool.inputSchema:
-                            params = tool.inputSchema.get("properties", {})
-                            if params:
-                                tool_md += "\n\n**Parameters:**\n"
-                                tool_md += "| Name | Type | Description |\n"
-                                tool_md += "|------|------|-------------|\n"
-                                for param_name, param_info in params.items():
-                                    param_desc = param_info.get(
-                                        "description", "**No description**"
-                                    )
-                                    param_type = param_info.get("type", "any")
-                                    tool_md += (
-                                        f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-                                    )
-                    
-                    elif isinstance(tool, dict):  # Local tool dictionary
-                        tool_name = tool.get('name', 'Unknown')
-                        tool_description = tool.get('description', 'No description')
-                        
-                        tool_md = f"### `{tool_name}`\n{tool_description}"
-                        
-                        input_schema = tool.get('inputSchema', {})
-                        if input_schema:
-                            params = input_schema.get("properties", {})
-                            if params:
-                                tool_md += "\n\n**Parameters:**\n"
-                                tool_md += "| Name | Type | Description |\n"
-                                tool_md += "|------|------|-------------|\n"
-                                for param_name, param_info in params.items():
-                                    param_desc = param_info.get(
-                                        "description", "**No description**"
-                                    )
-                                    param_type = param_info.get("type", "any")
-                                    tool_md += (
-                                        f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-                                    )
-                    
-                    else:  # Unknown format
-                        tool_md = f"### Unknown Tool\n{str(tool)}"
-                    
-                    tools_section.append(tool_md)
 
         except Exception as e:
             logger.error(f"Error getting tools registry: {e}")
@@ -620,7 +595,6 @@ class BaseReactAgent:
         message_history: Callable[[], Any],
         debug: bool = False,
         sessions: dict = None,
-        available_tools: dict = None,
         mcp_tools: dict = None,
         local_tools: Any = None,  # LocalToolsIntegration instance
         session_id: str = None,
@@ -630,7 +604,7 @@ class BaseReactAgent:
         """
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
-            available_tools, agent_name=self.agent_name
+            mcp_tools=mcp_tools, local_tools=local_tools
         )
         # logger.info(f"tools section: {tools_section}")
         system_updated_prompt = (
@@ -642,7 +616,10 @@ class BaseReactAgent:
         ]
         # Add initial user message to message history
         await add_message_to_history(
-            role="user", content=query, session_id=session_id, metadata={"agent_name": self.agent_name}
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
         # Initialize messages with current message history (only once at start)
         await self.update_llm_working_memory(
@@ -742,29 +719,26 @@ class BaseReactAgent:
                         session_id=session_id,
                         metadata={"agent_name": self.agent_name},
                     )
-                    # check if the system prompt has changed
-                    if system_prompt != self.messages[self.agent_name][0].content:
-                        # Reset system prompt and keep all messages
-                        self.messages[self.agent_name] = await self.reset_system_prompt(
-                            self.messages[self.agent_name], system_prompt
-                        )
-                    if debug:
-                        logger.info(
-                            f"Agent state changed from {self.state} to {AgentState.FINISHED}"
-                        )
                     self.state = AgentState.FINISHED
-                    # reset the steps
-                    current_steps = 0
                     return parsed_response.answer
 
-                elif parsed_response.action is not None:
-                    # set the state to tool calling
-                    if debug:
-                        logger.info(
-                            f"Agent state changed from {self.state} to {AgentState.TOOL_CALLING}"
+                # check for action
+                if parsed_response.action is not None:
+                    # Add the action to the message history
+                    self.messages[self.agent_name].append(
+                        Message(
+                            role="assistant",
+                            content=parsed_response.data,
                         )
-                    self.state = AgentState.TOOL_CALLING
+                    )
+                    await add_message_to_history(
+                        role="assistant",
+                        content=parsed_response.data,
+                        session_id=session_id,
+                        metadata={"agent_name": self.agent_name},
+                    )
 
+                    # Execute the action
                     await self.act(
                         parsed_response=parsed_response,
                         response=response,
@@ -776,54 +750,10 @@ class BaseReactAgent:
                         local_tools=local_tools,
                         session_id=session_id,
                     )
-                    continue
-                # append the invalid response to the messages and the message history
-                elif parsed_response.error is not None:
-                    error_message = parsed_response.error
-                else:
-                    error_message = "Invalid response format. Please use the correct required format"
 
-                self.messages[self.agent_name].append(
-                    Message(role="user", content=error_message)
-                )
-                await add_message_to_history(
-                    
-                    role="user",
-                    content=error_message,
-                    session_id=session_id,
-                    metadata={"agent_name": self.agent_name},
-                )
-                self.loop_detector.record_message(error_message, response)
-                if self.loop_detector.is_looping():
-                    logger.warning("Loop detected")
-                    new_system_prompt = handle_stuck_state(
-                        system_prompt, message_stuck_prompt=True
-                    )
-                    self.messages[self.agent_name] = await self.reset_system_prompt(
-                        messages=self.messages[self.agent_name],
-                        system_prompt=new_system_prompt,
-                    )
-                    loop_message = (
-                        f"Observation:\n"
-                        f"⚠️ Message loop detected: {self.loop_detector.get_loop_type()}\n"
-                        f"The message stuck is: {error_message}\n"
-                        f"Current approach is not working. Please:\n"
-                        f"1. Analyze why the previous attempts failed\n"
-                        f"2. Try a completely different tool or approach\n"
-                        f"3. If the issue persists, please provide a detailed description of the problem and the current state of the conversation. and don't try again.\n"
-                    )
-                    self.messages[self.agent_name].append(
-                        Message(role="user", content=loop_message)
-                    )
-                    if debug:
-                        logger.info(
-                            f"Agent state changed from {self.state} to {AgentState.STUCK}"
-                        )
+                # check for stuck state
+                if current_steps >= self.max_steps:
                     self.state = AgentState.STUCK
-                    self.loop_detector.reset()
+                    return f"Agent got stuck after {self.max_steps} steps"
 
-            # If we've reached max steps, return the last response
-            if current_steps >= self.max_steps:
-                return f"Maximum steps ({self.max_steps}) reached. Last response: {response}"
-
-            return None
+        return None

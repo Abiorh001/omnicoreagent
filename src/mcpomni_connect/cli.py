@@ -788,7 +788,7 @@ class MCPClientCLI:
                     arguments=arguments,
                     request_limit=self.agent_config["request_limit"],
                     total_tokens_limit=self.agent_config["total_tokens_limit"],
-                    chat_id=CLIENT_MAC_ADDRESS,
+                    session_id=CLIENT_MAC_ADDRESS,
                 )
                 if content:
                     # Get latest tools
@@ -802,14 +802,13 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
-                        mcp_enabled=True,
                     )
                     tool_calling_agent = ToolCallingAgent(
                         config=agent_config, debug=self.client.debug
                     )
                     response = await tool_calling_agent.run(
                         query=content,
-                        chat_id=CLIENT_MAC_ADDRESS,
+                        session_id=CLIENT_MAC_ADDRESS,
                         system_prompt=system_prompt,
                         llm_connection=self.llm_connection,
                         sessions=self.client.sessions,
@@ -832,9 +831,8 @@ class MCPClientCLI:
                 # Use ReAct agent for LLMs without tool support
                 extra_kwargs = {
                     "sessions": self.client.sessions,
-                    "available_tools": self.client.available_tools,
-                    "is_generic_agent": True,
-                    "chat_id": CLIENT_MAC_ADDRESS,
+                    "mcp_tools": self.client.available_tools,
+                    "session_id": CLIENT_MAC_ADDRESS,
                 }
 
                 agent_config = AgentConfig(
@@ -843,7 +841,6 @@ class MCPClientCLI:
                     max_steps=self.agent_config.get("max_steps"),
                     request_limit=self.agent_config.get("request_limit"),
                     total_tokens_limit=self.agent_config.get("total_tokens_limit"),
-                    mcp_enabled=True,
                 )
                 react_agent_prompt = generate_react_agent_prompt(
                     current_date_time=date_time_func["format_date"]()
@@ -860,7 +857,7 @@ class MCPClientCLI:
                     available_prompts=self.client.available_prompts,
                     name=name,
                     arguments=arguments,
-                    chat_id=CLIENT_MAC_ADDRESS,
+                    session_id=CLIENT_MAC_ADDRESS,
                 )
                 if initial_response:
                     react_agent = ReactAgent(config=agent_config)
@@ -998,14 +995,13 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
-                        mcp_enabled=True,
                     )
                     tool_calling_agent = ToolCallingAgent(
                         config=agent_config, debug=self.client.debug
                     )
                     response = await tool_calling_agent.run(
                         query=query,
-                        chat_id=CLIENT_MAC_ADDRESS,
+                        session_id=CLIENT_MAC_ADDRESS,
                         system_prompt=system_prompt,
                         llm_connection=self.llm_connection,
                         sessions=self.client.sessions,
@@ -1030,9 +1026,8 @@ class MCPClientCLI:
                     )
                     extra_kwargs = {
                         "sessions": self.client.sessions,
-                        "available_tools": self.client.available_tools,
-                        "is_generic_agent": True,
-                        "chat_id": CLIENT_MAC_ADDRESS,
+                        "mcp_tools": self.client.available_tools,
+                        "session_id": CLIENT_MAC_ADDRESS,
                     }
 
                     agent_config = AgentConfig(
@@ -1041,7 +1036,6 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
-                        mcp_enabled=True,
                     )
                     react_agent = ReactAgent(config=agent_config)
                     response = await react_agent._run(
@@ -1072,13 +1066,11 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
-                        mcp_enabled=True,
                     )
                     orchestrator_agent = OrchestratorAgent(
                         config=agent_config,
                         agents_registry=AGENTS_REGISTRY,
                         current_date_time=date_time_func["format_date"](),
-                        chat_id=CLIENT_MAC_ADDRESS,
                         debug=self.client.debug,
                     )
                     response = await orchestrator_agent.run(
@@ -1090,7 +1082,7 @@ class MCPClientCLI:
                             else self.in_memory_short_term_memory.store_message
                         ),
                         llm_connection=self.llm_connection,
-                        available_tools=self.client.available_tools,
+                        mcp_tools=self.client.available_tools,
                         message_history=(
                             self.redis_short_term_memory.get_messages
                             if self.USE_MEMORY["redis"]
@@ -1101,6 +1093,7 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
+                        session_id=CLIENT_MAC_ADDRESS,
                     )
                 else:
                     response = "Your current model doesn't support function calling. You must use '/mode:auto' to switch to Auto Mode - it works with both function-calling and non-function-calling models, providing seamless tool execution through our ReAct Agent. For advanced tool orchestration, use '/mode:orchestrator'."

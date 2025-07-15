@@ -121,7 +121,7 @@ class InMemoryStore:
 
             # Use session-based storage for database compatibility
             if session_id not in self.sessions_history:
-                self.sessions_history[session_id] = []  # type: ignore
+                self.sessions_history[session_id] = []
 
             message = {
                 "role": role,
@@ -151,7 +151,7 @@ class InMemoryStore:
 
         try:
             if session_id not in self.sessions_history:
-                self.sessions_history[session_id] = []  # type: ignore
+                self.sessions_history[session_id] = []
 
             messages = await self.truncate_message_history(session_id=session_id)
 

@@ -179,19 +179,19 @@ class Configuration:
             raise FileNotFoundError(
                 f"Configuration file not found: {config_path}, it should be 'servers_config.json'"
             )
-        
+
         # First try to load from hidden directory
         hidden_path = Path(".mcp_config") / "servers_config.json"
         if hidden_path.exists():
             logger.info(f"Loading configuration from hidden location: {hidden_path}")
             with open(hidden_path, encoding="utf-8") as f:
                 return json.load(f)
-        
+
         # Fallback to original location
         if config_path.exists():
             with open(config_path, encoding="utf-8") as f:
                 return json.load(f)
-        
+
         raise FileNotFoundError(f"Configuration file not found in any location")
 
 
