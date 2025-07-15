@@ -1,4 +1,5 @@
 # 🚀 MCPOmni Connect - Universal Gateway to MCP Servers
+
 [![PyPI Downloads](https://static.pepy.tech/badge/mcpomni-connect)](https://pepy.tech/projects/mcpomni-connect)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -15,6 +16,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
 ## ✨ Key Features
 
 ### 🤖 Intelligent Agent System
+
 - **ReAct Agent Mode**
   - Autonomous task execution with reasoning and action cycles
   - Independent decision-making without human intervention
@@ -33,6 +35,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Educational mode for understanding AI decision processes
 
 ### 🔌 Universal Connectivity
+
 - **Multi-Protocol Support**
   - Native support for stdio transport
   - Server-Sent Events (SSE) for real-time communication
@@ -51,6 +54,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Persistent state management across mode transitions
 
 ### 🧠 AI-Powered Intelligence
+
 - **Unified LLM Integration with LiteLLM**
   - Single unified interface for all AI providers
   - Support for 100+ models across providers including:
@@ -71,8 +75,8 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
     - Dynamic function execution based on user requests
     - Intelligent tool orchestration
 
-
 ### 🔒 Security & Privacy
+
 - **Explicit User Control**
   - All tool executions require explicit user approval in chat mode
   - Clear explanation of tool actions before execution
@@ -91,6 +95,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Environment variable protection
 
 ### 💾 Memory Management
+
 - **Redis-Powered Persistence**
   - Long-term conversation memory storage
   - Session persistence across restarts
@@ -109,6 +114,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Cross-session context maintenance
 
 ### 💬 Prompt Management
+
 - **Advanced Prompt Handling**
   - Dynamic prompt discovery across servers
   - Flexible argument parsing (JSON and key-value formats)
@@ -125,6 +131,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Real-time sampling adjustments
 
 ### 🛠️ Tool Orchestration
+
 - **Dynamic Tool Discovery & Management**
   - Automatic tool capability detection
   - Cross-server tool coordination
@@ -132,6 +139,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Real-time tool availability updates
 
 ### 📦 Resource Management
+
 - **Universal Resource Access**
   - Cross-server resource discovery
   - Unified resource addressing
@@ -139,6 +147,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Smart content summarization
 
 ### 🔄 Server Management
+
 - **Advanced Server Handling**
   - Multiple simultaneous server connections
   - Automatic server health monitoring
@@ -150,6 +159,7 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
 ## 🏗️ Architecture
 
 ### Core Components
+
 ```
 MCPOmni Connect
 ├── Transport Layer
@@ -172,27 +182,35 @@ MCPOmni Connect
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - Python 3.10+
 - LLM API key
 - UV package manager (recommended)
 - Redis server (optional, for persistent memory)
 
 ### Install using package manager
+
+#### With uv (recommended)
+
 ```bash
-# with uv recommended
 uv add mcpomni-connect
-# using pip
+```
+
+#### Using pip
+
+```bash
 pip install mcpomni-connect
 ```
 
 ### Configuration
+
 ```bash
 # Set up environment variables
 echo "LLM_API_KEY=your_key_here" > .env
 # Optional: Configure Redis connection
 echo "REDIS_HOST=localhost" >> .env
 echo "REDIS_PORT=6379" >> .env
-echo "REDIS_DB=0" >> .env"
+echo "REDIS_DB=0" >> .env
 # Configure your servers in servers_config.json
 ```
 
@@ -203,7 +221,9 @@ echo "REDIS_DB=0" >> .env"
 MCPOmni Connect uses **two separate configuration files** for different purposes:
 
 #### 1. `.env` File - Environment Variables
+
 Contains sensitive information like API keys and optional settings:
+
 ```bash
 # Required: Your LLM provider API key
 LLM_API_KEY=your_api_key_here
@@ -212,34 +232,34 @@ LLM_API_KEY=your_api_key_here
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_DB=0
-
-
+```
 
 #### 2. `servers_config.json` - Server & Agent Configuration
+
 Contains application settings, LLM configuration, and MCP server connections:
 
 ```json
 {
-    "AgentConfig": {
-        "tool_call_timeout": 30,
-        "max_steps": 15,
-        "request_limit": 1000,
-        "total_tokens_limit": 100000
-    },
-    "LLM": {
-        "provider": "openai",
-        "model": "gpt-4o-mini",
-        "temperature": 0.5,
-        "max_tokens": 5000,
-        "top_p": 0.7
-    },
-    "mcpServers": {
-        "your-server-name": {
-            "transport_type": "stdio",
-            "command": "uvx",
-            "args": ["mcp-server-package"]
-        }
+  "AgentConfig": {
+    "tool_call_timeout": 30,
+    "max_steps": 15,
+    "request_limit": 1000,
+    "total_tokens_limit": 100000
+  },
+  "LLM": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "temperature": 0.5,
+    "max_tokens": 5000,
+    "top_p": 0.7
+  },
+  "mcpServers": {
+    "your-server-name": {
+      "transport_type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-package"]
     }
+  }
 }
 ```
 
@@ -248,69 +268,80 @@ Contains application settings, LLM configuration, and MCP server connections:
 MCPOmni Connect supports multiple ways to connect to MCP servers:
 
 #### 1. **stdio** - Direct Process Communication
+
 **Use when**: Connecting to local MCP servers that run as separate processes
+
 ```json
 {
-    "server-name": {
-        "transport_type": "stdio",
-        "command": "uvx",
-        "args": ["mcp-server-package"]
-    }
+  "server-name": {
+    "transport_type": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-package"]
+  }
 }
 ```
+
 - **No authentication needed**
 - **No OAuth server started**
 - Most common for local development
 
 #### 2. **sse** - Server-Sent Events
+
 **Use when**: Connecting to HTTP-based MCP servers using Server-Sent Events
+
 ```json
 {
-    "server-name": {
-        "transport_type": "sse",
-        "url": "http://your-server.com:4010/sse",
-        "headers": {
-            "Authorization": "Bearer your-token"
-        },
-        "timeout": 60,
-        "sse_read_timeout": 120
-    }
+  "server-name": {
+    "transport_type": "sse",
+    "url": "http://your-server.com:4010/sse",
+    "headers": {
+      "Authorization": "Bearer your-token"
+    },
+    "timeout": 60,
+    "sse_read_timeout": 120
+  }
 }
 ```
+
 - **Uses Bearer token or custom headers**
 - **No OAuth server started**
 
 #### 3. **streamable_http** - HTTP with Optional OAuth
+
 **Use when**: Connecting to HTTP-based MCP servers with or without OAuth
 
 **Without OAuth (Bearer Token):**
+
 ```json
 {
-    "server-name": {
-        "transport_type": "streamable_http",
-        "url": "http://your-server.com:4010/mcp",
-        "headers": {
-            "Authorization": "Bearer your-token"
-        },
-        "timeout": 60
-    }
+  "server-name": {
+    "transport_type": "streamable_http",
+    "url": "http://your-server.com:4010/mcp",
+    "headers": {
+      "Authorization": "Bearer your-token"
+    },
+    "timeout": 60
+  }
 }
 ```
+
 - **Uses Bearer token or custom headers**
 - **No OAuth server started**
 
 **With OAuth:**
+
 ```json
 {
-    "server-name": {
-        "transport_type": "streamable_http",
-        "auth": {
-            "method": "oauth"
-        },
-        "url": "http://your-server.com:4010/mcp"
-    }
+  "server-name": {
+    "transport_type": "streamable_http",
+    "auth": {
+      "method": "oauth"
+    },
+    "url": "http://your-server.com:4010/mcp"
+  }
 }
 ```
+
 - **OAuth callback server automatically starts on `http://localhost:3000`**
 - **This is hardcoded and cannot be changed**
 - **Required for OAuth flow to work properly**
@@ -320,18 +351,21 @@ MCPOmni Connect supports multiple ways to connect to MCP servers:
 **Important**: When using OAuth authentication, MCPOmni Connect automatically starts an OAuth callback server.
 
 #### What You'll See:
+
 ```
 🖥️  Started callback server on http://localhost:3000
 ```
 
 #### Key Points:
-  - **This is normal behavior** - not an error
-  - **The address `http://localhost:3000` is hardcoded** and cannot be changed
+
+- **This is normal behavior** - not an error
+- **The address `http://localhost:3000` is hardcoded** and cannot be changed
 - **The server only starts when** you have `"auth": {"method": "oauth"}` in your config
 - **The server stops** when the application shuts down
 - **Only used for OAuth token handling** - no other purpose
 
 #### When OAuth is NOT Used:
+
 - Remove the entire `"auth"` section from your server configuration
 - Use `"headers"` with `"Authorization": "Bearer token"` instead
 - No OAuth server will start
@@ -343,22 +377,25 @@ MCPOmni Connect supports multiple ways to connect to MCP servers:
 **Possible Causes & Solutions:**
 
 1. **Wrong Transport Type**
+
    ```
    Problem: Your server expects 'stdio' but you configured 'streamable_http'
    Solution: Check your server's documentation for the correct transport type
    ```
 
 2. **OAuth Configuration Mismatch**
+
    ```
    Problem: Your server doesn't support OAuth but you have "auth": {"method": "oauth"}
    Solution: Remove the "auth" section entirely and use headers instead:
-   
+
    "headers": {
        "Authorization": "Bearer your-token"
    }
    ```
 
 3. **Server Not Running**
+
    ```
    Problem: The MCP server at the specified URL is not running
    Solution: Start your MCP server first, then connect with MCPOmni Connect
@@ -373,68 +410,76 @@ MCPOmni Connect supports multiple ways to connect to MCP servers:
 #### "Started callback server on http://localhost:3000" - Is This Normal?
 
 **Yes, this is completely normal** when:
+
 - You have `"auth": {"method": "oauth"}` in any server configuration
 - The OAuth server handles authentication tokens automatically
 - You cannot and should not try to change this address
 
 **If you don't want the OAuth server:**
+
 - Remove `"auth": {"method": "oauth"}` from all server configurations
 - Use alternative authentication methods like Bearer tokens
 
 ### 📋 Configuration Examples by Use Case
 
 #### Local Development (stdio)
+
 ```json
 {
-    "mcpServers": {
-        "local-tools": {
-            "transport_type": "stdio",
-            "command": "uvx",
-            "args": ["mcp-server-tools"]
-        }
+  "mcpServers": {
+    "local-tools": {
+      "transport_type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-tools"]
     }
+  }
 }
 ```
 
 #### Remote Server with Token
+
 ```json
 {
-    "mcpServers": {
-        "remote-api": {
-            "transport_type": "streamable_http",
-            "url": "http://api.example.com:8080/mcp",
-            "headers": {
-                "Authorization": "Bearer abc123token"
-            }
-        }
+  "mcpServers": {
+    "remote-api": {
+      "transport_type": "streamable_http",
+      "url": "http://api.example.com:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer abc123token"
+      }
     }
+  }
 }
 ```
 
 #### Remote Server with OAuth
+
 ```json
 {
-    "mcpServers": {
-        "oauth-server": {
-            "transport_type": "streamable_http",
-            "auth": {
-                "method": "oauth"
-            },
-            "url": "http://oauth-server.com:8080/mcp"
-        }
+  "mcpServers": {
+    "oauth-server": {
+      "transport_type": "streamable_http",
+      "auth": {
+        "method": "oauth"
+      },
+      "url": "http://oauth-server.com:8080/mcp"
     }
+  }
 }
 ```
 
 ### Start CLI
+
+Start the CLI - ensure your API key is exported or create `.env` file:
+
 ```bash
-# start the cli running the command ensure your api key is exported or create .env
 mcpomni_connect
 ```
 
 ## 🧪 Testing
 
 ### Running Tests
+
 ```bash
 # Run all tests with verbose output
 pytest tests/ -v
@@ -447,6 +492,7 @@ pytest tests/ --cov=src --cov-report=term-missing
 ```
 
 ### Test Structure
+
 ```
 tests/
 ├── unit/           # Unit tests for individual components
@@ -455,6 +501,7 @@ tests/
 ### Development Quick Start
 
 1. **Installation**
+
    ```bash
    # Clone the repository
    git clone https://github.com/Abiorh001/mcp_omni_connect.git
@@ -469,17 +516,23 @@ tests/
    ```
 
 2. **Configuration**
+
    ```bash
    # Set up environment variables
    echo "LLM_API_KEY=your_key_here" > .env
 
    # Configure your servers in servers_config.json
    ```
-3. ** Start Client**
+
+3. **Start Client**
+
    ```bash
-   # Start the client
    uv run run.py
-   # or
+   ```
+
+   Or:
+
+   ```bash
    python run.py
    ```
 
@@ -490,11 +543,13 @@ tests/
 You can run the basic CLI example to interact with MCPOmni Connect directly from the terminal.
 
 **Using [uv](https://github.com/astral-sh/uv) (recommended):**
+
 ```bash
 uv run examples/basic.py
 ```
 
 **Or using Python directly:**
+
 ```bash
 python examples/basic.py
 ```
@@ -506,17 +561,21 @@ python examples/basic.py
 You can also run MCPOmni Connect as a FastAPI server for web or API-based interaction.
 
 **Using [uv](https://github.com/astral-sh/uv):**
+
 ```bash
 uv run examples/fast_api_iml.py
 ```
 
 **Or using Python directly:**
+
 ```bash
 python examples/fast_api_iml.py
 ```
+
 ### Web Client
 
-A simple web client is provided in `examples/index.html`.  
+A simple web client is provided in `examples/index.html`.
+
 - Open it in your browser after starting the FastAPI server.
 - It connects to `http://localhost:8000` and provides a chat interface.
 - The FastAPI server will start on `http://localhost:8000` by default.
@@ -554,6 +613,7 @@ MCPOmni Connect is not just a CLI tool—it's also a powerful Python library tha
 ### Build Your Own MCP Client
 
 You can import MCPOmni Connect in your Python project to:
+
 - Connect to one or more MCP servers
 - Choose between **ReAct Agent** mode (autonomous tool use) or **Orchestrator Agent** mode (multi-step, multi-server planning)
 - Manage memory, context, and tool orchestration
@@ -591,11 +651,13 @@ response = await agent.run(
 
 You can easily expose your MCP client as an API using FastAPI.  
 See the [FastAPI example](examples/fast_api_iml.py) for:
+
 - Async server startup and shutdown
 - Handling chat requests with different agent modes
 - Streaming responses to clients
 
 **Key Features for Developers:**
+
 - Full control over agent configuration and limits
 - Support for both chat and autonomous agentic modes
 - Easy integration with any Python web framework
@@ -605,123 +667,129 @@ See the [FastAPI example](examples/fast_api_iml.py) for:
 ### Server Configuration Examples
 
 #### Basic OpenAI Configuration
+
 ```json
 {
-    "AgentConfig": {
-        "tool_call_timeout": 30,
-        "max_steps": 15,
-        "request_limit": 1000,
-        "total_tokens_limit": 100000
+  "AgentConfig": {
+    "tool_call_timeout": 30,
+    "max_steps": 15,
+    "request_limit": 1000,
+    "total_tokens_limit": 100000
+  },
+  "LLM": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.5,
+    "max_tokens": 5000,
+    "max_context_length": 30000,
+    "top_p": 0
+  },
+  "mcpServers": {
+    "ev_assistant": {
+      "transport_type": "streamable_http",
+      "auth": {
+        "method": "oauth"
+      },
+      "url": "http://localhost:8000/mcp"
     },
-    "LLM": {
-        "provider": "openai",
-        "model": "gpt-4",
-        "temperature": 0.5,
-        "max_tokens": 5000,
-        "max_context_length": 30000,
-        "top_p": 0
+    "sse-server": {
+      "transport_type": "sse",
+      "url": "http://localhost:3000/sse",
+      "headers": {
+        "Authorization": "Bearer token"
+      },
+      "timeout": 60,
+      "sse_read_timeout": 120
     },
-    "mcpServers": {
-        "ev_assistant": {
-            "transport_type": "streamable_http",
-            "auth": {
-                "method": "oauth"
-            },
-            "url": "http://localhost:8000/mcp"
-        },
-        "sse-server": {
-            "transport_type": "sse",
-            "url": "http://localhost:3000/sse",
-            "headers": {
-                "Authorization": "Bearer token"
-            },
-            "timeout": 60, 
-            "sse_read_timeout": 120
-        },
-        "streamable_http-server": {
-            "transport_type": "streamable_http",
-            "url": "http://localhost:3000/mcp",
-            "headers": {
-                "Authorization": "Bearer token"
-            },
-            "timeout": 60, 
-            "sse_read_timeout": 120
-        }
+    "streamable_http-server": {
+      "transport_type": "streamable_http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer token"
+      },
+      "timeout": 60,
+      "sse_read_timeout": 120
     }
+  }
 }
 ```
 
 #### Anthropic Claude Configuration
+
 ```json
 {
-    "LLM": {
-        "provider": "anthropic",
-        "model": "claude-3-5-sonnet-20241022",
-        "temperature": 0.7,
-        "max_tokens": 4000,
-        "max_context_length": 200000,
-        "top_p": 0.95
-    }
+  "LLM": {
+    "provider": "anthropic",
+    "model": "claude-3-5-sonnet-20241022",
+    "temperature": 0.7,
+    "max_tokens": 4000,
+    "max_context_length": 200000,
+    "top_p": 0.95
+  }
 }
 ```
 
 #### Groq Configuration
+
 ```json
 {
-    "LLM": {
-        "provider": "groq",
-        "model": "llama-3.1-8b-instant",
-        "temperature": 0.5,
-        "max_tokens": 2000,
-        "max_context_length": 8000,
-        "top_p": 0.9
-    }
+  "LLM": {
+    "provider": "groq",
+    "model": "llama-3.1-8b-instant",
+    "temperature": 0.5,
+    "max_tokens": 2000,
+    "max_context_length": 8000,
+    "top_p": 0.9
+  }
 }
 ```
 
 #### Azure OpenAI Configuration
+
 ```json
 {
-    "LLM": {
-        "provider": "azureopenai",
-        "model": "gpt-4",
-        "temperature": 0.7,
-        "max_tokens": 2000,
-        "max_context_length": 100000,
-        "top_p": 0.95,
-        "azure_endpoint": "https://your-resource.openai.azure.com",
-        "azure_api_version": "2024-02-01",
-        "azure_deployment": "your-deployment-name"
-    }
+  "LLM": {
+    "provider": "azureopenai",
+    "model": "gpt-4",
+    "temperature": 0.7,
+    "max_tokens": 2000,
+    "max_context_length": 100000,
+    "top_p": 0.95,
+    "azure_endpoint": "https://your-resource.openai.azure.com",
+    "azure_api_version": "2024-02-01",
+    "azure_deployment": "your-deployment-name"
+  }
 }
 ```
 
 #### Ollama Local Model Configuration
+
 ```json
 {
-    "LLM": {
-        "provider": "ollama",
-        "model": "llama3.1:8b",
-        "temperature": 0.5,
-        "max_tokens": 5000,
-        "max_context_length": 100000,
-        "top_p": 0.7,
-        "ollama_host": "http://localhost:11434"
-    }
+  "LLM": {
+    "provider": "ollama",
+    "model": "llama3.1:8b",
+    "temperature": 0.5,
+    "max_tokens": 5000,
+    "max_context_length": 100000,
+    "top_p": 0.7,
+    "ollama_host": "http://localhost:11434"
+  }
 }
 ```
 
 #### OpenRouter Configuration
+
 ```json
 {
-    "LLM": {
-        "provider": "openrouter",
-        "model": "anthropic/claude-3.5-sonnet",
-        "temperature": 0.7,
-        "max_tokens": 4000,
-        "max_context_length": 200000,
-        "top_p": 0.95
-    }
+  "LLM": {
+    "provider": "openrouter",
+    "model": "anthropic/claude-3.5-sonnet",
+    "temperature": 0.7,
+    "max_tokens": 4000,
+    "max_context_length": 200000,
+    "top_p": 0.95
+  }
 }
 ```
 
@@ -730,42 +798,45 @@ See the [FastAPI example](examples/fast_api_iml.py) for:
 MCPOmni Connect supports multiple authentication methods for secure server connections:
 
 #### OAuth 2.0 Authentication
+
 ```json
 {
-    "server_name": {
-        "transport_type": "streamable_http",
-        "auth": {
-            "method": "oauth"
-        },
-        "url": "http://your-server/mcp"
-    }
+  "server_name": {
+    "transport_type": "streamable_http",
+    "auth": {
+      "method": "oauth"
+    },
+    "url": "http://your-server/mcp"
+  }
 }
 ```
 
 #### Bearer Token Authentication
+
 ```json
 {
-    "server_name": {
-        "transport_type": "streamable_http",
-        "headers": {
-            "Authorization": "Bearer your-token-here"
-        },
-        "url": "http://your-server/mcp"
-    }
+  "server_name": {
+    "transport_type": "streamable_http",
+    "headers": {
+      "Authorization": "Bearer your-token-here"
+    },
+    "url": "http://your-server/mcp"
+  }
 }
 ```
 
 #### Custom Headers
+
 ```json
 {
-    "server_name": {
-        "transport_type": "streamable_http",
-        "headers": {
-            "X-Custom-Header": "value",
-            "Authorization": "Custom-Auth-Scheme token"
-        },
-        "url": "http://your-server/mcp"
-    }
+  "server_name": {
+    "transport_type": "streamable_http",
+    "headers": {
+      "X-Custom-Header": "value",
+      "Authorization": "Custom-Auth-Scheme token"
+    },
+    "url": "http://your-server/mcp"
+  }
 }
 ```
 
@@ -774,32 +845,35 @@ MCPOmni Connect supports multiple authentication methods for secure server conne
 MCPOmni Connect supports dynamic server configuration through commands:
 
 #### Add New Servers
+
 ```bash
 # Add one or more servers from a configuration file
 /add_servers:path/to/config.json
 ```
 
 The configuration file can include multiple servers with different authentication methods:
+
 ```json
 {
-    "new-server": {
-        "transport_type": "streamable_http",
-        "auth": {
-            "method": "oauth"
-        },
-        "url": "http://localhost:8000/mcp"
+  "new-server": {
+    "transport_type": "streamable_http",
+    "auth": {
+      "method": "oauth"
     },
-    "another-server": {
-        "transport_type": "sse",
-        "headers": {
-            "Authorization": "Bearer token"
-        },
-        "url": "http://localhost:3000/sse"
-    }
+    "url": "http://localhost:8000/mcp"
+  },
+  "another-server": {
+    "transport_type": "sse",
+    "headers": {
+      "Authorization": "Bearer token"
+    },
+    "url": "http://localhost:3000/sse"
+  }
 }
 ```
 
 #### Remove Servers
+
 ```bash
 # Remove a server by its name
 /remove_server:server_name
@@ -808,6 +882,7 @@ The configuration file can include multiple servers with different authenticatio
 ## 🎯 Usage
 
 ### Interactive Commands
+
 - `/tools` - List all available tools across servers
 - `/prompts` - View available prompts
 - `/prompt:<name>/<args>` - Execute a prompt with arguments
@@ -822,6 +897,7 @@ The configuration file can include multiple servers with different authenticatio
 - `/remove_server:<server_name>` - Remove a server by its name
 
 ### Memory and Chat History
+
 ```bash
 # Enable Redis memory persistence
 /memory
@@ -837,6 +913,7 @@ Memory persistence is now DISABLED
 ```
 
 ### Operation Modes
+
 ```bash
 # Switch to autonomous mode
 /mode:auto
@@ -852,13 +929,16 @@ Now operating in CHAT mode. I will ask for approval before executing tasks.
 ```
 
 ### Mode Differences
+
 - **Chat Mode (Default)**
+
   - Requires explicit approval for tool execution
   - Interactive conversation style
   - Step-by-step task execution
   - Detailed explanations of actions
 
 - **Autonomous Mode**
+
   - Independent task execution
   - Self-guided decision making
   - Automatic tool selection and chaining
@@ -877,6 +957,7 @@ Now operating in CHAT mode. I will ask for approval before executing tasks.
   - Adaptive task prioritization
 
 ### Prompt Management
+
 ```bash
 # List all available prompts
 /prompts
@@ -906,6 +987,7 @@ Now operating in CHAT mode. I will ask for approval before executing tasks.
 ```
 
 ### Advanced Prompt Features
+
 - **Argument Validation**: Automatic type checking and validation
 - **Default Values**: Smart handling of optional arguments
 - **Context Awareness**: Prompts can access previous conversation context
@@ -914,7 +996,9 @@ Now operating in CHAT mode. I will ask for approval before executing tasks.
 - **Dynamic Help**: Detailed usage information for each prompt
 
 ### AI-Powered Interactions
+
 The client intelligently:
+
 - Chains multiple tools together
 - Provides context-aware responses
 - Automatically selects appropriate tools
@@ -922,6 +1006,7 @@ The client intelligently:
 - Maintains conversation context
 
 ### Model Support with LiteLLM
+
 - **Unified Model Access**
   - Single interface for 100+ models across all major providers
   - Automatic provider detection and routing
@@ -956,6 +1041,7 @@ Use the `/api_stats` command to see your current usage:
 ```
 
 This will display:
+
 - **Total tokens used**
 - **Total requests made**
 - **Total response tokens**
@@ -1000,6 +1086,7 @@ You can configure these in your `servers_config.json` under the `AgentConfig` se
 ## 🔧 Advanced Features
 
 ### Tool Orchestration
+
 ```python
 # Example of automatic tool chaining if the tool is available in the servers connected
 User: "Find charging stations near Silicon Valley and check their current status"
@@ -1012,6 +1099,7 @@ User: "Find charging stations near Silicon Valley and check their current status
 ```
 
 ### Resource Analysis
+
 ```python
 # Automatic resource processing
 User: "Analyze the contents of /path/to/document.pdf"
@@ -1022,12 +1110,15 @@ User: "Analyze the contents of /path/to/document.pdf"
 3. Processes through LLM
 4. Provides intelligent summary
 ```
+
 ### Demo
+
 ![mcp_client_new1-MadewithClipchamp-ezgif com-optimize](https://github.com/user-attachments/assets/9c4eb3df-d0d5-464c-8815-8f7415a47fce)
 
 ## 🔍 Troubleshooting
 
 > 📖 **For comprehensive configuration help**, see the [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide) section above, which covers:
+>
 > - Config file differences (`.env` vs `servers_config.json`)
 > - Transport type selection and authentication
 > - OAuth server behavior explanation
@@ -1036,9 +1127,11 @@ User: "Analyze the contents of /path/to/document.pdf"
 ### Common Issues and Solutions
 
 1. **Connection Issues**
+
    ```bash
    Error: Could not connect to MCP server
    ```
+
    - Check if the server is running
    - Verify server configuration in `servers_config.json`
    - Ensure network connectivity
@@ -1046,18 +1139,22 @@ User: "Analyze the contents of /path/to/document.pdf"
    - **See [Transport Types & Authentication](#-transport-types--authentication) for detailed setup**
 
 2. **API Key Issues**
+
    ```bash
    Error: Invalid API key
    ```
+
    - Verify API key is correctly set in `.env`
    - Check if API key has required permissions
    - Ensure API key is for correct environment (production/development)
    - **See [Configuration Files Overview](#configuration-files-overview) for correct setup**
 
 3. **Redis Connection**
+
    ```bash
    Error: Could not connect to Redis
    ```
+
    - Verify Redis server is running
    - Check Redis connection settings in `.env`
    - Ensure Redis password is correct (if configured)
@@ -1073,11 +1170,13 @@ User: "Analyze the contents of /path/to/document.pdf"
 ### Debug Mode
 
 Enable debug mode for detailed logging:
+
 ```bash
 /debug
 ```
 
 For additional support, please:
+
 1. Check the [Issues](https://github.com/Abiorh001/mcp_omni_connect/issues) page
 2. Review closed issues for similar problems
 3. Open a new issue with detailed information if needed
@@ -1091,6 +1190,7 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for deta
 Complete documentation is available at: **[MCPOmni Connect Docs](https://abiorh001.github.io/mcp_omni_connect)**
 
 To build documentation locally:
+
 ```bash
 ./docs.sh serve    # Start development server at http://127.0.0.1:8080
 ./docs.sh build    # Build static documentation
