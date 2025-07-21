@@ -14,9 +14,6 @@ from mcpomni_connect.agents.types import AgentConfig
 from mcpomni_connect.client import Configuration, MCPClient
 from mcpomni_connect.constants import AGENTS_REGISTRY, date_time_func
 from mcpomni_connect.llm import LLMConnection
-from mcpomni_connect.memory import (
-    InMemoryStore,
-)
 from mcpomni_connect.refresh_server_capabilities import (
     generate_react_agent_role_prompt_func,
 )
@@ -27,6 +24,7 @@ from mcpomni_connect.system_prompts import (
 )
 from mcpomni_connect.utils import logger
 from mcpomni_connect.resources import read_resource, list_resources
+from mcpomni_connect.memory_store.memory_router import MemoryRouter
 
 
 class MCPClientConnect:
@@ -38,9 +36,7 @@ class MCPClientConnect:
         )["LLM"]["max_context_length"]
         self.MODE = {"auto": False, "orchestrator": True}
         self.client.debug = True
-        self.in_memory_short_term_memory = InMemoryStore(
-            max_context_tokens=self.MAX_CONTEXT_TOKENS
-        )
+        self.memory_router = MemoryRouter(memory_store_type="database")
 
     async def add_agent_registry(self):
         for server_name in self.client.server_names:
@@ -98,8 +94,8 @@ class MCPClientConnect:
                 system_prompt=react_agent_prompt,
                 query=query,
                 llm_connection=self.llm_connection,
-                add_message_to_history=(self.in_memory_short_term_memory.store_message),
-                message_history=(self.in_memory_short_term_memory.get_messages),
+                add_message_to_history=(self.memory_router.store_message),
+                message_history=(self.memory_router.get_messages),
                 debug=self.client.debug,
                 **extra_kwargs,
             )
@@ -119,10 +115,10 @@ class MCPClientConnect:
             response = await orchestrator_agent.run(
                 query=query,
                 sessions=self.client.sessions,
-                add_message_to_history=(self.in_memory_short_term_memory.store_message),
+                add_message_to_history=(self.memory_router.store_message),
                 llm_connection=self.llm_connection,
                 available_tools=self.client.available_tools,
-                message_history=(self.in_memory_short_term_memory.get_messages),
+                message_history=(self.memory_router.get_messages),
                 orchestrator_system_prompt=orchestrator_agent_prompt,
                 tool_call_timeout=30,
                 max_steps=15,

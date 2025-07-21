@@ -26,9 +26,8 @@ class DatabaseMemory(AbstractMemoryStore):
         self,
         role: str,
         content: str,
-        metadata: dict | None = None,
+        msg_metadata: dict | None = None,
         session_id: str = None,
-        agent_name: str = None,
     ) -> None:
         """
         Store a message in the database for the given session_id.
@@ -36,29 +35,25 @@ class DatabaseMemory(AbstractMemoryStore):
         await self.db_session.store_message(
             role=role,
             content=content,
-            metadata=metadata,
+            metadata=msg_metadata,
             session_id=session_id,
         )
 
     async def get_messages(
         self,
         session_id: str = None,
-        agent_name: str = None,
     ):
         """
-        Retrieve all messages for a given session_id (and optionally agent_name) from the database.
+        Retrieve all messages for a given session_id from the database.
         Returns a list of message dicts.
         """
-        return await self.db_session.get_messages(
-            session_id=session_id, agent_name=agent_name
-        )
+        return await self.db_session.get_messages(session_id=session_id)
 
     async def clear_memory(
         self,
         session_id: str = None,
-        agent_name: str = None,
     ) -> None:
         """
-        Delete messages for a session_id and/or agent_name from the database.
+        Delete messages for a session_id from the database.
         """
-        await self.db_session.clear_memory(session_id=session_id, agent_name=agent_name)
+        await self.db_session.clear_memory(session_id=session_id)

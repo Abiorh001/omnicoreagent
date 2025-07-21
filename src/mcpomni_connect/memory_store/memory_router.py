@@ -21,20 +21,13 @@ class MemoryRouter:
         self,
         role: str,
         content: str,
-        metadata: dict | None = None,
+        msg_metadata: dict | None = None,
         session_id: str = None,
-        agent_name: str = None,
     ) -> None:
-        await self.memory_store.store_message(
-            role, content, metadata, session_id, agent_name
-        )
+        await self.memory_store.store_message(role, content, msg_metadata, session_id)
 
-    async def get_messages(
-        self, session_id: str = None, agent_name: str = None
-    ) -> list[dict[str, Any]]:
-        return await self.memory_store.get_messages(session_id, agent_name)
+    async def get_messages(self, session_id: str = None) -> list[dict[str, Any]]:
+        return await self.memory_store.get_messages(session_id)
 
-    async def clear_memory(
-        self, session_id: str = None, agent_name: str = None
-    ) -> None:
-        await self.memory_store.clear_memory(session_id, agent_name)
+    async def clear_memory(self, session_id: str = None) -> None:
+        await self.memory_store.clear_memory(session_id)

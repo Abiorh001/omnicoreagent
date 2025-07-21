@@ -44,14 +44,14 @@ class StorageMessage(Base):
     role: Mapped[str] = mapped_column(String(DEFAULT_MAX_VARCHAR_LENGTH))
     content: Mapped[str] = mapped_column(Text)
     timestamp: Mapped[float] = mapped_column(DateTime(), default=func.now())
-    metadata: Mapped[dict[str, Any]] = mapped_column(
+    msg_metadata: Mapped[dict[str, Any]] = mapped_column(
         MutableDict.as_mutable(DynamicJSON), default={}
     )
 
 
 class DatabaseMessageStore:
     """
-    Database-backed message store for storing, retrieving, and clearing messages by session and agent.
+    Database-backed message store for storing, retrieving, and clearing messages by session.
     """
 
     def __init__(self, db_url: str, **kwargs: Any):
@@ -91,16 +91,14 @@ class DatabaseMessageStore:
                     role=role,
                     content=content,
                     timestamp=datetime.now(),
-                    metadata=metadata,
+                    msg_metadata=metadata,
                 )
                 session_factory.add(message)
                 session_factory.commit()
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    async def get_messages(
-        self, session_id: str = None, agent_name: str = None
-    ) -> list[dict[str, Any]]:
+    async def get_messages(self, session_id: str = None) -> list[dict[str, Any]]:
         logger.info(f"get memory config: {self.memory_config}")
         try:
             with self.database_session_factory() as session_factory:
@@ -116,7 +114,7 @@ class DatabaseMessageStore:
                         "timestamp": m.timestamp.timestamp()
                         if isinstance(m.timestamp, datetime)
                         else m.timestamp,
-                        "metadata": m.metadata,
+                        "msg_metadata": m.msg_metadata,
                     }
                     for m in messages
                 ]
@@ -133,73 +131,21 @@ class DatabaseMessageStore:
                         total_tokens = sum(
                             len(str(msg["content"]).split()) for msg in result
                         )
-                if agent_name:
-
-                    def _get_agent_name_from_metadata(metadata):
-                        if not metadata:
-                            return None
-                        if hasattr(metadata, "agent_name"):
-                            return metadata.agent_name
-                        if isinstance(metadata, dict):
-                            return metadata.get("agent_name")
-                        return None
-
-                    result = [
-                        msg
-                        for msg in result
-                        if _get_agent_name_from_metadata(msg.get("metadata"))
-                        == agent_name
-                    ]
                 return result
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
 
-    async def clear_memory(
-        self, session_id: str = None, agent_name: str = None
-    ) -> None:
+    async def clear_memory(self, session_id: str = None) -> None:
         try:
             with self.database_session_factory() as session_factory:
                 if session_id:
                     query = session_factory.query(StorageMessage).filter(
                         StorageMessage.session_id == session_id
                     )
-                    if agent_name:
-                        messages = query.all()
-                        to_delete = [
-                            m.id
-                            for m in messages
-                            if self._get_agent_name_from_metadata(m.metadata)
-                            == agent_name
-                        ]
-                        for msg_id in to_delete:
-                            session_factory.query(StorageMessage).filter(
-                                StorageMessage.id == msg_id
-                            ).delete()
-                    else:
-                        query.delete()
-                elif agent_name:
-                    messages = session_factory.query(StorageMessage).all()
-                    to_delete = [
-                        m.id
-                        for m in messages
-                        if self._get_agent_name_from_metadata(m.metadata) == agent_name
-                    ]
-                    for msg_id in to_delete:
-                        session_factory.query(StorageMessage).filter(
-                            StorageMessage.id == msg_id
-                        ).delete()
+                    query.delete()
                 else:
                     session_factory.query(StorageMessage).delete()
                 session_factory.commit()
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")
-
-    def _get_agent_name_from_metadata(self, metadata) -> str:
-        if not metadata:
-            return None
-        if hasattr(metadata, "agent_name"):
-            return metadata.agent_name
-        if isinstance(metadata, dict):
-            return metadata.get("agent_name")
-        return None
