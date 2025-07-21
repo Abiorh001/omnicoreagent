@@ -105,9 +105,7 @@ class ToolCallingAgent:
             self.messages.append(self.assistant_with_tool_calls)
             self.messages.extend(self.pending_tool_responses)
 
-    async def list_available_tools(
-        self, available_tools: dict = None
-    ):
+    async def list_available_tools(self, available_tools: dict = None):
         """List available tools from all servers."""
         # List available tools
         available_tools_list = []
@@ -128,7 +126,6 @@ class ToolCallingAgent:
                 for tool in available_tools_list
             ]
 
-
         return all_available_tools
 
     async def execute_tool_call(
@@ -139,11 +136,10 @@ class ToolCallingAgent:
         tool_call: Any,
         add_message_to_history: Callable[..., Any],
         available_tools: dict[str, Any] = None,
-        
         sessions: dict[str, Any] = None,
     ) -> dict:
         """Unified executor for MCP and local tool calls based on config"""
-        
+
         if isinstance(tool_args, str):
             try:
                 tool_args = json.loads(tool_args)
@@ -244,19 +240,21 @@ class ToolCallingAgent:
         add_message_to_history: Callable[..., Any],
         message_history: Callable[[], Any],
         available_tools: dict[str, Any] = None,
-        
     ):
         """Run the agent with the given query and return the response."""
         final_text = []
         available_tools = available_tools
-        
+
         current_steps = 0
         # Initialize messages with system prompt
         self.messages = [{"role": "system", "content": system_prompt}]
 
         # Add user query to history
         await add_message_to_history(
-            role="user", content=query, session_id=session_id, metadata={"agent_name": self.agent_name}
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
 
         # Update working memory with message history
@@ -385,7 +383,6 @@ class ToolCallingAgent:
                     tool_call=tool_call,
                     add_message_to_history=add_message_to_history,
                     available_tools=available_tools,
-
                     sessions=sessions,
                 )
 

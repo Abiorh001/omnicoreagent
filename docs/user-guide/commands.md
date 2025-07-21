@@ -220,7 +220,7 @@ Toggle Redis memory persistence on/off.
 Memory persistence is now ENABLED using Redis
 Conversations will be saved and restored across sessions.
 
-# When disabling  
+# When disabling
 Memory persistence is now DISABLED
 Conversations will not be saved to Redis.
 ```
@@ -476,17 +476,17 @@ Commands behave differently based on current mode:
 
 !!! failure "Command Not Found"
     **Error**: `/unknown_command`
-    
+
     **Response**: `Unknown command. Type /help for available commands.`
 
 !!! failure "Invalid Arguments"
     **Error**: `/prompt:weather/invalid=args`
-    
+
     **Response**: `Invalid arguments for prompt 'weather'. Expected: location`
 
 !!! failure "Server Not Connected"
     **Error**: `/prompt:server_prompt/args=value`
-    
+
     **Response**: `Server not found. Use /connections to see available servers.`
 
 ### Recovery Commands
@@ -560,4 +560,4 @@ echo "/save:csv_processing_results.json" >> automation.txt
 
 ---
 
-**Next**: [Memory Management →](memory-management.md) 
+**Next**: [Memory Management →](memory-management.md)

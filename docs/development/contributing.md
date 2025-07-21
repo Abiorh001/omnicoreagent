@@ -177,4 +177,4 @@ Contributors are recognized in:
 - GitHub contributors page
 - Special thanks in release notes
 
-Thank you for helping make MCPOmni Connect better! 🚀 
+Thank you for helping make MCPOmni Connect better! 🚀

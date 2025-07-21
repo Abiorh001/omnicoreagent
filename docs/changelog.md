@@ -278,4 +278,4 @@ We welcome contributions! See our [Contributing Guide](development/contributing.
 - Feature request process
 - Development setup
 - Testing requirements
-- Release criteria 
+- Release criteria

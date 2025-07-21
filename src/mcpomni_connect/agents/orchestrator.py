@@ -16,6 +16,7 @@ from mcpomni_connect.utils import logger
 import json
 import re
 
+
 class OrchestratorAgent(BaseReactAgent):
     def __init__(
         self,
@@ -47,42 +48,59 @@ class OrchestratorAgent(BaseReactAgent):
             # Check for XML-style agent call format
             if "<agent_call>" in response and "</agent_call>" in response:
                 if debug:
-                    logger.info("XML agent call format detected in response: %s", response)
-                agent_name_match = re.search(r'<agent_name>(.*?)</agent_name>', response, re.DOTALL)
-                task_match = re.search(r'<task>(.*?)</task>', response, re.DOTALL)
+                    logger.info(
+                        "XML agent call format detected in response: %s", response
+                    )
+                agent_name_match = re.search(
+                    r"<agent_name>(.*?)</agent_name>", response, re.DOTALL
+                )
+                task_match = re.search(r"<task>(.*?)</task>", response, re.DOTALL)
                 if agent_name_match and task_match:
                     agent_name = agent_name_match.group(1).strip()
                     task = task_match.group(1).strip()
                     # strip away if Agent or agent is part of the agent name
-                    agent_name = agent_name.replace("Agent", "").replace("agent", "").strip()
-                    
+                    agent_name = (
+                        agent_name.replace("Agent", "").replace("agent", "").strip()
+                    )
+
                     # Validate agent exists in registry
                     agent_names = [name.lower() for name in self.agents_registry.keys()]
                     if agent_name.lower() in agent_names:
-                        action_json = json.dumps({"agent_name": agent_name, "task": task})
+                        action_json = json.dumps(
+                            {"agent_name": agent_name, "task": task}
+                        )
                         return ParsedResponse(action=True, data=action_json)
                     else:
                         logger.warning("Agent not found: %s", agent_name)
                         return ParsedResponse(error=f"Agent {agent_name} not found")
                 else:
-                    return ParsedResponse(error="Invalid XML agent call format - missing agent_name or task")
-            
+                    return ParsedResponse(
+                        error="Invalid XML agent call format - missing agent_name or task"
+                    )
+
             # Check for XML-style final answer format
             if "<final_answer>" in response and "</final_answer>" in response:
                 if debug:
-                    logger.info("XML final answer format detected in response: %s", response)
-                final_answer_match = re.search(r'<final_answer>(.*?)</final_answer>', response, re.DOTALL)
+                    logger.info(
+                        "XML final answer format detected in response: %s", response
+                    )
+                final_answer_match = re.search(
+                    r"<final_answer>(.*?)</final_answer>", response, re.DOTALL
+                )
                 if final_answer_match:
                     answer = final_answer_match.group(1).strip()
                     return ParsedResponse(answer=answer)
                 else:
                     return ParsedResponse(error="Invalid XML final answer format")
-            
+
             # If no XML tags found, treat as conversational response (likely final answer after agent observation)
             if debug:
-                logger.info("No XML tags found, treating as conversational response: %s", response)
+                logger.info(
+                    "No XML tags found, treating as conversational response: %s",
+                    response,
+                )
             return ParsedResponse(answer=response.strip())
-            
+
         except Exception as e:
             logger.error("Error parsing model response: %s", str(e))
             return ParsedResponse(error=str(e))

@@ -323,7 +323,7 @@ flowchart TD
 
 !!! failure "Command Not Found"
     **Error**: `FileNotFoundError: [Errno 2] No such file or directory: 'uvx'`
-    
+
     **Solution**: Install the required command or use full path:
     ```json
     {
@@ -337,7 +337,7 @@ flowchart TD
 
 !!! failure "SSE Connection Failed"
     **Error**: `Failed to connect to SSE endpoint`
-    
+
     **Solutions**:
     1. Verify the URL is correct
     2. Check if server supports SSE
@@ -348,7 +348,7 @@ flowchart TD
 
 !!! failure "OAuth Server Already Running"
     **Error**: `Address already in use: localhost:3000`
-    
+
     **Solutions**:
     1. Stop other processes using port 3000
     2. Only one OAuth server runs at a time
@@ -374,4 +374,4 @@ flowchart TD
 
 ---
 
-**Next**: [Authentication →](authentication.md) 
+**Next**: [Authentication →](authentication.md)

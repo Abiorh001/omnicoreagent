@@ -31,7 +31,6 @@ from mcpomni_connect.utils import (
     RobustLoopDetector,
     handle_stuck_state,
     logger,
-    strip_json_comments,
     show_tool_response,
 )
 
@@ -70,69 +69,90 @@ class BaseReactAgent:
     ) -> ParsedResponse:
         """Parse LLM response to extract a final answer or a tool action using XML format only."""
         try:
-            
             # Check for XML-style tool call format first
             if "<tool_call>" in response and "</tool_call>" in response:
                 if debug:
-                    logger.info("XML tool call format detected in response: %s", response)
+                    logger.info(
+                        "XML tool call format detected in response: %s", response
+                    )
                 try:
                     # Extract single tool call
-                    tool_call_match = re.search(r"<tool_call>(.*?)</tool_call>", response, re.DOTALL)
+                    tool_call_match = re.search(
+                        r"<tool_call>(.*?)</tool_call>", response, re.DOTALL
+                    )
                     if not tool_call_match:
                         return ParsedResponse(error="No valid <tool_call> block found")
-                    
+
                     block = tool_call_match.group(1)
-                    
-                    name_match = re.search(r"<tool_name>(.*?)</tool_name>", block, re.DOTALL)
-                    args_match = re.search(r"<parameters>(.*?)</parameters>", block, re.DOTALL)
-                    
-                    
+
+                    name_match = re.search(
+                        r"<tool_name>(.*?)</tool_name>", block, re.DOTALL
+                    )
+                    args_match = re.search(
+                        r"<parameters>(.*?)</parameters>", block, re.DOTALL
+                    )
+
                     if name_match and args_match:
                         tool_name = name_match.group(1).strip()
                         args_str = args_match.group(1).strip()
-                        
+
                         try:
                             # Handle both JSON format and XML parameter format
-                            if args_str.startswith('{') and args_str.endswith('}'):
+                            if args_str.startswith("{") and args_str.endswith("}"):
                                 # JSON format
                                 args = json.loads(args_str)
                             else:
                                 # XML parameter format - extract key-value pairs
                                 args = {}
-                                param_matches = re.findall(r"<(\w+)>(.*?)</\1>", args_str, re.DOTALL)
+                                param_matches = re.findall(
+                                    r"<(\w+)>(.*?)</\1>", args_str, re.DOTALL
+                                )
                                 for key, value in param_matches:
                                     args[key] = value.strip()
-                            
+
                             tool_call = {"tool": tool_name, "parameters": args}
                         except json.JSONDecodeError as e:
-                            return ParsedResponse(error=f"Invalid JSON in args: {str(e)}")
+                            return ParsedResponse(
+                                error=f"Invalid JSON in args: {str(e)}"
+                            )
                     else:
-                        return ParsedResponse(error="Invalid tool call format - missing tool name or parameters")
-                    
+                        return ParsedResponse(
+                            error="Invalid tool call format - missing tool name or parameters"
+                        )
+
                     # Create JSON format for compatibility with existing code
                     action_json = json.dumps(tool_call)
                     return ParsedResponse(action=True, data=action_json)
-                    
+
                 except Exception as e:
                     logger.error("Error parsing XML tool call: %s", str(e))
-                    return ParsedResponse(error=f"Error parsing XML tool call: {str(e)}")
-            
+                    return ParsedResponse(
+                        error=f"Error parsing XML tool call: {str(e)}"
+                    )
+
             # Check for XML final answer format
             if "<final_answer>" in response and "</final_answer>" in response:
                 if debug:
-                    logger.info("XML final answer format detected in response: %s", response)
-                final_answer_match = re.search(r'<final_answer>(.*?)</final_answer>', response, re.DOTALL)
+                    logger.info(
+                        "XML final answer format detected in response: %s", response
+                    )
+                final_answer_match = re.search(
+                    r"<final_answer>(.*?)</final_answer>", response, re.DOTALL
+                )
                 if final_answer_match:
                     answer = final_answer_match.group(1).strip()
                     return ParsedResponse(answer=answer)
                 else:
                     return ParsedResponse(error="Invalid XML final answer format")
-            
+
             # If no XML format detected, treat as conversational response
             if debug:
-                logger.info("No XML format detected, treating as conversational response: %s", response)
+                logger.info(
+                    "No XML format detected, treating as conversational response: %s",
+                    response,
+                )
             return ParsedResponse(answer=response.strip())
-            
+
         except Exception as e:
             logger.error("Error parsing model response: %s", str(e))
             return ParsedResponse(error=str(e))

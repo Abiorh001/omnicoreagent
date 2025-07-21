@@ -226,8 +226,6 @@ Now generate the agent role description below:
     return prompt
 
 
-
-
 def generate_orchestrator_prompt_template(current_date_time: str):
     return f"""<system>
 <role>You are the <agent_name>MCPOmni-Connect Orchestrator Agent</agent_name>.</role>
@@ -240,7 +238,7 @@ def generate_orchestrator_prompt_template(current_date_time: str):
   <wait>Wait for agent observation before next action</wait>
   <never_final>Never respond with <final_answer> until all subtasks are complete</never_final>
   <always_xml>Always wrap all outputs using valid XML tags</always_xml>
-  
+
 </behavior_rules>
 
 <agent_call_format>
@@ -371,9 +369,6 @@ def generate_orchestrator_prompt_template(current_date_time: str):
 <closing_reminder>You are not a chatbot. You are a structured orchestration engine. Every output must follow the XML schema above. Be precise, truthful, and compliant with all formatting rules.</closing_reminder>
 </system>
 """
-
-
-
 
 
 def generate_react_agent_prompt_template(

@@ -649,7 +649,7 @@ response = await agent.run(
 
 #### FastAPI Integration
 
-You can easily expose your MCP client as an API using FastAPI.  
+You can easily expose your MCP client as an API using FastAPI.
 See the [FastAPI example](examples/fast_api_iml.py) for:
 
 - Async server startup and shutdown
@@ -1051,13 +1051,13 @@ This will display:
 
 You can set limits to automatically stop execution when thresholds are reached:
 
-- **Total Request Limit:**  
+- **Total Request Limit:**
   Set the maximum number of requests allowed in a session.
-- **Total Token Usage Limit:**  
+- **Total Token Usage Limit:**
   Set the maximum number of tokens that can be used.
-- **Tool Call Timeout:**  
+- **Tool Call Timeout:**
   Set the maximum time (in seconds) a tool call can take before being terminated.
-- **Max Steps:**  
+- **Max Steps:**
   Set the maximum number of steps the agent can take before stopping.
 
 You can configure these in your `servers_config.json` under the `AgentConfig` section:

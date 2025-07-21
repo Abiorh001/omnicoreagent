@@ -236,4 +236,4 @@ See [Contributing Guide](development/contributing.md) for detailed instructions.
 
 ---
 
-**Questions?** Open an issue or start a discussion on GitHub! 
+**Questions?** Open an issue or start a discussion on GitHub!
