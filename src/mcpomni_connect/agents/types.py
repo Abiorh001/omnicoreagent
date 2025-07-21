@@ -14,7 +14,6 @@ class AgentConfig(BaseModel):
     tool_call_timeout: int = Field(gt=1, le=1000)
     memory_config: dict = {"mode": "sliding_window", "value": 10000}
 
-
 class AgentState(str, Enum):
     IDLE = "idle"
     RUNNING = "running"
