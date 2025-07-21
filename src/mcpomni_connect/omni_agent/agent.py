@@ -153,6 +153,11 @@ class OmniAgent:
         """Generate a new session ID for the session"""
         return f"omni_agent_{self.name}_{uuid.uuid4().hex[:8]}"
 
+    async def connect_mcp_servers(self):
+        """Connect to MCP servers if MCP tools are configured"""
+        if self.mcp_client and self.mcp_tools:
+            await self.mcp_client.connect_to_servers()
+
     async def run(self, query: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Run the agent with a query and optional session ID.
@@ -168,9 +173,7 @@ class OmniAgent:
         if not session_id:
             session_id = self.generate_session_id()
 
-        # Connect to MCP servers if MCP tools are configured
-        if self.mcp_client and self.mcp_tools:
-            await self.mcp_client.connect_to_servers()
+        
 
         omni_agent_prompt = self.prompt_builder.build(
             system_instruction=self.system_instruction
