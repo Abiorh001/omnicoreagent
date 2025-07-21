@@ -1,81 +1,64 @@
-import asyncio
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
-from mcpomni_connect.session.database_session import DatabaseSessionService
-from mcpomni_connect.events.event import Event,EventContent
-import time
+from mcpomni_connect.database.database_message_store import DatabaseMessageStore
 
 
 class DatabaseMemory(AbstractMemoryStore):
-    def __init__(self, db_url: str, session_id: str = None, app_name: str = None, user_id: str = None):
+    def __init__(self, db_url: str):
         """
-        Initialize the database memory store and set up the database session service.
-        If a session_id is provided, attempts to retrieve the session; otherwise, active_session is None.
+        Initialize the database memory store and set up the database message store service.
         """
         self.db_url = db_url
-        self.db_session = DatabaseSessionService(db_url=db_url)
-        self.active_session = asyncio.run(
-            self.db_session.get_session(session_id=session_id, app_name=app_name, user_id=user_id)
+        self.db_session = DatabaseMessageStore(db_url=db_url)
+        self.memory_config = {"mode": "sliding_window", "value": 10000}
+        self.db_session.set_memory_config(
+            self.memory_config["mode"], self.memory_config["value"]
         )
-        self.memory_config = {
-            "mode": "sliding_window",
-            "value": 10000
-        }
 
     def set_memory_config(self, mode: str, value: int = None) -> None:
         """
-        Placeholder for setting memory configuration (not implemented).
+        Set memory configuration for both this instance and the underlying database session service.
         """
         self.memory_config["mode"] = mode
         self.memory_config["value"] = value
+        self.db_session.set_memory_config(mode, value)
 
-    async def store_message(self, role: str, content,metadata: dict | None = None, session_id: str = None, app_name: str = None, user_id: str = None) -> None:
+    async def store_message(
+        self,
+        role: str,
+        content: str,
+        metadata: dict | None = None,
+        session_id: str = None,
+        agent_name: str = None,
+    ) -> None:
         """
-        Store a message as an Event in the database for the current or newly created session.
-        If no active session exists, create one first.
+        Store a message in the database for the given session_id.
         """
-        if not self.active_session:
-            # Create a new session if one does not exist
-            self.active_session = await self.db_session.create_session(app_name=app_name, user_id=user_id)
-        # Store the event in the database
-        await self.db_session.append_event(
-            session=self.active_session, 
-            event=Event(author=role, content=content, invocation_id=session_id, timestamp=time.time())
+        await self.db_session.store_message(
+            role=role,
+            content=content,
+            metadata=metadata,
+            session_id=session_id,
         )
 
-    async def get_messages(self, user_id: str = None, app_name: str = None, session_id: str = None):
+    async def get_messages(
+        self,
+        session_id: str = None,
+        agent_name: str = None,
+    ):
         """
-        Retrieve all events/messages for a given session from the database.
-        If session_id is not provided, use the active session's ID.
-        Returns a list of Event objects (or an empty list if no session is found).
+        Retrieve all messages for a given session_id (and optionally agent_name) from the database.
+        Returns a list of message dicts.
         """
-        if not self.active_session:
-            # Create a new session if one does not exist
-            self.active_session = await self.db_session.create_session(app_name=app_name, user_id=user_id)
-        sid = session_id or self.active_session.id
-        session = await self.db_session.get_session(session_id=sid, app_name=app_name, user_id=user_id)
-        events = session.events if session else []
-        mode = self.memory_config.get("mode", "token_budget")
-        value = self.memory_config.get("value")
-        if mode.lower() == "sliding_window" and value is not None:
-            events = events[-value:]
-        elif mode.lower() == "token_budget" and value is not None:
-            total_tokens = sum(len(str(event.content).split()) for event in events)
-            while total_tokens > value and events:
-                events.pop(0)
-                total_tokens = sum(len(str(event.content).split()) for event in events)
-        return events
+        return await self.db_session.get_messages(
+            session_id=session_id, agent_name=agent_name
+        )
 
-
-    async def clear_memory(self, user_id: str = None, app_name: str = None, session_id: str = None) -> None:
+    async def clear_memory(
+        self,
+        session_id: str = None,
+        agent_name: str = None,
+    ) -> None:
         """
-        Delete a session and all its events from the database.
-        If session_id is not provided, deletes the active session and resets it to None.
+        Delete messages for a session_id and/or agent_name from the database.
         """
-        sid = session_id or (self.active_session.id if self.active_session else None)
-        if sid:
-            await self.db_session.delete_session(session_id=sid, app_name=app_name, user_id=user_id)
-            if not session_id:
-                # Reset the active session if we deleted it
-                self.active_session = None
-
-
+        await self.db_session.clear_memory(session_id=session_id, agent_name=agent_name)
