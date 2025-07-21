@@ -33,6 +33,17 @@ from mcpomni_connect.utils import (
     logger,
     show_tool_response,
 )
+from mcpomni_connect.events import (
+    Event,
+    EventType,
+    event_store,
+    ToolCallErrorPayload,
+    ToolCallStartedPayload,
+    ToolCallResultPayload,
+    FinalAnswerPayload,
+    AgentMessagePayload,
+    UserMessagePayload,
+)
 
 
 class BaseReactAgent:
@@ -122,6 +133,7 @@ class BaseReactAgent:
 
                     # Create JSON format for compatibility with existing code
                     action_json = json.dumps(tool_call)
+                    logger.info(f"ACTION CALLED: {action_json}")
                     return ParsedResponse(action=True, data=action_json)
 
                 except Exception as e:
@@ -359,6 +371,16 @@ class BaseReactAgent:
         # Early exit on tool validation failure
         if isinstance(tool_call_result, ToolError):
             observation = tool_call_result.observation
+            event = Event(
+                EventType.TOOL_CALL_ERROR,
+                ToolCallErrorPayload(
+                    tool_name=tool_call_result.tool_name,
+                    error_message=observation,
+                ),
+                agent_name=self.agent_name,
+            )
+            event_store.append(session_id=session_id, event=event)
+
         else:
             # Create proper tool call metadata
             tool_call_id = str(uuid.uuid4())
@@ -376,7 +398,17 @@ class BaseReactAgent:
                     )
                 ],
             )
-
+            # Add tool call started event
+            event = Event(
+                type=EventType.TOOL_CALL_STARTED,
+                payload=ToolCallStartedPayload(
+                    tool_name=tool_call_result.tool_name,
+                    tool_args=tool_call_result.tool_args,
+                    tool_call_id=tool_call_id,
+                ),
+                agent_name=self.agent_name,
+            )
+            event_store.append(session_id=session_id, event=event)
             await add_message_to_history(
                 role="assistant",
                 content=response,
@@ -406,6 +438,18 @@ class BaseReactAgent:
                         observation = f"Error: {parsed['message']}"
                     else:
                         observation = str(parsed["data"])
+                # Handle tool call result event
+                event = Event(
+                    type=EventType.TOOL_CALL_RESULT,
+                    payload=ToolCallResultPayload(
+                        tool_name=tool_call_result.tool_name,
+                        tool_args=tool_call_result.tool_args,
+                        result=observation,
+                        tool_call_id=tool_call_id,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                event_store.append(session_id=session_id, event=event)
 
             except asyncio.TimeoutError:
                 observation = (
@@ -421,6 +465,16 @@ class BaseReactAgent:
                     },
                     session_id=session_id,
                 )
+                # handle tool call timeout event
+                event = Event(
+                    type=EventType.TOOL_CALL_ERROR,
+                    payload=ToolCallErrorPayload(
+                        tool_name=tool_call_result.tool_name,
+                        error_message=observation,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                event_store.append(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -439,7 +493,16 @@ class BaseReactAgent:
                     },
                     session_id=session_id,
                 )
-
+                # handle tool call error event
+                event = Event(
+                    type=EventType.TOOL_CALL_ERROR,
+                    payload=ToolCallErrorPayload(
+                        tool_name=tool_call_result.tool_name,
+                        error_message=observation,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                event_store.append(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -496,6 +559,16 @@ class BaseReactAgent:
                 f"5. Check if the tool parameters need adjustment\n"
                 f"6. If the issue persists, stop immediately.\n"
             )
+            # handle loop detection event
+            event = Event(
+                type=EventType.TOOL_CALL_ERROR,
+                payload=ToolCallErrorPayload(
+                    tool_name=tool_call_result.tool_name,
+                    error_message=loop_message,
+                ),
+                agent_name=self.agent_name,
+            )
+            event_store.append(session_id=session_id, event=event)
             self.messages[self.agent_name].append(
                 Message(role="user", content=loop_message)
             )
@@ -622,6 +695,16 @@ class BaseReactAgent:
         """Execute ReAct loop with JSON communication
         kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be local_tools
         """
+        # handle start of agent run
+        event = Event(
+            type=EventType.USER_MESSAGE,
+            payload=UserMessagePayload(
+                message=query,
+            ),
+            agent_name=self.agent_name,
+        )
+        event_store.append(session_id=session_id, event=event)
+        logger.info(f"event: {event}")
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
             mcp_tools=mcp_tools, local_tools=local_tools
@@ -669,6 +752,15 @@ class BaseReactAgent:
                         self.messages[self.agent_name]
                     )
                     if response:
+                        # handle agent response event
+                        event = Event(
+                            type=EventType.AGENT_MESSAGE,
+                            payload=AgentMessagePayload(
+                                message=str(response),
+                            ),
+                            agent_name=self.agent_name,
+                        )
+                        event_store.append(session_id=session_id, event=event)
                         # check if it has usage
                         if hasattr(response, "usage"):
                             request_usage = Usage(
@@ -733,6 +825,15 @@ class BaseReactAgent:
                             content=parsed_response.answer,
                         )
                     )
+                    # handle final answer event
+                    event = Event(
+                        type=EventType.FINAL_ANSWER,
+                        payload=FinalAnswerPayload(
+                            message=str(parsed_response.answer),
+                        ),
+                        agent_name=self.agent_name,
+                    )
+                    event_store.append(session_id=session_id, event=event)
                     await add_message_to_history(
                         role="assistant",
                         content=parsed_response.answer,
@@ -741,7 +842,6 @@ class BaseReactAgent:
                     )
                     self.state = AgentState.FINISHED
                     return parsed_response.answer
-
                 # check for action
                 if parsed_response.action is not None:
                     # Add the action to the message history
