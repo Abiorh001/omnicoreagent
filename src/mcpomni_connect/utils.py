@@ -17,7 +17,7 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.text import Text
-
+from datetime import datetime
 console = Console()
 # Configure logging
 logger = logging.getLogger("mcpomni_connect")
@@ -450,6 +450,10 @@ def embed_text(text: str) -> list[float]:
 def dict_to_namespace(d):
     return json.loads(json.dumps(d), object_hook=lambda x: SimpleNamespace(**x))
 
+def format_timestamp(ts) -> str:
+    if not isinstance(ts, datetime):
+        ts = datetime.fromisoformat(ts)
+    return ts.strftime("%Y-%m-%d %H:%M:%S")
 
 def strip_json_comments(text: str) -> str:
     """

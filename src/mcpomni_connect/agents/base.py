@@ -133,7 +133,7 @@ class BaseReactAgent:
 
                     # Create JSON format for compatibility with existing code
                     action_json = json.dumps(tool_call)
-                    logger.info(f"ACTION CALLED: {action_json}")
+                    
                     return ParsedResponse(action=True, data=action_json)
 
                 except Exception as e:
@@ -704,7 +704,7 @@ class BaseReactAgent:
             agent_name=self.agent_name,
         )
         event_store.append(session_id=session_id, event=event)
-        logger.info(f"event: {event}")
+        
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
             mcp_tools=mcp_tools, local_tools=local_tools
