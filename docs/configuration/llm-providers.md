@@ -486,7 +486,7 @@ export LLM_MODEL=claude-3-5-sonnet-20241022
 
 !!! failure "Invalid API Key"
     **Error**: `Authentication failed`
-    
+
     **Solutions**:
     - Verify API key in `.env` file
     - Check key has proper permissions
@@ -494,7 +494,7 @@ export LLM_MODEL=claude-3-5-sonnet-20241022
 
 !!! failure "Model Not Found"
     **Error**: `Model not available`
-    
+
     **Solutions**:
     - Check model name spelling
     - Verify model availability for your account
@@ -502,7 +502,7 @@ export LLM_MODEL=claude-3-5-sonnet-20241022
 
 !!! failure "Rate Limit"
     **Error**: `Rate limit exceeded`
-    
+
     **Solutions**:
     - Reduce request frequency
     - Upgrade API plan
@@ -523,4 +523,4 @@ export LLM_MODEL=claude-3-5-sonnet-20241022
 
 ---
 
-**Next**: [Troubleshooting →](troubleshooting.md) 
+**Next**: [Troubleshooting →](troubleshooting.md)

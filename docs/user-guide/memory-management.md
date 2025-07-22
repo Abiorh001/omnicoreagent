@@ -106,7 +106,7 @@ Session memory will be cleared on restart.
 Memory persistence is now ENABLED using Redis
 
 > Hello, I'm working on a Python project
-AI: Hello! I'd be happy to help with your Python project. What specific 
+AI: Hello! I'd be happy to help with your Python project. What specific
     aspect are you working on?
 
 > I need to analyze some CSV files
@@ -366,7 +366,7 @@ Organize conversations by project:
    ```bash
    # Clear old conversations periodically
    /clear
-   
+
    # Save important parts before clearing
    /save:important_findings.json
    ```
@@ -383,10 +383,10 @@ Organize conversations by project:
    ```bash
    # Load relevant context
    /load:project_context.json
-   
+
    # Add new information
    [... conversation ...]
-   
+
    # Save updated context
    /save:project_context_updated.json
    ```
@@ -397,18 +397,18 @@ Organize conversations by project:
 
 !!! failure "Redis Connection Failed"
     **Error**: `Could not connect to Redis`
-    
+
     **Solutions**:
     ```bash
     # Check Redis status
     redis-cli ping
-    
+
     # Start Redis if needed
     sudo systemctl start redis-server
-    
+
     # Check configuration
     cat .env | grep REDIS
-    
+
     # Test connection manually
     redis-cli -h localhost -p 6379
     ```
@@ -417,15 +417,15 @@ Organize conversations by project:
 
 !!! failure "File Not Found"
     **Error**: `Could not load conversation file`
-    
+
     **Solutions**:
     ```bash
     # Check file exists
     ls -la *.json
-    
+
     # Use full path
     /load:/full/path/to/conversation.json
-    
+
     # Check file permissions
     chmod 644 conversation.json
     ```
@@ -434,15 +434,15 @@ Organize conversations by project:
 
 !!! failure "Slow Memory Operations"
     **Issue**: Memory operations taking too long
-    
+
     **Solutions**:
     ```bash
     # Check Redis memory usage
     redis-cli info memory
-    
+
     # Clear old conversations
     /clear
-    
+
     # Reduce context size
     # Edit AgentConfig.memory_settings
     ```
@@ -488,4 +488,4 @@ Different operation modes use memory differently:
 
 ---
 
-**Next**: [Prompt Management →](prompt-management.md) 
+**Next**: [Prompt Management →](prompt-management.md)

@@ -10,7 +10,7 @@ This is the most common connection issue with several possible causes:
 
 !!! failure "Session Terminated Error"
     **Error**: `Failed to connect to server 'server-name': Session terminated`
-    
+
     **Possible Causes & Solutions**:
 
 #### 1. Wrong Transport Type
@@ -168,7 +168,7 @@ mcpomni_connect
    ```bash
    # Find what's using port 3000
    lsof -i :3000
-   
+
    # Stop the conflicting service
    sudo kill -9 <pid>
    ```
@@ -300,7 +300,7 @@ chmod +r /path/to/file
    ```bash
    # Start Redis
    sudo systemctl start redis-server
-   
+
    # Or with Docker
    docker run -d --name redis -p 6379:6379 redis:alpine
    ```
@@ -377,10 +377,10 @@ chmod +r /path/to/file
    ```bash
    # Test basic connectivity
    ping api.openai.com
-   
+
    # Test HTTP connectivity
    curl -I https://api.openai.com
-   
+
    # Test specific server
    curl -I http://your-server.com:8080
    ```
@@ -396,10 +396,10 @@ chmod +r /path/to/file
    ```bash
    # Ubuntu/Debian
    sudo ufw status
-   
+
    # Allow specific port
    sudo ufw allow 8080
-   
+
    # Allow outbound HTTPS
    sudo ufw allow out 443
    ```
@@ -575,4 +575,4 @@ When reporting issues, include:
 
 ---
 
-**Next**: [User Guide →](../user-guide/basic-usage.md) 
+**Next**: [User Guide →](../user-guide/basic-usage.md)

@@ -41,7 +41,7 @@ class InMemoryStore:
             "value": self.short_term_limit,  # default token budget
         }
 
-    def set_memory_config(self, mode: str, value: int = None) -> None:
+    def set_memory_config(self, mode: str, value: int | None = None) -> None:
         """Set global memory strategy.
 
         Args:
@@ -63,7 +63,7 @@ class InMemoryStore:
             logger.info(f"[Memory] Config set to: {self.memory_config}")
 
     async def truncate_message_history(
-        self, session_id: str = None
+        self, session_id: str | None = None
     ) -> list[dict[str, Any]]:
         """Truncate message history to stay within token limits.
 
@@ -76,14 +76,14 @@ class InMemoryStore:
         logger.info(f"memory config: {self.memory_config}")
         try:
             if session_id not in self.sessions_history:
-                self.sessions_history[session_id] = []
+                self.sessions_history[session_id] = []  # type: ignore
                 return []
 
             messages = self.sessions_history[session_id]
             mode = self.memory_config.get("mode", "token_budget")
             value = self.memory_config.get("value")
             if mode.lower() == "sliding_window":
-                messages = messages[-value:]
+                messages = messages[-value:] if value is not None else messages
 
             elif mode.lower() == "token_budget":
                 total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
@@ -96,7 +96,7 @@ class InMemoryStore:
             return messages
         except Exception as e:
             logger.error(f"Failed to truncate message history: {e}")
-            self.sessions_history[session_id] = []
+            self.sessions_history[session_id] = []  # type: ignore
             return []
 
     async def store_message(
@@ -104,7 +104,7 @@ class InMemoryStore:
         role: str,
         content: str,
         metadata: dict | None = None,
-        session_id: str = None,
+        session_id: str | None = None,
     ) -> None:
         """Store a message in memory.
 
@@ -131,13 +131,13 @@ class InMemoryStore:
                 "metadata": metadata,
             }
 
-            self.sessions_history[session_id].append(message)
+            self.sessions_history[session_id].append(message)  # type: ignore
 
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
     async def get_messages(
-        self, session_id: str = None, agent_name: str = None
+        self, session_id: str | None = None, agent_name: str | None = None
     ) -> list[dict[str, Any]]:
         """Get messages from memory.
 
@@ -170,7 +170,7 @@ class InMemoryStore:
             logger.error(f"Failed to get messages: {e}")
             return []
 
-    async def get_all_messages(self, agent_name: str = None):
+    async def get_all_messages(self, agent_name: str | None = None):
         """Get all messages across all sessions, optionally filtered by agent_name"""
         try:
             all_messages = []
@@ -193,7 +193,7 @@ class InMemoryStore:
             return []
 
     async def clear_memory(
-        self, session_id: str = None, agent_name: str = None
+        self, session_id: str | None = None, agent_name: str | None = None
     ) -> None:
         """Clear memory for a session or all memory.
 
@@ -233,7 +233,7 @@ class InMemoryStore:
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")
 
-    def _get_agent_name_from_metadata(self, metadata) -> str:
+    def _get_agent_name_from_metadata(self, metadata) -> str | None:
         """Extract agent name from metadata, handling both dict and ToolCallMetadata objects"""
         if not metadata:
             return None
@@ -249,7 +249,10 @@ class InMemoryStore:
         return None
 
     async def save_message_history_to_file(
-        self, file_path: str, session_id: str = None, agent_name: str = None
+        self,
+        file_path: str,
+        session_id: str | None = None,
+        agent_name: str | None = None,
     ) -> None:
         """Save message history to a file, appending to existing content.
 
@@ -312,7 +315,10 @@ class InMemoryStore:
             raise
 
     async def load_message_history_from_file(
-        self, file_path: str, session_id: str = None, agent_name: str = None
+        self,
+        file_path: str,
+        session_id: str | None = None,
+        agent_name: str | None = None,
     ) -> None:
         """Load message history from a file and store in memory.
 
@@ -374,7 +380,7 @@ class RedisShortTermMemory:
     ) -> None:
         """Initialize."""
         self._redis_client = redis_client or redis.Redis(
-            host=self.REDIS_HOST,
+            host=self.REDIS_HOST,  # type: ignore
             port=self.REDIS_PORT,
             db=self.REDIS_DB,
             decode_responses=True,
@@ -388,7 +394,9 @@ class RedisShortTermMemory:
             f"Initialized RedisShortTermMemory with client ID: {self.client_id}"
         )
 
-    async def store_message(self, role: str, content: str, metadata: dict = None):
+    async def store_message(
+        self, role: str, content: str, metadata: dict | None = None
+    ):
         """Store a message in Redis with a timestamp using the client's MAC address as ID."""
         metadata = metadata or {}
         logger.info(f"Storing message for client {self.client_id}: {content}")
@@ -421,7 +429,7 @@ class RedisShortTermMemory:
         # Deserialize messages and reconstruct tool calls if necessary
         return [self._deserialize(json.loads(msg)) for msg in messages]
 
-    def _serialize(self, data):
+    def _serialize(self, data: Any) -> str:
         """Convert any non-serializable data into a JSON-compatible format."""
         try:
             return json.dumps(data, default=lambda o: o.__dict__)
@@ -429,7 +437,7 @@ class RedisShortTermMemory:
             logger.error(f"Serialization failed: {e}")
             return json.dumps({"error": "Serialization failed"})
 
-    def _deserialize(self, data):
+    def _deserialize(self, data: Any) -> Any:
         """Convert stored JSON strings back to their original format if needed."""
         try:
             if "metadata" in data:

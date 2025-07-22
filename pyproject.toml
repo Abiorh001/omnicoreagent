@@ -46,6 +46,8 @@ dependencies = [
     "python-multipart>=0.0.20",
     "colorama>=0.4.6",
     "mcp[cli]>=1.9.1",
+    "sqlalchemy>=2.0.0",
+    "tzlocal>=5.2",
 ]
 
 [project.scripts]
@@ -93,4 +95,3 @@ docs = [
     "mkdocs-minify-plugin>=0.8.0",
     "pymdown-extensions>=10.16",
 ]
-

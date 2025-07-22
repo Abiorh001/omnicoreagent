@@ -5,7 +5,6 @@ import pytest
 
 from mcpomni_connect.memory import (
     InMemoryStore,
-    RedisShortTermMemory,
 )
 
 

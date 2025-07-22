@@ -192,7 +192,7 @@ class Configuration:
             with open(config_path, encoding="utf-8") as f:
                 return json.load(f)
 
-        raise FileNotFoundError(f"Configuration file not found in any location")
+        raise FileNotFoundError("Configuration file not found in any location")
 
 
 class MCPClient:

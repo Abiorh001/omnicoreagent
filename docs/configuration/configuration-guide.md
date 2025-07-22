@@ -332,4 +332,4 @@ mcpomni_connect --debug
 **Next Steps**:
 - [Transport Types →](transport-types.md)
 - [Authentication →](authentication.md)
-- [LLM Providers →](llm-providers.md) 
+- [LLM Providers →](llm-providers.md)

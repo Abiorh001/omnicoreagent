@@ -1,5 +1,3 @@
-import os
-import json
 import shutil
 import uuid
 from pathlib import Path
@@ -9,16 +7,12 @@ from mcpomni_connect.agents.react_agent import ReactAgent
 from mcpomni_connect.agents.types import AgentConfig as ReactAgentConfig
 from mcpomni_connect.client import Configuration, MCPClient
 from mcpomni_connect.llm import LLMConnection
-from mcpomni_connect.memory import InMemoryStore
 from mcpomni_connect.omni_agent.config import (
     config_transformer,
     ModelConfig,
     MCPToolConfig,
-    TransportType,
     AgentConfig,
 )
-from mcpomni_connect.system_prompts import generate_react_agent_prompt
-from mcpomni_connect.constants import date_time_func
 from mcpomni_connect.omni_agent.prompts.prompt_builder import OmniAgentPromptBuilder
 from mcpomni_connect.omni_agent.prompts.react_suffix import SYSTEM_SUFFIX
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
@@ -173,12 +167,10 @@ class OmniAgent:
         if not session_id:
             session_id = self.generate_session_id()
 
-        
-
         omni_agent_prompt = self.prompt_builder.build(
             system_instruction=self.system_instruction
         )
-        #print(omni_agent_prompt)
+        # print(omni_agent_prompt)
         # Prepare extra kwargs - pass tools separately
         extra_kwargs = {
             "sessions": self.mcp_client.sessions if self.mcp_client else {},
@@ -235,6 +227,6 @@ class OmniAgent:
             hidden_dir = Path(".mcp_config")
             if hidden_dir.exists():
                 shutil.rmtree(hidden_dir)
-        except Exception as e:
+        except Exception:
             # Silently handle cleanup errors
             pass

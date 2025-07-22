@@ -288,6 +288,6 @@ Support different types of agent memory:
 
 **Goal**: Make OmniAgent the simplest way to create and use autonomous agents with MCP integration.
 
-**Last Updated**: July 8, 2025  
-**Version**: 1.0  
-**Status**: Active Development 
+**Last Updated**: July 8, 2025
+**Version**: 1.0
+**Status**: Active Development

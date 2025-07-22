@@ -21,7 +21,6 @@ from mcpomni_connect.omni_agent.config import (
 )
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 
-import asyncio
 from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
 
 
@@ -92,7 +91,7 @@ async def example_session_management():
     print("=" * 60)
 
     # Create agent with custom session store
-    custom_memory = MemoryRouter(memory_store_type="in_memory")
+    custom_memory = MemoryRouter(memory_store_type="database")
 
     agent = OmniAgent(
         name="session_agent",
@@ -298,7 +297,7 @@ def show_hidden_config():
         # Show config content
         config_file = hidden_dir / "servers_config.json"
         if config_file.exists():
-            print(f"\n📋 Config content preview:")
+            print("\n📋 Config content preview:")
             with open(config_file, "r") as f:
                 import json
 
