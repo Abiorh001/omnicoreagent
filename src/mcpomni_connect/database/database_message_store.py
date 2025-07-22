@@ -98,7 +98,7 @@ class DatabaseMessageStore:
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    async def get_messages(self, session_id: str = None) -> list[dict[str, Any]]:
+    async def get_messages(self, session_id: str = None,agent_name:str=None) -> list[dict[str, Any]]:
         logger.info(f"get memory config: {self.memory_config}")
         try:
             with self.database_session_factory() as session_factory:
@@ -131,6 +131,8 @@ class DatabaseMessageStore:
                         total_tokens = sum(
                             len(str(msg["content"]).split()) for msg in result
                         )
+                if agent_name:
+                    result = [msg for msg in result if msg["msg_metadata"].get("agent_name") == agent_name]
                 return result
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")

@@ -26,7 +26,7 @@ class DatabaseMemory(AbstractMemoryStore):
         self,
         role: str,
         content: str,
-        msg_metadata: dict | None = None,
+        metadata: dict | None = None,
         session_id: str = None,
     ) -> None:
         """
@@ -35,19 +35,20 @@ class DatabaseMemory(AbstractMemoryStore):
         await self.db_session.store_message(
             role=role,
             content=content,
-            metadata=msg_metadata,
+            metadata=metadata,
             session_id=session_id,
         )
 
     async def get_messages(
         self,
         session_id: str = None,
+        agent_name:str=None
     ):
         """
         Retrieve all messages for a given session_id from the database.
         Returns a list of message dicts.
         """
-        return await self.db_session.get_messages(session_id=session_id)
+        return await self.db_session.get_messages(session_id=session_id,agent_name=agent_name)
 
     async def clear_memory(
         self,

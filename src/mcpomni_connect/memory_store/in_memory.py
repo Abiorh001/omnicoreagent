@@ -53,7 +53,7 @@ class InMemoryStore(AbstractMemoryStore):
         self,
         role: str,
         content: str,
-        msg_metadata: dict | None = None,
+        metadata: dict | None = None,
         session_id: str = None,
     ) -> None:
         """Store a message in memory.
@@ -66,8 +66,8 @@ class InMemoryStore(AbstractMemoryStore):
         """
         try:
             # Ensure metadata exists
-            if msg_metadata is None:
-                msg_metadata = {}
+            if metadata is None:
+                metadata = {}
 
             # Use session-based storage for database compatibility
             if session_id not in self.sessions_history:
@@ -78,7 +78,7 @@ class InMemoryStore(AbstractMemoryStore):
                 "content": content,
                 "session_id": session_id,
                 "timestamp": asyncio.get_running_loop().time(),
-                "msg_metadata": msg_metadata,
+                "msg_metadata": metadata,
             }
 
             self.sessions_history[session_id].append(message)
