@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any
 import uuid
-from sqlalchemy import String, Text, DateTime, create_engine, func
+from sqlalchemy import String, Text, DateTime, create_engine, func, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.mutable import MutableDict
@@ -63,8 +63,17 @@ class DatabaseMessageStore:
             ) from e
         self.db_engine = db_engine
         self.database_session_factory = sessionmaker(bind=self.db_engine)
-        Base.metadata.drop_all(self.db_engine)
-        Base.metadata.create_all(self.db_engine)
+        
+        # Check if tables exist before creating them
+        inspector = inspect(self.db_engine)
+        existing_tables = inspector.get_table_names()
+        
+        if "messages" not in existing_tables:
+            logger.info("Creating database tables for the first time")
+            Base.metadata.create_all(self.db_engine)
+        else:
+            logger.info("Database tables already exist, skipping creation")
+            
         self.memory_config: dict[str, Any] = {}
 
     def set_memory_config(self, mode: str, value: int = None) -> None:

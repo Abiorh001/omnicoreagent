@@ -33,10 +33,9 @@ from mcpomni_connect.utils import (
     logger,
     show_tool_response,
 )
-from mcpomni_connect.events import (
+from mcpomni_connect.events.base import (
     Event,
     EventType,
-    event_store,
     ToolCallErrorPayload,
     ToolCallStartedPayload,
     ToolCallResultPayload,
@@ -44,6 +43,7 @@ from mcpomni_connect.events import (
     AgentMessagePayload,
     UserMessagePayload,
 )
+from mcpomni_connect.events.events import event_store
 
 
 class BaseReactAgent:
@@ -184,17 +184,30 @@ class BaseReactAgent:
             Message.model_validate(msg) if isinstance(msg, dict) else msg
             for msg in short_term_memory_message_history
         ]
-
         for message in validated_messages:
             role = message.role
             metadata = message.metadata
             if role == "user":
                 # Flush any pending assistant-tool-call + responses before new "user" message
                 if self.assistant_with_tool_calls:
-                    self.messages[self.agent_name].append(
-                        self.assistant_with_tool_calls
-                    )
-                    self.messages[self.agent_name].extend(self.pending_tool_responses)
+                    expected_tool_calls = {
+                        tc["id"]
+                        for tc in self.assistant_with_tool_calls.get("tool_calls", [])
+                    }
+                    actual_tool_calls = {
+                        resp["tool_call_id"] for resp in self.pending_tool_responses
+                    }
+                    missing = expected_tool_calls - actual_tool_calls
+
+                    if missing:
+                        logger.warning(
+                            f"Skipping assistant message due to missing tool responses: {missing}"
+                        )
+                    else:
+                        self.messages[self.agent_name].append(
+                            self.assistant_with_tool_calls
+                        )
+                        self.messages[self.agent_name].extend(self.pending_tool_responses)
                     self.assistant_with_tool_calls = None
                     self.pending_tool_responses = []
 
@@ -206,13 +219,28 @@ class BaseReactAgent:
                 if metadata.has_tool_calls:
                     # If we already have a pending assistant with tool calls, flush it
                     if self.assistant_with_tool_calls:
-                        self.messages[self.agent_name].append(
-                            self.assistant_with_tool_calls
-                        )
-                        self.messages[self.agent_name].extend(
-                            self.pending_tool_responses
-                        )
-                        self.pending_tool_responses = []
+                        expected_tool_calls = {
+                        tc["id"]
+                        for tc in self.assistant_with_tool_calls.get("tool_calls", [])
+                        }
+                        actual_tool_calls = {
+                            resp["tool_call_id"] for resp in self.pending_tool_responses
+                        }
+                        missing = expected_tool_calls - actual_tool_calls
+
+                        if missing:
+                            logger.warning(
+                                f"Skipping assistant message due to missing tool responses: {missing}"
+                            )
+                        else:
+                            self.messages[self.agent_name].append(
+                                self.assistant_with_tool_calls
+                            )
+                            self.messages[self.agent_name].extend(
+                                self.pending_tool_responses
+                            )
+                    self.assistant_with_tool_calls = None
+                    self.pending_tool_responses = []
 
                     # Store this assistant message for later (until we collect all tool responses)
                     self.assistant_with_tool_calls = {
@@ -228,14 +256,28 @@ class BaseReactAgent:
                     # Regular assistant message without tool calls
                     # First flush any pending tool calls
                     if self.assistant_with_tool_calls:
-                        self.messages[self.agent_name].append(
-                            self.assistant_with_tool_calls
-                        )
-                        self.messages[self.agent_name].extend(
-                            self.pending_tool_responses
-                        )
-                        self.assistant_with_tool_calls = None
-                        self.pending_tool_responses = []
+                        expected_tool_calls = {
+                        tc["id"]
+                        for tc in self.assistant_with_tool_calls.get("tool_calls", [])
+                        }
+                        actual_tool_calls = {
+                            resp["tool_call_id"] for resp in self.pending_tool_responses
+                        }
+                        missing = expected_tool_calls - actual_tool_calls
+
+                        if missing:
+                            logger.warning(
+                                f"Skipping assistant message due to missing tool responses: {missing}"
+                            )
+                        else:
+                            self.messages[self.agent_name].append(
+                                self.assistant_with_tool_calls
+                            )
+                            self.messages[self.agent_name].extend(
+                                self.pending_tool_responses
+                            )
+                    self.assistant_with_tool_calls = None
+                    self.pending_tool_responses = []
 
                     self.messages[self.agent_name].append(
                         Message(role="assistant", content=message.content)
@@ -379,7 +421,7 @@ class BaseReactAgent:
                 ),
                 agent_name=self.agent_name,
             )
-            event_store.append(session_id=session_id, event=event)
+            await event_store.append(session_id=session_id, event=event)
 
         else:
             # Create proper tool call metadata
@@ -408,7 +450,7 @@ class BaseReactAgent:
                 ),
                 agent_name=self.agent_name,
             )
-            event_store.append(session_id=session_id, event=event)
+            await event_store.append(session_id=session_id, event=event)
             await add_message_to_history(
                 role="assistant",
                 content=response,
@@ -449,7 +491,7 @@ class BaseReactAgent:
                     ),
                     agent_name=self.agent_name,
                 )
-                event_store.append(session_id=session_id, event=event)
+                await event_store.append(session_id=session_id, event=event)
 
             except asyncio.TimeoutError:
                 observation = (
@@ -474,7 +516,7 @@ class BaseReactAgent:
                     ),
                     agent_name=self.agent_name,
                 )
-                event_store.append(session_id=session_id, event=event)
+                await event_store.append(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -502,7 +544,7 @@ class BaseReactAgent:
                     ),
                     agent_name=self.agent_name,
                 )
-                event_store.append(session_id=session_id, event=event)
+                await event_store.append(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -568,7 +610,7 @@ class BaseReactAgent:
                 ),
                 agent_name=self.agent_name,
             )
-            event_store.append(session_id=session_id, event=event)
+            await event_store.append(session_id=session_id, event=event)
             self.messages[self.agent_name].append(
                 Message(role="user", content=loop_message)
             )
@@ -703,7 +745,7 @@ class BaseReactAgent:
             ),
             agent_name=self.agent_name,
         )
-        event_store.append(session_id=session_id, event=event)
+        await event_store.append(session_id=session_id, event=event)
         
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
@@ -760,7 +802,7 @@ class BaseReactAgent:
                             ),
                             agent_name=self.agent_name,
                         )
-                        event_store.append(session_id=session_id, event=event)
+                        await event_store.append(session_id=session_id, event=event)
                         # check if it has usage
                         if hasattr(response, "usage"):
                             request_usage = Usage(
@@ -833,7 +875,7 @@ class BaseReactAgent:
                         ),
                         agent_name=self.agent_name,
                     )
-                    event_store.append(session_id=session_id, event=event)
+                    await event_store.append(session_id=session_id, event=event)
                     await add_message_to_history(
                         role="assistant",
                         content=parsed_response.answer,

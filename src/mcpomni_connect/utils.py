@@ -447,6 +447,16 @@ def embed_text(text: str) -> list[float]:
     return response.data[0].embedding
 
 
+def normalize_metadata(obj):
+    if isinstance(obj, dict):
+        return {k: normalize_metadata(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [normalize_metadata(i) for i in obj]
+    elif isinstance(obj, uuid.UUID):
+        return str(obj)
+    return obj
+
+
 def dict_to_namespace(d):
     return json.loads(json.dumps(d), object_hook=lambda x: SimpleNamespace(**x))
 

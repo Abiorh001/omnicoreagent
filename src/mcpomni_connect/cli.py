@@ -16,7 +16,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.panel import Panel
 import asyncio
-from mcpomni_connect.events import event_store
+from mcpomni_connect.events.events import event_store
 from mcpomni_connect.agents.orchestrator import OrchestratorAgent
 from mcpomni_connect.agents.react_agent import ReactAgent
 from mcpomni_connect.agents.tool_calling_agent import ToolCallingAgent

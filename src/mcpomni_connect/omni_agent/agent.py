@@ -16,7 +16,8 @@ from mcpomni_connect.omni_agent.config import (
 from mcpomni_connect.omni_agent.prompts.prompt_builder import OmniAgentPromptBuilder
 from mcpomni_connect.omni_agent.prompts.react_suffix import SYSTEM_SUFFIX
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
-
+from mcpomni_connect.utils import logger
+from mcpomni_connect.events.events import event_store
 
 class OmniAgent:
     """
@@ -213,6 +214,12 @@ class OmniAgent:
         else:
             await self.memory_store.clear_memory(agent_name=self.name)
 
+    async def stream_events(self, session_id: str):
+        async for event in event_store.stream(session_id=session_id):
+            yield event
+
+    async def get_events(self, session_id: str):
+        return await event_store.get_events(session_id=session_id)
     async def cleanup(self):
         """Clean up resources"""
         if self.mcp_client:
