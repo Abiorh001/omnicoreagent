@@ -48,7 +48,8 @@ dependencies = [
     "mcp[cli]>=1.9.1",
     "sqlalchemy>=2.0.0",
     "tzlocal>=5.2",
-    psycopg2-binary = "^2.9",
+    "psycopg2-binary = ^2.9",
+    "qdrant-client>=1.7.0"
 ]
 
 [project.scripts]
