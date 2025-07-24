@@ -5,9 +5,10 @@ from dotenv import load_dotenv
 import litellm
 from mcpomni_connect.utils import logger
 import warnings
+from pydantic import BaseModel
 
-# Suppress Pydantic serialization warnings
-warnings.filterwarnings("ignore", message="PydanticSerializationUnexpectedValue")
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings", module="pydantic.main")
+
 
 load_dotenv()
 
@@ -128,7 +129,6 @@ class LLMConnection:
 
             # Call LiteLLM
             response = await litellm.acompletion(**params)
-
             return response
 
         except Exception as e:

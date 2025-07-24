@@ -80,13 +80,13 @@ class InMemoryStore(AbstractMemoryStore):
                 "timestamp": asyncio.get_running_loop().time(),
                 "msg_metadata": metadata,
             }
-
+            logger.info(f"message: {message}")
             self.sessions_history[session_id].append(message)
 
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    async def get_messages(self, session_id: str = None) -> list[dict[str, Any]]:
+    async def get_messages(self, session_id: str, agent_name:str=None) -> list[dict[str, Any]]:
         """Get messages from memory.
 
         Args:
@@ -114,6 +114,10 @@ class InMemoryStore(AbstractMemoryStore):
                     total_tokens = sum(
                         len(str(msg["content"]).split()) for msg in messages
                     )
+            logger.info(f"messages: {messages}")
+            if agent_name:
+                messages = [msg for msg in messages if msg.get("msg_metadata", {}).get("agent_name") == agent_name]
+            logger.info(f"messages after agent name filter: {messages}")
             return messages
 
         except Exception as e:

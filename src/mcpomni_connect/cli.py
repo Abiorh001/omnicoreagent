@@ -10,7 +10,13 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
-
+from rich.live import Live
+from rich.spinner import Spinner
+from rich.text import Text
+from rich.align import Align
+from rich.panel import Panel
+import asyncio
+from mcpomni_connect.events.events import event_store
 from mcpomni_connect.agents.orchestrator import OrchestratorAgent
 from mcpomni_connect.agents.react_agent import ReactAgent
 from mcpomni_connect.agents.tool_calling_agent import ToolCallingAgent
@@ -42,7 +48,7 @@ from mcpomni_connect.system_prompts import (
     generate_system_prompt,
 )
 from mcpomni_connect.tools import list_tools
-from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger
+from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
 
 # TODO: add episodic memory
 # from mcpomni_connect.memory import EpisodicMemory
@@ -946,9 +952,90 @@ class MCPClientCLI:
                 f"Error: {str(e)}"
             )
 
+
+
+    async def stream_events_to_cli(self, session_id: str):
+        """Streams events from event store and displays them in the CLI using Rich, with a live indicator."""
+        
+        # Live spinner shown while streaming
+        spinner = Spinner("dots", text=" Waiting for agent response...", style="yellow")
+        status_panel = Panel(
+            Align.center(spinner, vertical="middle"),
+            title="[bold yellow]Streaming Events...",
+            border_style="yellow",
+            padding=(1, 2),
+        )
+
+        with Live(status_panel, console=self.console, refresh_per_second=8):
+            async for event in event_store.stream(session_id):
+                event_type = event.type
+                payload = event.payload  # This is a Pydantic model
+                ts = format_timestamp(event.timestamp)
+                agent = event.agent_name or "agent"
+
+                if event_type == "user_message":
+                    self.console.print(
+                        Panel(
+                            payload.message,
+                            title=f"[bold blue]{agent} • User Message • {ts}[/bold blue]",
+                            border_style="blue",
+                        )
+                    )
+
+                elif event_type == "agent_message":
+                    msg = payload.message
+                    self.console.print(
+                        Panel(
+                            Markdown(msg),
+                            title=f"[magenta]{agent} • Agent Message • {ts}[/magenta]",
+                            border_style="magenta",
+                        )
+                    )
+
+                elif event_type == "thought":
+                    self.console.print(
+                        f"[magenta]{ts} • Thought:[/magenta] {payload.content}"
+                    )
+
+                elif event_type == "tool_call_started":
+                    self.console.print(
+                        f"[cyan]{ts} • Tool Call Started:[/cyan] [bold]{payload.tool_name}[/bold] with args {payload.tool_args}"
+                    )
+
+                elif event_type == "tool_call_result":
+                    result = payload.result or ""
+                    tool_name = payload.tool_name or "unknown_tool"
+                    tool_args = payload.tool_args or "unknown_args"
+                    self.console.print(
+                        Panel(
+                            result.strip(),
+                            title=f"[bold cyan]{agent} • Tool Result: {tool_name} • {ts}[/bold cyan]",
+                            border_style="cyan",
+                        )
+                    )
+
+                elif event_type == "final_answer":
+                    self.console.rule(f"[bold green]{agent} • Final Answer • {ts}")
+                    self.console.print(Markdown(payload.message), style="bold green")
+                    break  # End streaming when final answer is received
+
+                elif event_type == "tool_call_error":
+                    self.console.print(
+                        Panel(
+                            payload.error_message or "Unknown error",
+                            title=f"[bold red]{agent} • Error • {ts}[/bold red]",
+                            border_style="red",
+                        )
+                    )
+
+                else:
+                    self.console.print(f"[dim]{ts} • {event_type}[/dim]: {payload}")
+
+
     async def handle_query(self, query: str):
         """Handle general query processing"""
         try:
+            stream_task = asyncio.create_task(self.stream_events_to_cli(CLIENT_MAC_ADDRESS))
             if not query or query.isspace():
                 return
 
@@ -1097,6 +1184,8 @@ class MCPClientCLI:
                     )
                 else:
                     response = "Your current model doesn't support function calling. You must use '/mode:auto' to switch to Auto Mode - it works with both function-calling and non-function-calling models, providing seamless tool execution through our ReAct Agent. For advanced tool orchestration, use '/mode:orchestrator'."
+            # stream event
+            await stream_task
             if response:  # Only try to print if we have a response
                 if "```" in response or "#" in response:
                     self.console.print(Markdown(response))
@@ -1121,6 +1210,7 @@ class MCPClientCLI:
                         border_style="yellow",
                     )
                 )
+            
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             self.console.print(f"[red]Error:[/] {str(e)}", style="bold red")

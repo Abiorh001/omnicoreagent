@@ -84,6 +84,11 @@ def format_text(text: str, style: str = "normal") -> str:
         return text
 
 
+async def consume_events(agent, session_id):
+    async for event in agent.stream_events(session_id):
+        print(f"Event: {event.type} - {event.payload}")
+
+
 async def example_session_management():
     """Example: Session management with chat IDs"""
     print("=" * 60)
@@ -91,7 +96,7 @@ async def example_session_management():
     print("=" * 60)
 
     # Create agent with custom session store
-    custom_memory = MemoryRouter(memory_store_type="database")
+    custom_memory = MemoryRouter(memory_store_type="in_memory")
 
     agent = OmniAgent(
         name="session_agent",
@@ -135,7 +140,8 @@ async def example_session_management():
     session_id = result1["session_id"]
     print(f"Response: {result1['response']}")
     print(f"Session ID: {session_id}")
-
+    # stream events create new task for this
+    asyncio.create_task(consume_events(agent, session_id))
     # # Second message - using same chat ID for continuity
     # print("\n🤖 Second message (same chat):")
     result2 = await agent.run(
@@ -144,7 +150,8 @@ async def example_session_management():
     )
     print(f"Response: {result2['response']}")
     print(f"Session ID: {result2['session_id']}")
-
+    # stream events
+    asyncio.create_task(consume_events(agent, session_id))
     get_history = await agent.get_session_history(session_id)
     print(f"History: {get_history}")
 
@@ -160,7 +167,8 @@ async def example_session_management():
     new_session_id = result3["session_id"]
     print(f"Response: {result3['response']}")
     print(f"New Session ID: {new_session_id}")
-
+    # stream events
+    asyncio.create_task(consume_events(agent, new_session_id))
     # # Clear specific chat history
     # print(f"\n🧹 Clearing chat history for: {chat_id}")
     # await agent.clear_chat_history(chat_id)

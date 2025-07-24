@@ -23,7 +23,7 @@ from mcpomni_connect.system_prompts import (
 )
 from mcpomni_connect.utils import logger
 from mcpomni_connect.resources import read_resource, list_resources
-from mcpomni_connect.events import event_store
+from mcpomni_connect.events.events import event_store
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 
 

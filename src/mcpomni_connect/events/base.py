@@ -1,12 +1,13 @@
-import asyncio
-from collections import defaultdict
+
+from abc import ABC, abstractmethod
 from typing import AsyncIterator, Any, Dict, List, Optional, Union
 from enum import Enum
 from datetime import datetime
 from uuid import uuid4
 from typing import Type
 from pydantic import BaseModel, Field
-from mcpomni_connect.utils import logger
+
+
 class EventType(str, Enum):
     USER_MESSAGE = "user_message"
     AGENT_MESSAGE = "agent_message"
@@ -73,25 +74,16 @@ def validate_event(event: Event):
     expected_type = EVENT_PAYLOAD_MAP[event.type]
     if not isinstance(event.payload, expected_type):
         raise TypeError(f"Payload mismatch: Expected {expected_type} for {event.type}, got {type(event.payload)}")
-
-class EventStore:
-    def __init__(self):
-        self.logs: dict[str, list[Event]] = defaultdict(list)
-        self.queues: dict[str, asyncio.Queue] = defaultdict(asyncio.Queue)
-
-    def append(self, session_id: str, event: Event):
+class BaseEventStore(ABC):
+    @abstractmethod
+    async def append(self, session_id: str, event: Event) -> None:
         validate_event(event)
-        self.logs[session_id].append(event)
-        self.queues[session_id].put_nowait(event)
-        
+        raise NotImplementedError("Subclasses must implement this method")
 
-    def get_events(self, session_id: str) -> list[Event]:
-        return self.logs[session_id]
+    @abstractmethod
+    async def get_events(self, session_id: str) -> List[Event]:
+        raise NotImplementedError("Subclasses must implement this method")
 
+    @abstractmethod
     async def stream(self, session_id: str) -> AsyncIterator[Event]:
-        queue = self.queues[session_id]
-        while True:
-            event = await queue.get()
-            yield event
-
-event_store = EventStore()
+        raise NotImplementedError("Subclasses must implement this method")

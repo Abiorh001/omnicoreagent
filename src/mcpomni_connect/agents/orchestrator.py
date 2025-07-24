@@ -15,6 +15,17 @@ from mcpomni_connect.system_prompts import generate_react_agent_prompt_template
 from mcpomni_connect.utils import logger
 import json
 import re
+from mcpomni_connect.events.base import (
+    Event,
+    EventType,
+    UserMessagePayload,
+    AgentMessagePayload,
+    ToolCallErrorPayload,
+    ToolCallResultPayload,
+    FinalAnswerPayload,
+    ToolCallStartedPayload,
+)
+from mcpomni_connect.events.events import event_store
 
 
 class OrchestratorAgent(BaseReactAgent):
@@ -167,7 +178,17 @@ class OrchestratorAgent(BaseReactAgent):
                 agent_name=agent_name,
                 mcp_tools=mcp_tools,
             )
-            logger.info(f"request limit: {request_limit}")
+            # tool call start event
+            event = Event(
+                type=EventType.TOOL_CALL_STARTED,
+                payload=ToolCallStartedPayload(
+                    tool_name=agent_name,
+                    tool_args={"task": task},
+                    tool_call_id=None,
+                ),
+                agent_name="orchestrator",
+            )
+            await event_store.append(session_id=session_id, event=event)
             agent_config = AgentConfig(
                 agent_name=agent_name,
                 tool_call_timeout=tool_call_timeout,
@@ -210,6 +231,17 @@ class OrchestratorAgent(BaseReactAgent):
             return observation
         except Exception as e:
             logger.error("Error executing agent: %s", str(e))
+            # tool call error event
+            event = Event(
+                type=EventType.TOOL_CALL_ERROR,
+                payload=ToolCallErrorPayload(
+                    tool_name="orchestrator",
+                    error_message=str(e),
+                ),
+                agent_name="orchestrator",
+            )
+            await event_store.append(session_id=session_id, event=event)
+            return str(e)
 
     async def agent_registry_tool(self, mcp_tools: dict[str, Any]) -> str:
         """
@@ -260,6 +292,13 @@ class OrchestratorAgent(BaseReactAgent):
         session_id: str,
     ) -> str | None:
         """Execute ReAct loop with XML communication"""
+        # Emit user message event
+        event = Event(
+            type=EventType.USER_MESSAGE,
+            payload=UserMessagePayload(message=query),
+            agent_name="orchestrator",
+        )
+        await event_store.append(session_id=session_id, event=event)
         # Initialize messages with system prompt
         agent_registry_output = await self.agent_registry_tool(mcp_tools)
         updated_systm_prompt = (
@@ -337,6 +376,8 @@ class OrchestratorAgent(BaseReactAgent):
             except Exception as e:
                 error_message = f"API error: {e}"
                 logger.error(error_message)
+                # Emit error event
+                await event_store.append(session_id=session_id, event=event)
                 return error_message
 
             parsed_response = await self.extract_agent_action_or_answer(
@@ -357,6 +398,13 @@ class OrchestratorAgent(BaseReactAgent):
                     session_id=session_id,
                     metadata={"agent_name": "orchestrator"},
                 )
+                # Emit final answer event
+                event = Event(
+                    type=EventType.FINAL_ANSWER,
+                    payload=FinalAnswerPayload(message=parsed_response.answer),
+                    agent_name="orchestrator",
+                )
+                await event_store.append(session_id=session_id, event=event)
                 # reset the steps
                 current_steps = 0
                 return parsed_response.answer
@@ -364,7 +412,17 @@ class OrchestratorAgent(BaseReactAgent):
             elif parsed_response.action is not None:
                 # Parse the action data from the XML response
                 action_data = json.loads(parsed_response.data)
-                await self.act(
+                # Emit agent call event
+                event = Event(
+                    type=EventType.AGENT_MESSAGE,
+                    payload=AgentMessagePayload(
+                        message=f"Dispatching to agent: {action_data['agent_name']} with task: {action_data['task']}"
+                    ),
+                    agent_name="orchestrator",
+                )
+                await event_store.append(session_id=session_id, event=event)
+                # Call the agent and emit observation event after
+                observation = await self.act(
                     sessions=sessions,
                     agent_name=action_data["agent_name"],
                     task=action_data["task"],
@@ -378,6 +436,18 @@ class OrchestratorAgent(BaseReactAgent):
                     request_limit=request_limit,
                     session_id=session_id,
                 )
+                # Emit agent observation event
+                event = Event(
+                    type=EventType.TOOL_CALL_RESULT,
+                    payload=ToolCallResultPayload(
+                        tool_name=action_data["agent_name"],
+                        tool_args={"task": action_data["task"]},
+                        result=observation,
+                        tool_call_id=None,
+                    ),
+                    agent_name="orchestrator",
+                )
+                await event_store.append(session_id=session_id, event=event)
                 continue
             elif parsed_response.error is not None:
                 error_message = parsed_response.error
@@ -398,3 +468,4 @@ class OrchestratorAgent(BaseReactAgent):
                 session_id=session_id,
                 metadata={"agent_name": "orchestrator"},
             )
+            
