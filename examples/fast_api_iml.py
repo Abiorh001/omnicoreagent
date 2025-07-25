@@ -196,8 +196,7 @@ async def chat_endpoint(request: Request, user_input: str, chat_id: str):
         response = await request.app.state.client_connection.handle_query(
             query=user_input, chat_id=chat_id
         )
-        events = event_store.get_events(session_id=chat_id)
-        logger.info(f"events log:{events}")
+
         yield (
             json.dumps(
                 format_msg("ksa", response, [], assistant_uuid, "assistant")

@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.text import Text
 from datetime import datetime
+
 console = Console()
 # Configure logging
 logger = logging.getLogger("mcpomni_connect")
@@ -441,10 +442,18 @@ def handle_stuck_state(original_system_prompt: str, message_stuck_prompt: bool =
 
 
 def embed_text(text: str) -> list[float]:
-    """Embed text using OpenAI's embedding API."""
-    client = OpenAI(api_key=config("OPENAI_API_KEY"))
-    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
-    return response.data[0].embedding
+    """Embed text using Nomic's nomic-embed-text-v1 model."""
+    try:
+        from nomic import embed
+
+        response = embed.text(texts=[text], model="nomic-embed-text-v1")
+        return response["embeddings"][0]
+    except ImportError:
+        logger.error("nomic not installed. Install with: pip install nomic")
+        raise
+    except Exception as e:
+        logger.error(f"Error generating embedding with Nomic: {e}")
+        raise
 
 
 def normalize_metadata(obj):
@@ -460,10 +469,12 @@ def normalize_metadata(obj):
 def dict_to_namespace(d):
     return json.loads(json.dumps(d), object_hook=lambda x: SimpleNamespace(**x))
 
+
 def format_timestamp(ts) -> str:
     if not isinstance(ts, datetime):
         ts = datetime.fromisoformat(ts)
     return ts.strftime("%Y-%m-%d %H:%M:%S")
+
 
 def strip_json_comments(text: str) -> str:
     """

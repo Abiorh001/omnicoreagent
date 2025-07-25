@@ -44,6 +44,11 @@ from mcpomni_connect.events.base import (
     UserMessagePayload,
 )
 from mcpomni_connect.events.events import event_store
+from mcpomni_connect.memory_store.memory_management.vector_db import (
+    fire_and_forget_memory_task,
+)
+from mcpomni_connect.memory_store.memory_management.vector_db import QdrantVectorDB
+from datetime import datetime
 
 
 class BaseReactAgent:
@@ -72,6 +77,16 @@ class BaseReactAgent:
         self.usage_limits = UsageLimits(
             request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
         )
+
+    async def get_long_episodic_memory(self, query: str, session_id: str):
+        """Get long-term and episodic memory for a given query and session ID"""
+        long_term_memory = QdrantVectorDB(
+            session_id=session_id, memory_type="long_term"
+        )
+        episodic_memory = QdrantVectorDB(session_id=session_id, memory_type="episodic")
+        return long_term_memory.query_collection(
+            query=query
+        ), episodic_memory.query_collection(query=query)
 
     async def extract_action_or_answer(
         self,
@@ -133,7 +148,7 @@ class BaseReactAgent:
 
                     # Create JSON format for compatibility with existing code
                     action_json = json.dumps(tool_call)
-                    
+
                     return ParsedResponse(action=True, data=action_json)
 
                 except Exception as e:
@@ -170,9 +185,12 @@ class BaseReactAgent:
             return ParsedResponse(error=str(e))
 
     async def update_llm_working_memory(
-        self, message_history: Callable[[], Any], session_id: str
+        self,
+        message_history: Callable[[], Any],
+        session_id: str,
+        llm_connection: Callable,
     ):
-        """Update the LLM's working memory with the current message history"""
+        """Update the LLM's working memory with the current message history and process memory asynchronously"""
         short_term_memory_message_history = await message_history(
             agent_name=self.agent_name, session_id=session_id
         )
@@ -184,64 +202,35 @@ class BaseReactAgent:
             Message.model_validate(msg) if isinstance(msg, dict) else msg
             for msg in short_term_memory_message_history
         ]
+
+        logger.info(f"Processing memory asynchronously for agent: {self.agent_name}")
+        try:
+            # Create long-term and episodic memory processor (background task)
+            await fire_and_forget_memory_task(
+                session_id, "long_term", validated_messages, llm_connection
+            )
+            await fire_and_forget_memory_task(
+                session_id, "episodic", validated_messages, llm_connection
+            )
+        except ImportError as e:
+            logger.warning(f"Memory processing not available: {e}")
+        except Exception as e:
+            logger.error(f"Error in memory processing: {e}")
+
         for message in validated_messages:
             role = message.role
             metadata = message.metadata
             if role == "user":
                 # Flush any pending assistant-tool-call + responses before new "user" message
-                if self.assistant_with_tool_calls:
-                    expected_tool_calls = {
-                        tc["id"]
-                        for tc in self.assistant_with_tool_calls.get("tool_calls", [])
-                    }
-                    actual_tool_calls = {
-                        resp["tool_call_id"] for resp in self.pending_tool_responses
-                    }
-                    missing = expected_tool_calls - actual_tool_calls
-
-                    if missing:
-                        logger.warning(
-                            f"Skipping assistant message due to missing tool responses: {missing}"
-                        )
-                    else:
-                        self.messages[self.agent_name].append(
-                            self.assistant_with_tool_calls
-                        )
-                        self.messages[self.agent_name].extend(self.pending_tool_responses)
-                    self.assistant_with_tool_calls = None
-                    self.pending_tool_responses = []
-
+                self._try_flush_pending()
                 self.messages[self.agent_name].append(
                     Message(role="user", content=message.content)
                 )
 
             elif role == "assistant":
                 if metadata.has_tool_calls:
-                    # If we already have a pending assistant with tool calls, flush it
-                    if self.assistant_with_tool_calls:
-                        expected_tool_calls = {
-                        tc["id"]
-                        for tc in self.assistant_with_tool_calls.get("tool_calls", [])
-                        }
-                        actual_tool_calls = {
-                            resp["tool_call_id"] for resp in self.pending_tool_responses
-                        }
-                        missing = expected_tool_calls - actual_tool_calls
-
-                        if missing:
-                            logger.warning(
-                                f"Skipping assistant message due to missing tool responses: {missing}"
-                            )
-                        else:
-                            self.messages[self.agent_name].append(
-                                self.assistant_with_tool_calls
-                            )
-                            self.messages[self.agent_name].extend(
-                                self.pending_tool_responses
-                            )
-                    self.assistant_with_tool_calls = None
-                    self.pending_tool_responses = []
-
+                    # If we already have a pending assistant with tool calls, try to flush it
+                    self._try_flush_pending()
                     # Store this assistant message for later (until we collect all tool responses)
                     self.assistant_with_tool_calls = {
                         "role": "assistant",
@@ -252,56 +241,49 @@ class BaseReactAgent:
                             else []
                         ),
                     }
+                    self.pending_tool_responses = []
                 else:
                     # Regular assistant message without tool calls
                     # First flush any pending tool calls
-                    if self.assistant_with_tool_calls:
-                        expected_tool_calls = {
-                        tc["id"]
-                        for tc in self.assistant_with_tool_calls.get("tool_calls", [])
-                        }
-                        actual_tool_calls = {
-                            resp["tool_call_id"] for resp in self.pending_tool_responses
-                        }
-                        missing = expected_tool_calls - actual_tool_calls
-
-                        if missing:
-                            logger.warning(
-                                f"Skipping assistant message due to missing tool responses: {missing}"
-                            )
-                        else:
-                            self.messages[self.agent_name].append(
-                                self.assistant_with_tool_calls
-                            )
-                            self.messages[self.agent_name].extend(
-                                self.pending_tool_responses
-                            )
-                    self.assistant_with_tool_calls = None
-                    self.pending_tool_responses = []
-
+                    self._try_flush_pending()
                     self.messages[self.agent_name].append(
                         Message(role="assistant", content=message.content)
                     )
 
-            elif role == "tool" and hasattr(metadata, "tool_call_id"):
-                # Collect tool responses
-                # Only add if we have a preceding assistant message with tool calls
-                if self.assistant_with_tool_calls:
-                    self.pending_tool_responses.append(
-                        {
-                            "role": "tool",
-                            "content": message.content,
-                            "tool_call_id": str(metadata.tool_call_id),
-                        }
-                    )
+            elif role == "tool":
+                self.pending_tool_responses.append(
+                    {
+                        "role": "tool",
+                        "content": message.content,
+                        "tool_call_id": metadata.tool_call_id,
+                    }
+                )
+                # After adding, try to flush if all responses are present
+                self._try_flush_pending()
 
             elif role == "system":
+                self._try_flush_pending()
                 self.messages[self.agent_name].append(
                     Message(role="system", content=message.content)
                 )
 
             else:
                 logger.warning(f"Unknown message role encountered: {role}")
+
+    def _try_flush_pending(self):
+        if self.assistant_with_tool_calls:
+            expected_tool_calls = {
+                tc["id"] for tc in self.assistant_with_tool_calls.get("tool_calls", [])
+            }
+            actual_tool_calls = {
+                resp["tool_call_id"] for resp in self.pending_tool_responses
+            }
+            missing = expected_tool_calls - actual_tool_calls
+            if not missing:
+                self.messages[self.agent_name].append(self.assistant_with_tool_calls)
+                self.messages[self.agent_name].extend(self.pending_tool_responses)
+                self.assistant_with_tool_calls = None
+                self.pending_tool_responses = []
 
     async def resolve_tool_call_request(
         self,
@@ -746,16 +728,22 @@ class BaseReactAgent:
             agent_name=self.agent_name,
         )
         await event_store.append(session_id=session_id, event=event)
-        
+
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
             mcp_tools=mcp_tools, local_tools=local_tools
         )
-        # logger.info(f"tools section: {tools_section}")
-        system_updated_prompt = (
-            system_prompt + f"[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
+        long_term_memory, episodic_memory = await self.get_long_episodic_memory(
+            query=query, session_id=session_id
         )
 
+        #  append the tools section if needed
+        system_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
+        # now update the system prompt with the long term and episodic memory using the XML-based template
+        system_updated_prompt = (
+            system_prompt
+            + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
+        )
         self.messages[self.agent_name] = [
             Message(role="system", content=system_updated_prompt)
         ]
@@ -768,7 +756,9 @@ class BaseReactAgent:
         )
         # Initialize messages with current message history (only once at start)
         await self.update_llm_working_memory(
-            message_history=message_history, session_id=session_id
+            message_history=message_history,
+            session_id=session_id,
+            llm_connection=llm_connection,
         )
         # check if the agent is in a valid state to run
         if self.state not in [

@@ -50,6 +50,7 @@ from mcpomni_connect.system_prompts import (
 from mcpomni_connect.tools import list_tools
 from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
 
+CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "_")
 # TODO: add episodic memory
 # from mcpomni_connect.memory import EpisodicMemory
 # from mcpomni_connect.mcp_omni_agents import OrchestratorAgent
@@ -952,11 +953,9 @@ class MCPClientCLI:
                 f"Error: {str(e)}"
             )
 
-
-
     async def stream_events_to_cli(self, session_id: str):
         """Streams events from event store and displays them in the CLI using Rich, with a live indicator."""
-        
+
         # Live spinner shown while streaming
         spinner = Spinner("dots", text=" Waiting for agent response...", style="yellow")
         status_panel = Panel(
@@ -1031,11 +1030,12 @@ class MCPClientCLI:
                 else:
                     self.console.print(f"[dim]{ts} • {event_type}[/dim]: {payload}")
 
-
     async def handle_query(self, query: str):
         """Handle general query processing"""
         try:
-            stream_task = asyncio.create_task(self.stream_events_to_cli(CLIENT_MAC_ADDRESS))
+            stream_task = asyncio.create_task(
+                self.stream_events_to_cli(CLIENT_MAC_ADDRESS)
+            )
             if not query or query.isspace():
                 return
 
@@ -1210,7 +1210,7 @@ class MCPClientCLI:
                         border_style="yellow",
                     )
                 )
-            
+
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             self.console.print(f"[red]Error:[/] {str(e)}", style="bold red")

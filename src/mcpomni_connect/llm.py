@@ -7,7 +7,9 @@ from mcpomni_connect.utils import logger
 import warnings
 from pydantic import BaseModel
 
-warnings.filterwarnings("ignore", message="Pydantic serializer warnings", module="pydantic.main")
+warnings.filterwarnings(
+    "ignore", message="Pydantic serializer warnings", module="pydantic.main"
+)
 
 
 load_dotenv()

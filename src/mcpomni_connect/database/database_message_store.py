@@ -1,6 +1,4 @@
-# File content already correct after previous rename and class update. from __future__ import annotations
 import json
-import logging
 from datetime import datetime
 from typing import Any
 import uuid
@@ -8,8 +6,7 @@ from sqlalchemy import String, Text, DateTime, create_engine, func, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.mutable import MutableDict
-
-logger = logging.getLogger("mcpomni_connect." + __name__)
+from mcpomni_connect.utils import logger
 
 DEFAULT_MAX_KEY_LENGTH = 128
 DEFAULT_MAX_VARCHAR_LENGTH = 256
@@ -63,17 +60,17 @@ class DatabaseMessageStore:
             ) from e
         self.db_engine = db_engine
         self.database_session_factory = sessionmaker(bind=self.db_engine)
-        
+
         # Check if tables exist before creating them
         inspector = inspect(self.db_engine)
         existing_tables = inspector.get_table_names()
-        
+
         if "messages" not in existing_tables:
             logger.info("Creating database tables for the first time")
             Base.metadata.create_all(self.db_engine)
         else:
             logger.info("Database tables already exist, skipping creation")
-            
+
         self.memory_config: dict[str, Any] = {}
 
     def set_memory_config(self, mode: str, value: int = None) -> None:
@@ -107,7 +104,9 @@ class DatabaseMessageStore:
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    async def get_messages(self, session_id: str = None, agent_name: str | None = None) -> list[dict[str, Any]]:
+    async def get_messages(
+        self, session_id: str = None, agent_name: str | None = None
+    ) -> list[dict[str, Any]]:
         logger.info(f"get memory config: {self.memory_config}")
         try:
             with self.database_session_factory() as session_factory:
@@ -141,7 +140,11 @@ class DatabaseMessageStore:
                             len(str(msg["content"]).split()) for msg in result
                         )
                 if agent_name:
-                    result = [msg for msg in result if msg["msg_metadata"].get("agent_name") == agent_name]
+                    result = [
+                        msg
+                        for msg in result
+                        if msg["msg_metadata"].get("agent_name") == agent_name
+                    ]
                 return result
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")

@@ -2,7 +2,9 @@ import os
 import redis.asyncio as redis
 from typing import AsyncIterator, List
 from mcpomni_connect.events.base import BaseEventStore, Event
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 
 class RedisStreamEventStore(BaseEventStore):
     def __init__(self):
@@ -26,4 +28,4 @@ class RedisStreamEventStore(BaseEventStore):
                 _, entries = results[0]
                 for entry_id, data in entries:
                     last_id = entry_id
-                    yield Event.parse_raw(data["event"]) 
+                    yield Event.parse_raw(data["event"])

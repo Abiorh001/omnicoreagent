@@ -19,6 +19,7 @@ from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.utils import logger
 from mcpomni_connect.events.events import event_store
 
+
 class OmniAgent:
     """
     A simple, user-friendly interface for creating and using MCP agents.
@@ -220,6 +221,7 @@ class OmniAgent:
 
     async def get_events(self, session_id: str):
         return await event_store.get_events(session_id=session_id)
+
     async def cleanup(self):
         """Clean up resources"""
         if self.mcp_client:

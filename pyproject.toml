@@ -49,6 +49,9 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "tzlocal>=5.2",
     "psycopg2-binary>=2.9.10",
+    "qdrant-client>=1.15.0",
+    "nomic>=3.5.3",
+    "sentence-transformers>=5.0.0",
 ]
 
 [project.scripts]

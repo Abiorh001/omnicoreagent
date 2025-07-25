@@ -8,7 +8,9 @@ from decouple import config
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from mcpomni_connect.utils import logger
 import os
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")  
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 
 class RedisMemoryStore(AbstractMemoryStore):
     """Redis-backed memory store implementing AbstractMemoryStore interface."""
@@ -22,9 +24,11 @@ class RedisMemoryStore(AbstractMemoryStore):
         Args:
             redis_client: Optional Redis client instance
         """
-        self._redis_client = redis_client or redis.from_url(REDIS_URL, decode_responses=True)
+        self._redis_client = redis_client or redis.from_url(
+            REDIS_URL, decode_responses=True
+        )
         self.memory_config: dict[str, Any] = {}
-        
+
         logger.info("Initialized RedisMemoryStore")
 
     def set_memory_config(self, mode: str, value: int = None) -> None:
@@ -91,30 +95,32 @@ class RedisMemoryStore(AbstractMemoryStore):
         """
         try:
             key = f"mcp_memory:{session_id}"
-            
+
             messages = await self._redis_client.zrange(key, 0, -1)
 
             result = [json.loads(msg) for msg in messages]
             # Apply memory configuration
             mode = self.memory_config.get("mode", "token_budget")
             value = self.memory_config.get("value")
-            
+
             if mode.lower() == "sliding_window" and value is not None:
                 result = result[-value:]
             elif mode.lower() == "token_budget" and value is not None:
-                total_tokens = sum(
-                    len(str(msg["content"]).split()) for msg in result
-                )
+                total_tokens = sum(len(str(msg["content"]).split()) for msg in result)
                 while total_tokens > value and result:
                     result.pop(0)
                     total_tokens = sum(
                         len(str(msg["content"]).split()) for msg in result
                     )
-            
+
             # Filter by agent name if specified
             if agent_name:
-                result = [msg for msg in result if msg.get("msg_metadata", {}).get("agent_name") == agent_name]
-            
+                result = [
+                    msg
+                    for msg in result
+                    if msg.get("msg_metadata", {}).get("agent_name") == agent_name
+                ]
+
             return result
 
         except Exception as e:
