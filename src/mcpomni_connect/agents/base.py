@@ -744,6 +744,7 @@ class BaseReactAgent:
             system_prompt
             + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
         )
+        # logger.info(f"system updated prompt: {system_updated_prompt}")
         self.messages[self.agent_name] = [
             Message(role="system", content=system_updated_prompt)
         ]

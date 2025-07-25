@@ -52,6 +52,7 @@ dependencies = [
     "qdrant-client>=1.15.0",
     "nomic>=3.5.3",
     "sentence-transformers>=5.0.0",
+    "einops>=0.8.1",
 ]
 
 [project.scripts]

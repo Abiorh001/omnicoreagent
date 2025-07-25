@@ -20,7 +20,9 @@ _RECENT_SUMMARY_CACHE = {}  # {(collection_name, memory_type): (summary, cache_t
 _CACHE_TTL = 1800  # 30 minutes in seconds
 
 # Eagerly load the embedding model at module import time
-_EMBED_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+_EMBED_MODEL = SentenceTransformer("nomic-ai/nomic-embed-text-v1", trust_remote_code=True)
+
+NOMIC_VECTOR_SIZE = 768
 
 
 def get_embed_model():
@@ -35,25 +37,29 @@ class QdrantVectorDB:
             session_id: Session ID for the collection
             memory_type: Type of memory (episodic, long_term)
         """
-        self.client = QdrantClient(
-            host=os.getenv("QDRANT_HOST"), port=os.getenv("QDRANT_PORT")
-        )
+        self.qdrant_host = os.getenv("QDRANT_HOST")
+        self.qdrant_port = os.getenv("QDRANT_PORT")
+        self.enabled = bool(self.qdrant_host and self.qdrant_port)
+        if not self.enabled:
+            logger.warning("QDRANT_HOST or QDRANT_PORT not set. Qdrant memory operations will be disabled.")
+        else:
+            self.client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
         self.collection_name = f"{memory_type}_{session_id}"
         self.session_id = session_id
         self.memory_type = memory_type
         self._embed_model = get_embed_model()
-        self._vector_size = 384
+        self._vector_size = NOMIC_VECTOR_SIZE
         logger.info(
-            f"Initialized QdrantVectorDB for {memory_type} memory with session: {session_id} using all-MiniLM-L6-v2 (384-dim)"
+            f"Initialized QdrantVectorDB for {memory_type} memory with session: {session_id} using nomic-ai/nomic-embed-text-v1"
         )
 
     def embed_text(self, text: str) -> list[float]:
-        """Embed text using all-MiniLM-L6-v2 model."""
+        """Embed text using nomic-ai/nomic-embed-text-v1 model."""
         try:
             embedding = self._embed_model.encode(text).tolist()
             return embedding
         except Exception as e:
-            logger.error(f"Error generating embedding with SentenceTransformer: {e}")
+            logger.error(f"Error generating embedding: {e}")
             raise
 
     async def create_episodic_memory(
@@ -211,6 +217,9 @@ class QdrantVectorDB:
         Returns:
             Dict containing query results
         """
+        if not self.enabled:
+            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            return "No relevant memory found"
         try:
             # Search for similar documents
             logger.info(
@@ -325,6 +334,9 @@ class QdrantVectorDB:
     async def process_conversation_memory(
         self, messages: list, llm_connection: Callable
     ):
+        if not self.enabled:
+            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            return
         """Process conversation memory only if 30min have passed since last summary. Summarize only new messages."""
         try:
             # Ensure collection exists (run in background)
@@ -465,7 +477,9 @@ class QdrantVectorDB:
     async def add_to_collection_async(
         self, doc_id: str, document: str, session_id: str, metadata: Dict
     ):
-        """Async version of add_to_collection."""
+        if not self.enabled:
+            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            return
         try:
             # Prepare rest of the metadata
             metadata["text"] = document
@@ -490,7 +504,9 @@ class QdrantVectorDB:
     async def query_collection_async(
         self, query: str, n_results: int = 5, distance_threshold: float = 0.70
     ) -> Dict[str, Any]:
-        """Async version of query_collection."""
+        if not self.enabled:
+            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            return {}
         try:
             # Search for similar documents
             search_result = self.client.query_points(
