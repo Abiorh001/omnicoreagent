@@ -11,22 +11,55 @@ from mcpomni_connect.memory_store.memory_management.system_prompts import (
     episodic_memory_constructor_system_prompt,
     long_term_memory_constructor_system_prompt,
 )
+from decouple import config
 import time
 import asyncio
 import logging
 import traceback
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
-_RECENT_SUMMARY_CACHE = {}  # {(collection_name, memory_type): (summary, cache_time)}
-_CACHE_TTL = 1800  # 30 minutes in seconds
-
-# Eagerly load the embedding model at module import time
-_EMBED_MODEL = SentenceTransformer("nomic-ai/nomic-embed-text-v1", trust_remote_code=True)
-
+_RECENT_SUMMARY_CACHE = {}
+_CACHE_TTL = 1800
 NOMIC_VECTOR_SIZE = 768
+
+
+# ==== 🔥 Eagerly load and warm up embedding model at module import ====
+try:
+    _EMBED_MODEL = SentenceTransformer(
+        "nomic-ai/nomic-embed-text-v1", trust_remote_code=True
+    )
+    _ = _EMBED_MODEL.encode("warmup")  # Force lazy-load model weights
+    logger.info(
+        "[Warmup] Embedding model 'nomic-ai/nomic-embed-text-v1' loaded successfully."
+    )
+except Exception as e:
+    _EMBED_MODEL = None
+    logger.error(f"[Warmup] Failed to load embedding model: {e}")
 
 
 def get_embed_model():
     return _EMBED_MODEL
+
+
+# ==== 🔥 Warm up Qdrant client at module import ====
+_qdrant_client = None
+_qdrant_enabled = False
+_qdrant_host = config("QDRANT_HOST")
+_qdrant_port = config("QDRANT_PORT")
+logger.info(f"QDRANT_HOST: {_qdrant_host}")
+logger.info(f"QDRANT_PORT: {_qdrant_port}")
+if _qdrant_host and _qdrant_port:
+    try:
+        _qdrant_client = QdrantClient(host=_qdrant_host, port=_qdrant_port)
+        _qdrant_enabled = True
+        logger.info("[Warmup] Qdrant client initialized successfully.")
+    except Exception as e:
+        logger.error(f"[Warmup] Failed to initialize Qdrant client: {e}")
+else:
+    logger.warning(
+        "[Warmup] QDRANT_HOST or QDRANT_PORT not set. Qdrant will be disabled."
+    )
 
 
 class QdrantVectorDB:
@@ -37,13 +70,15 @@ class QdrantVectorDB:
             session_id: Session ID for the collection
             memory_type: Type of memory (episodic, long_term)
         """
-        self.qdrant_host = os.getenv("QDRANT_HOST")
-        self.qdrant_port = os.getenv("QDRANT_PORT")
-        self.enabled = bool(self.qdrant_host and self.qdrant_port)
+        self.qdrant_host = _qdrant_host
+        self.qdrant_port = _qdrant_port
+        self.enabled = _qdrant_enabled
         if not self.enabled:
-            logger.warning("QDRANT_HOST or QDRANT_PORT not set. Qdrant memory operations will be disabled.")
+            logger.warning(
+                "QDRANT_HOST or QDRANT_PORT not set. Qdrant memory operations will be disabled."
+            )
         else:
-            self.client = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
+            self.client = _qdrant_client
         self.collection_name = f"{memory_type}_{session_id}"
         self.session_id = session_id
         self.memory_type = memory_type
@@ -72,16 +107,30 @@ class QdrantVectorDB:
             llm_connection: The LLM connection to use for memory creation
         """
         try:
-            llm_messages = []
-            llm_messages.append(
-                {"role": "system", "content": episodic_memory_constructor_system_prompt}
-            )
-            llm_messages.append({"role": "user", "content": message})
-            response = await llm_connection.llm_call(llm_messages)
-            if response and response.choices:
-                return response.choices[0].message.content
-            else:
-                return None
+            # Temporarily disable LiteLLM logging to prevent async task warnings
+            import litellm
+
+            original_verbose = getattr(litellm, "verbose", None)
+            litellm.verbose = False
+
+            try:
+                llm_messages = []
+                llm_messages.append(
+                    {
+                        "role": "system",
+                        "content": episodic_memory_constructor_system_prompt,
+                    }
+                )
+                llm_messages.append({"role": "user", "content": message})
+                response = await llm_connection.llm_call(llm_messages)
+                if response and response.choices:
+                    return response.choices[0].message.content
+                else:
+                    return None
+            finally:
+                # Restore original logging setting
+                if original_verbose is not None:
+                    litellm.verbose = original_verbose
         except Exception as e:
             logger.error(f"Failed to create episodic memory: {e}")
             raise
@@ -96,19 +145,30 @@ class QdrantVectorDB:
             llm_connection: The LLM connection to use for memory creation
         """
         try:
-            llm_messages = []
-            llm_messages.append(
-                {
-                    "role": "system",
-                    "content": long_term_memory_constructor_system_prompt,
-                }
-            )
-            llm_messages.append({"role": "user", "content": message})
-            response = await llm_connection.llm_call(llm_messages)
-            if response and response.choices:
-                return response.choices[0].message.content
-            else:
-                return None
+            # Temporarily disable LiteLLM logging to prevent async task warnings
+            import litellm
+
+            original_verbose = getattr(litellm, "verbose", None)
+            litellm.verbose = False
+
+            try:
+                llm_messages = []
+                llm_messages.append(
+                    {
+                        "role": "system",
+                        "content": long_term_memory_constructor_system_prompt,
+                    }
+                )
+                llm_messages.append({"role": "user", "content": message})
+                response = await llm_connection.llm_call(llm_messages)
+                if response and response.choices:
+                    return response.choices[0].message.content
+                else:
+                    return None
+            finally:
+                # Restore original logging setting
+                if original_verbose is not None:
+                    litellm.verbose = original_verbose
         except Exception as e:
             logger.error(f"Failed to create long-term memory: {e}")
             raise
@@ -218,7 +278,9 @@ class QdrantVectorDB:
             Dict containing query results
         """
         if not self.enabled:
-            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            logger.warning(
+                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+            )
             return "No relevant memory found"
         try:
             # Search for similar documents
@@ -335,7 +397,9 @@ class QdrantVectorDB:
         self, messages: list, llm_connection: Callable
     ):
         if not self.enabled:
-            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            logger.warning(
+                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+            )
             return
         """Process conversation memory only if 30min have passed since last summary. Summarize only new messages."""
         try:
@@ -404,6 +468,7 @@ class QdrantVectorDB:
                 logger.warning(f"Failed to construct {self.memory_type} memory")
                 return
             doc_id = str(uuid.uuid4())
+            logger.info(f"memory_content: {memory_content}")
             # Ensure window_start is a datetime before calling isoformat
             if isinstance(window_start, float):
                 window_start = datetime.fromtimestamp(window_start)
@@ -478,7 +543,9 @@ class QdrantVectorDB:
         self, doc_id: str, document: str, session_id: str, metadata: Dict
     ):
         if not self.enabled:
-            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            logger.warning(
+                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+            )
             return
         try:
             # Prepare rest of the metadata
@@ -505,7 +572,9 @@ class QdrantVectorDB:
         self, query: str, n_results: int = 5, distance_threshold: float = 0.70
     ) -> Dict[str, Any]:
         if not self.enabled:
-            logger.warning("Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables.")
+            logger.warning(
+                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+            )
             return {}
         try:
             # Search for similar documents
@@ -581,35 +650,164 @@ class QdrantVectorDB:
         if cache_key in _RECENT_SUMMARY_CACHE:
             del _RECENT_SUMMARY_CACHE[cache_key]
 
+    async def query_both_memory_types(
+        self,
+        query: str,
+        session_id: str,
+        n_results: int = 3,
+        distance_threshold: float = 0.5,
+    ) -> tuple:
+        """Query both long-term and episodic memory collections in a single operation."""
+        if not self.enabled:
+            logger.warning("Qdrant is not enabled. Skipping memory operation.")
+            return (
+                "No relevant long-term memory found",
+                "No relevant episodic memory found",
+            )
 
-async def fire_and_forget_memory_task(
-    session_id, memory_type, validated_messages, llm_connection
-):
-    async def memory_task():
         try:
-            db = QdrantVectorDB(session_id, memory_type)
-            await db.process_conversation_memory(
-                messages=validated_messages, llm_connection=llm_connection
-            )
-            logging.info(
-                f"{memory_type} memory processing completed successfully for session {session_id}"
-            )
+            # Create embeddings for the query
+            query_embedding = self.embed_text(query)
+
+            long_term_result = "No relevant long-term memory found"
+            episodic_result = "No relevant episodic memory found"
+
+            # Query long-term memory collection
+            try:
+                long_term_collection = f"long_term_{session_id}"
+                long_term_search = self.client.query_points(
+                    collection_name=long_term_collection,
+                    query=query_embedding,
+                    limit=n_results,
+                    with_payload=True,
+                ).points
+
+                filtered_long_term = [
+                    hit for hit in long_term_search if hit.score >= distance_threshold
+                ]
+                if filtered_long_term:
+                    long_term_result = [
+                        hit.payload["text"] for hit in filtered_long_term
+                    ]
+            except Exception as e:
+                logger.warning(f"Failed to query long-term memory collection: {e}")
+
+            # Query episodic memory collection
+            try:
+                episodic_collection = f"episodic_{session_id}"
+                episodic_search = self.client.query_points(
+                    collection_name=episodic_collection,
+                    query=query_embedding,
+                    limit=n_results,
+                    with_payload=True,
+                ).points
+
+                filtered_episodic = [
+                    hit for hit in episodic_search if hit.score >= distance_threshold
+                ]
+                if filtered_episodic:
+                    episodic_result = [hit.payload["text"] for hit in filtered_episodic]
+            except Exception as e:
+                logger.warning(f"Failed to query episodic memory collection: {e}")
+
+            return long_term_result, episodic_result
+
         except Exception as e:
-            logging.error(
-                f"Error in {memory_type} memory processing for session {session_id}: {e}\n{traceback.format_exc()}"
+            logger.error(f"Error in query_both_memory_types: {e}")
+            return (
+                "No relevant long-term memory found",
+                "No relevant episodic memory found",
             )
 
-    task = asyncio.create_task(memory_task())
 
-    def _handle_task_result(task):
-        try:
-            exc = task.exception()
-            if exc:
-                logging.error(
-                    f"Background {memory_type} memory task error: {exc}", exc_info=exc
+def process_both_memory_types_threaded(session_id, validated_messages, llm_connection):
+    """Process both episodic and long-term memory in a single threaded operation."""
+    try:
+        logger.info(f"Starting threaded memory processing for session {session_id}")
+
+        # Process episodic memory in a completely separate thread
+        def episodic_task():
+            try:
+                episodic_db = QdrantVectorDB(
+                    session_id=session_id, memory_type="episodic"
                 )
-        except asyncio.CancelledError:
-            logging.warning(f"Background {memory_type} memory task was cancelled.")
+                if episodic_db.enabled:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            episodic_db.process_conversation_memory(
+                                validated_messages, llm_connection
+                            )
+                        )
+                        logger.info(
+                            f"Episodic memory processing completed for session {session_id}"
+                        )
+                    finally:
+                        loop.close()
+                else:
+                    logger.warning(
+                        f"Episodic memory processing skipped - Qdrant disabled for session {session_id}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error in episodic memory processing for session {session_id}: {e}\n{traceback.format_exc()}"
+                )
 
-    task.add_done_callback(_handle_task_result)
-    return task
+        # Process long-term memory in a completely separate thread
+        def long_term_task():
+            try:
+                long_term_db = QdrantVectorDB(
+                    session_id=session_id, memory_type="long_term"
+                )
+                if long_term_db.enabled:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            long_term_db.process_conversation_memory(
+                                validated_messages, llm_connection
+                            )
+                        )
+                        logger.info(
+                            f"Long-term memory processing completed for session {session_id}"
+                        )
+                    finally:
+                        loop.close()
+                else:
+                    logger.warning(
+                        f"Long-term memory processing skipped - Qdrant disabled for session {session_id}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error in long-term memory processing for session {session_id}: {e}\n{traceback.format_exc()}"
+                )
+
+        # Start both tasks in separate threads without waiting
+        episodic_thread = threading.Thread(target=episodic_task, daemon=True)
+        long_term_thread = threading.Thread(target=long_term_task, daemon=True)
+
+        episodic_thread.start()
+        long_term_thread.start()
+
+        logger.info(f"Memory processing threads started for session {session_id}")
+
+    except Exception as e:
+        logger.error(
+            f"Error in threaded memory processing for session {session_id}: {e}\n{traceback.format_exc()}"
+        )
+
+
+def fire_and_forget_memory_processing(session_id, validated_messages, llm_connection):
+    """Fire and forget memory processing using actual threading."""
+
+    # Start the memory processing in a separate thread and return immediately
+    memory_thread = threading.Thread(
+        target=process_both_memory_types_threaded,
+        args=(session_id, validated_messages, llm_connection),
+        daemon=True,
+    )
+    memory_thread.start()
+
+    logger.info(f"Fire and forget memory processing started for session {session_id}")
+    return memory_thread

@@ -44,8 +44,6 @@ class ToolCallErrorPayload(BaseModel):
 
 class FinalAnswerPayload(BaseModel):
     message: str
-    confidence: Optional[float] = None
-    sources: Optional[List[str]] = None
 
 
 EventPayload = Union[

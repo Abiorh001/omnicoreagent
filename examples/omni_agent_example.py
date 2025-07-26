@@ -324,9 +324,7 @@ async def main():
     print("This shows both dataclass and dictionary approaches\n")
 
     # Set up environment
-    os.environ["LLM_API_KEY"] = (
-        "sk-proj"  # Mock API key
-    )
+    os.environ["LLM_API_KEY"] = "sk-proj"  # Mock API key
 
     # Run examples
     await example_session_management()

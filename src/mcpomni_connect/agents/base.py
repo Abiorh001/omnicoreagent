@@ -45,10 +45,9 @@ from mcpomni_connect.events.base import (
 )
 from mcpomni_connect.events.events import event_store
 from mcpomni_connect.memory_store.memory_management.vector_db import (
-    fire_and_forget_memory_task,
+    fire_and_forget_memory_processing,
+    QdrantVectorDB,
 )
-from mcpomni_connect.memory_store.memory_management.vector_db import QdrantVectorDB
-from datetime import datetime
 
 
 class BaseReactAgent:
@@ -79,14 +78,20 @@ class BaseReactAgent:
         )
 
     async def get_long_episodic_memory(self, query: str, session_id: str):
-        """Get long-term and episodic memory for a given query and session ID"""
-        long_term_memory = QdrantVectorDB(
-            session_id=session_id, memory_type="long_term"
-        )
-        episodic_memory = QdrantVectorDB(session_id=session_id, memory_type="episodic")
-        return long_term_memory.query_collection(
-            query=query
-        ), episodic_memory.query_collection(query=query)
+        """Get long-term and episodic memory for a given query and session ID using optimized single query"""
+        try:
+            # Use a single QdrantVectorDB instance to query both memory types
+            memory_db = QdrantVectorDB(session_id=session_id, memory_type="long_term")
+            long_term_result, episodic_result = await memory_db.query_both_memory_types(
+                query=query, session_id=session_id
+            )
+            return long_term_result, episodic_result
+        except Exception as e:
+            logger.warning(f"Failed to retrieve memory: {e}")
+            return (
+                "No relevant long-term memory found",
+                "No relevant episodic memory found",
+            )
 
     async def extract_action_or_answer(
         self,
@@ -178,7 +183,18 @@ class BaseReactAgent:
                     "No XML format detected, treating as conversational response: %s",
                     response,
                 )
-            return ParsedResponse(answer=response.strip())
+
+            # Check if response contains any XML tags at all
+            if "<" in response and ">" in response:
+                # Has some XML but not the required format - return error
+                return ParsedResponse(
+                    error="Response contains XML tags but not in the required format. You MUST use <thought> and <final_answer> tags for all responses."
+                )
+
+            # No XML at all - return error
+            return ParsedResponse(
+                error="Response must use XML format. You MUST wrap your response in <thought> and <final_answer> tags. Example: <thought>Your reasoning here</thought><final_answer>Your answer here</final_answer>"
+            )
 
         except Exception as e:
             logger.error("Error parsing model response: %s", str(e))
@@ -206,11 +222,8 @@ class BaseReactAgent:
         logger.info(f"Processing memory asynchronously for agent: {self.agent_name}")
         try:
             # Create long-term and episodic memory processor (background task)
-            await fire_and_forget_memory_task(
-                session_id, "long_term", validated_messages, llm_connection
-            )
-            await fire_and_forget_memory_task(
-                session_id, "episodic", validated_messages, llm_connection
+            fire_and_forget_memory_processing(
+                session_id, validated_messages, llm_connection
             )
         except ImportError as e:
             logger.warning(f"Memory processing not available: {e}")
@@ -396,8 +409,8 @@ class BaseReactAgent:
         if isinstance(tool_call_result, ToolError):
             observation = tool_call_result.observation
             event = Event(
-                EventType.TOOL_CALL_ERROR,
-                ToolCallErrorPayload(
+                type=EventType.TOOL_CALL_ERROR,
+                payload=ToolCallErrorPayload(
                     tool_name=tool_call_result.tool_name,
                     error_message=observation,
                 ),
@@ -736,7 +749,8 @@ class BaseReactAgent:
         long_term_memory, episodic_memory = await self.get_long_episodic_memory(
             query=query, session_id=session_id
         )
-
+        logger.info(f"long_term_memory: {long_term_memory}")
+        logger.info(f"episodic_memory: {episodic_memory}")
         #  append the tools section if needed
         system_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
         # now update the system prompt with the long term and episodic memory using the XML-based template
