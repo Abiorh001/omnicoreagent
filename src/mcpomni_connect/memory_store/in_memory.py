@@ -86,7 +86,9 @@ class InMemoryStore(AbstractMemoryStore):
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    async def get_messages(self, session_id: str, agent_name:str=None) -> list[dict[str, Any]]:
+    async def get_messages(
+        self, session_id: str, agent_name: str = None
+    ) -> list[dict[str, Any]]:
         """Get messages from memory.
 
         Args:
@@ -116,7 +118,11 @@ class InMemoryStore(AbstractMemoryStore):
                     )
             logger.info(f"messages: {messages}")
             if agent_name:
-                messages = [msg for msg in messages if msg.get("msg_metadata", {}).get("agent_name") == agent_name]
+                messages = [
+                    msg
+                    for msg in messages
+                    if msg.get("msg_metadata", {}).get("agent_name") == agent_name
+                ]
             logger.info(f"messages after agent name filter: {messages}")
             return messages
 

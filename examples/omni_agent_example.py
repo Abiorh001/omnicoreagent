@@ -56,7 +56,7 @@ def calculate_area(length: float, width: float) -> float:
 )
 def get_weather_info(city: str) -> str:
     """Get weather info (simulated)"""
-    return f"Weather in {city}: Sunny, 25°C"
+    return f"Weather in {city}: Sunny, 50°C"
 
 
 @local_tools.register_tool(
@@ -96,7 +96,7 @@ async def example_session_management():
     print("=" * 60)
 
     # Create agent with custom session store
-    custom_memory = MemoryRouter(memory_store_type="in_memory")
+    custom_memory = MemoryRouter(memory_store_type="redis")
 
     agent = OmniAgent(
         name="session_agent",
@@ -108,8 +108,8 @@ async def example_session_management():
             "memory_config": {"mode": "token_budget", "value": 10000},
         },
         model_config={
-            "provider": "gemini",
-            "model": "gemini-2.0-flash",
+            "provider": "openai",
+            "model": "gpt-4.1",
             "max_context_length": 50000,
         },
         mcp_tools=[
@@ -132,28 +132,29 @@ async def example_session_management():
     print("✅ OmniAgent created with custom session store!")
 
     # Simulate a conversation with session ID management
-    session_id = None
+    global_session_id = "1234567890"
 
     # # First message - will generate new chat ID
     # print("\n🤖 First message (new chat):")
-    result1 = await agent.run("Hello! My name is Alice.", session_id)
-    session_id = result1["session_id"]
-    print(f"Response: {result1['response']}")
-    print(f"Session ID: {session_id}")
-    # stream events create new task for this
-    asyncio.create_task(consume_events(agent, session_id))
+    # result1 = await agent.run("Hello! My name is Alice.", global_session_id)
+    # global_session_id = result1["session_id"]
+    # print(f"Response: {result1['response']}")
+    # print(f"Session ID: {global_session_id}")
+    # # stream events create new task for this
+    # asyncio.create_task(consume_events(agent, global_session_id))
     # # Second message - using same chat ID for continuity
     # print("\n🤖 Second message (same chat):")
     result2 = await agent.run(
-        "list all the files in my current directory, my current directory is /home/abiorh/ai",
-        session_id,
+        "what are you and what can you help me with",
+        global_session_id,
     )
     print(f"Response: {result2['response']}")
     print(f"Session ID: {result2['session_id']}")
+
     # stream events
-    asyncio.create_task(consume_events(agent, session_id))
-    get_history = await agent.get_session_history(session_id)
-    print(f"History: {get_history}")
+    # asyncio.create_task(consume_events(agent, global_session_id))
+    # get_history = await agent.get_session_history(global_session_id)
+    # print(f"History: {get_history}")
 
     # # Get chat history
     # print("\n📜 Chat History:")
@@ -162,13 +163,13 @@ async def example_session_management():
     #     print(f"  {i+1}. {msg['role']}: {msg['content']}")
 
     # New conversation with different chat ID
-    print("\n🤖 New conversation (different chat):")
-    result3 = await agent.run("Hello! My name is Bob. What is the weather in Tokyo?")
-    new_session_id = result3["session_id"]
-    print(f"Response: {result3['response']}")
-    print(f"New Session ID: {new_session_id}")
-    # stream events
-    asyncio.create_task(consume_events(agent, new_session_id))
+    # print("\n🤖 New conversation (different chat):")
+    # result3 = await agent.run("list all the files in my current directory", global_session_id)
+    # global_session_id = result3["session_id"]
+    # print(f"Response: {result3['response']}")
+    # print(f"New Session ID: {global_session_id}")
+    # # stream events
+    # asyncio.create_task(consume_events(agent, global_session_id))
     # # Clear specific chat history
     # print(f"\n🧹 Clearing chat history for: {chat_id}")
     # await agent.clear_chat_history(chat_id)
@@ -177,8 +178,8 @@ async def example_session_management():
     # history_after_clear = await agent.get_chat_history(chat_id)
     # print(f"History after clear: {len(history_after_clear)} messages")
 
-    get_history = await agent.get_session_history(new_session_id)
-    print(f"History: {get_history}")
+    # get_history = await agent.get_session_history(global_session_id)
+    # print(f"History: {get_history}")
 
     # Clean up
     await agent.cleanup()
@@ -323,9 +324,7 @@ async def main():
     print("This shows both dataclass and dictionary approaches\n")
 
     # Set up environment
-    os.environ["LLM_API_KEY"] = (
-        "AIzaSyDe5bi0_NQ3uVNeLtuQynRfFMqD3GKqd34"  # Mock API key
-    )
+    os.environ["LLM_API_KEY"] = "sk-proj"  # Mock API key
 
     # Run examples
     await example_session_management()

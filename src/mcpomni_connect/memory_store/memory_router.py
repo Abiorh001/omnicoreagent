@@ -6,6 +6,7 @@ from mcpomni_connect.memory_store.redis_memory import RedisMemoryStore
 from mcpomni_connect.utils import logger
 from mcpomni_connect.utils import normalize_metadata
 
+
 class MemoryRouter:
     def __init__(self, memory_store_type: str):
         if memory_store_type == "in_memory":
@@ -32,7 +33,9 @@ class MemoryRouter:
             metadata = normalize_metadata(metadata)
         await self.memory_store.store_message(role, content, metadata, session_id)
 
-    async def get_messages(self, session_id: str, agent_name:str=None) -> list[dict[str, Any]]:
+    async def get_messages(
+        self, session_id: str, agent_name: str = None
+    ) -> list[dict[str, Any]]:
         messages = await self.memory_store.get_messages(session_id, agent_name)
         # convert from msg_metadata to metadata
         for message in messages:

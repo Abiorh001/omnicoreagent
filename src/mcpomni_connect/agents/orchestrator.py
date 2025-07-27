@@ -49,6 +49,15 @@ class OrchestratorAgent(BaseReactAgent):
         self.max_steps = 20
         self.debug = debug
 
+    async def extract_action_or_answer(
+        self,
+        response: str,
+        debug: bool = False,
+    ) -> ParsedResponse:
+        """Override to prevent orchestrator from parsing tool calls from sub-agents."""
+        # Orchestrator should only parse agent calls and final answers, not tool calls
+        return await self.extract_agent_action_or_answer(response, debug)
+
     async def extract_agent_action_or_answer(
         self,
         response: str,
@@ -436,6 +445,9 @@ class OrchestratorAgent(BaseReactAgent):
                     request_limit=request_limit,
                     session_id=session_id,
                 )
+                # Ensure observation is a string for event payload
+                if not isinstance(observation, str):
+                    observation = str(observation)
                 # Emit agent observation event
                 event = Event(
                     type=EventType.TOOL_CALL_RESULT,
@@ -468,4 +480,3 @@ class OrchestratorAgent(BaseReactAgent):
                 session_id=session_id,
                 metadata={"agent_name": "orchestrator"},
             )
-            

@@ -2,6 +2,7 @@
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
+from time import time
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +14,7 @@ class AgentConfig(BaseModel):
     max_steps: int = Field(gt=0, le=1000)
     tool_call_timeout: int = Field(gt=1, le=1000)
     memory_config: dict = {"mode": "sliding_window", "value": 10000}
+
 
 class AgentState(str, Enum):
     IDLE = "idle"
@@ -48,6 +50,7 @@ class Message(BaseModel):
     tool_call_id: str = None
     tool_calls: str = None
     metadata: ToolCallMetadata | None = None
+    timestamp: float = Field(default_factory=time)
 
 
 class ParsedResponse(BaseModel):

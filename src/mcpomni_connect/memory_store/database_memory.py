@@ -39,16 +39,14 @@ class DatabaseMemory(AbstractMemoryStore):
             session_id=session_id,
         )
 
-    async def get_messages(
-        self,
-        session_id: str = None,
-        agent_name:str=None
-    ):
+    async def get_messages(self, session_id: str = None, agent_name: str = None):
         """
         Retrieve all messages for a given session_id from the database.
         Returns a list of message dicts.
         """
-        return await self.db_session.get_messages(session_id=session_id,agent_name=agent_name)
+        return await self.db_session.get_messages(
+            session_id=session_id, agent_name=agent_name
+        )
 
     async def clear_memory(
         self,

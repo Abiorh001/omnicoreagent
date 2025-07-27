@@ -1,4 +1,3 @@
-
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Any, Dict, List, Optional, Union
 from enum import Enum
@@ -16,16 +15,20 @@ class EventType(str, Enum):
     TOOL_CALL_ERROR = "tool_call_error"
     FINAL_ANSWER = "final_answer"
 
+
 class UserMessagePayload(BaseModel):
     message: str
 
+
 class AgentMessagePayload(BaseModel):
     message: str
+
 
 class ToolCallStartedPayload(BaseModel):
     tool_name: str
     tool_args: Dict[str, Any]
     tool_call_id: Optional[str] = None
+
 
 class ToolCallResultPayload(BaseModel):
     tool_name: str
@@ -33,14 +36,14 @@ class ToolCallResultPayload(BaseModel):
     tool_call_id: Optional[str] = None
     result: str
 
+
 class ToolCallErrorPayload(BaseModel):
     tool_name: str
     error_message: str
 
+
 class FinalAnswerPayload(BaseModel):
     message: str
-    confidence: Optional[float] = None
-    sources: Optional[List[str]] = None
 
 
 EventPayload = Union[
@@ -50,8 +53,8 @@ EventPayload = Union[
     ToolCallResultPayload,
     ToolCallErrorPayload,
     FinalAnswerPayload,
-    
 ]
+
 
 class Event(BaseModel):
     type: EventType
@@ -70,10 +73,15 @@ EVENT_PAYLOAD_MAP: dict[EventType, Type[BaseModel]] = {
     EventType.FINAL_ANSWER: FinalAnswerPayload,
 }
 
+
 def validate_event(event: Event):
     expected_type = EVENT_PAYLOAD_MAP[event.type]
     if not isinstance(event.payload, expected_type):
-        raise TypeError(f"Payload mismatch: Expected {expected_type} for {event.type}, got {type(event.payload)}")
+        raise TypeError(
+            f"Payload mismatch: Expected {expected_type} for {event.type}, got {type(event.payload)}"
+        )
+
+
 class BaseEventStore(ABC):
     @abstractmethod
     async def append(self, session_id: str, event: Event) -> None:

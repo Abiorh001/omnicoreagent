@@ -56,7 +56,7 @@ class MCPToolHandler(BaseToolHandler):
             input_tool_name = action.get("tool", "").strip()
             tool_args = action.get("parameters")
 
-            if not input_tool_name or not tool_args:
+            if not input_tool_name:
                 return {
                     "error": "Invalid JSON format. Check the action format again.",
                     "action": False,
