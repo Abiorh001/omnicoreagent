@@ -56,6 +56,17 @@ class OmniAgentWebServer:
         # Templates
         templates = Jinja2Templates(directory="examples/templates")
 
+        @self.app.on_event("startup")
+        async def startup_event():
+            """Initialize agent on startup."""
+            print("🔄 Initializing agent on startup...")
+            try:
+                await self.initialize_agent()
+                print("✅ Agent initialized successfully")
+            except Exception as e:
+                print(f"❌ Failed to initialize agent: {e}")
+                print("⚠️  Web interface will start without agent initialization")
+
         @self.app.get("/", response_class=HTMLResponse)
         async def index(request: Request):
             return templates.TemplateResponse(
@@ -324,10 +335,7 @@ class OmniAgentWebServer:
         print("📱 Web interface will be available at: http://localhost:8000")
         print("📚 API documentation at: http://localhost:8000/docs")
 
-        # Initialize agent in the background
-        asyncio.create_task(self.initialize_agent())
-
-        # Run the server
+        # Run the server - agent will be initialized in startup event
         uvicorn.run(self.app, host="0.0.0.0", port=8000, log_level="info")
 
 
