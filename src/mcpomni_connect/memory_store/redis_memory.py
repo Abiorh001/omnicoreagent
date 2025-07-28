@@ -134,13 +134,70 @@ class RedisMemoryStore(AbstractMemoryStore):
 
         Args:
             session_id: Session ID to clear (if None, clear all)
-            agent_name: Optional agent name filter (not implemented for Redis)
+            agent_name: Optional agent name filter
         """
         try:
-            if session_id:
+            if session_id and agent_name:
+                # Clear messages for specific agent in specific session
+                key = f"mcp_memory:{session_id}"
+                messages = await self._redis_client.zrange(key, 0, -1)
+
+                # Filter out messages for the specific agent
+                filtered_messages = []
+                for msg in messages:
+                    msg_data = json.loads(msg)
+                    if msg_data.get("msg_metadata", {}).get("agent_name") != agent_name:
+                        filtered_messages.append(msg)
+
+                # Delete the key and re-add filtered messages
+                await self._redis_client.delete(key)
+                if filtered_messages:
+                    for msg in filtered_messages:
+                        msg_data = json.loads(msg)
+                        await self._redis_client.zadd(
+                            key, {msg: msg_data.get("timestamp", 0)}
+                        )
+
+                logger.info(
+                    f"Cleared memory for agent {agent_name} in session {session_id}"
+                )
+
+            elif session_id:
+                # Clear all messages for specific session
                 key = f"mcp_memory:{session_id}"
                 await self._redis_client.delete(key)
                 logger.info(f"Cleared memory for session {session_id}")
+
+            elif agent_name:
+                # Clear messages for specific agent across all sessions
+                pattern = "mcp_memory:*"
+                keys = await self._redis_client.keys(pattern)
+
+                for key in keys:
+                    messages = await self._redis_client.zrange(key, 0, -1)
+                    filtered_messages = []
+
+                    for msg in messages:
+                        msg_data = json.loads(msg)
+                        if (
+                            msg_data.get("msg_metadata", {}).get("agent_name")
+                            != agent_name
+                        ):
+                            filtered_messages.append(msg)
+
+                    # Delete the key and re-add filtered messages
+                    await self._redis_client.delete(key)
+                    if filtered_messages:
+                        for msg in filtered_messages:
+                            msg_data = json.loads(msg)
+                            await self._redis_client.zadd(
+                                key, {msg: msg_data.get("timestamp", 0)}
+                            )
+
+                logger.info(
+                    f"Cleared memory for agent {agent_name} across all sessions"
+                )
+
             else:
                 # Clear all memory - get all keys and delete them
                 pattern = "mcp_memory:*"

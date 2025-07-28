@@ -43,7 +43,6 @@ from mcpomni_connect.events.base import (
     AgentMessagePayload,
     UserMessagePayload,
 )
-from mcpomni_connect.events.events import event_store
 from mcpomni_connect.memory_store.memory_management.vector_db import (
     fire_and_forget_memory_processing,
     QdrantVectorDB,
@@ -397,6 +396,7 @@ class BaseReactAgent:
         mcp_tools: dict = None,
         local_tools: Any = None,  # LocalToolsIntegration instance
         session_id: str = None,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ):
         tool_call_result = await self.resolve_tool_call_request(
             parsed_response=parsed_response,
@@ -416,7 +416,8 @@ class BaseReactAgent:
                 ),
                 agent_name=self.agent_name,
             )
-            await event_store.append(session_id=session_id, event=event)
+            if event_router:
+                await event_router(session_id=session_id, event=event)
 
         else:
             # Create proper tool call metadata
@@ -445,7 +446,8 @@ class BaseReactAgent:
                 ),
                 agent_name=self.agent_name,
             )
-            await event_store.append(session_id=session_id, event=event)
+            if event_router:
+                await event_router(session_id=session_id, event=event)
             await add_message_to_history(
                 role="assistant",
                 content=response,
@@ -486,7 +488,8 @@ class BaseReactAgent:
                     ),
                     agent_name=self.agent_name,
                 )
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
 
             except asyncio.TimeoutError:
                 observation = (
@@ -511,7 +514,8 @@ class BaseReactAgent:
                     ),
                     agent_name=self.agent_name,
                 )
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -539,7 +543,8 @@ class BaseReactAgent:
                     ),
                     agent_name=self.agent_name,
                 )
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -605,7 +610,8 @@ class BaseReactAgent:
                 ),
                 agent_name=self.agent_name,
             )
-            await event_store.append(session_id=session_id, event=event)
+            if event_router:
+                await event_router(session_id=session_id, event=event)
             self.messages[self.agent_name].append(
                 Message(role="user", content=loop_message)
             )
@@ -728,6 +734,7 @@ class BaseReactAgent:
         mcp_tools: dict = None,
         local_tools: Any = None,  # LocalToolsIntegration instance
         session_id: str = None,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ) -> str | None:
         """Execute ReAct loop with JSON communication
         kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be local_tools
@@ -740,7 +747,8 @@ class BaseReactAgent:
             ),
             agent_name=self.agent_name,
         )
-        await event_store.append(session_id=session_id, event=event)
+        if event_router:
+            await event_router(session_id=session_id, event=event)
 
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
@@ -807,7 +815,8 @@ class BaseReactAgent:
                             ),
                             agent_name=self.agent_name,
                         )
-                        await event_store.append(session_id=session_id, event=event)
+                        if event_router:
+                            await event_router(session_id=session_id, event=event)
                         # check if it has usage
                         if hasattr(response, "usage"):
                             request_usage = Usage(
@@ -880,7 +889,8 @@ class BaseReactAgent:
                         ),
                         agent_name=self.agent_name,
                     )
-                    await event_store.append(session_id=session_id, event=event)
+                    if event_router:
+                        await event_router(session_id=session_id, event=event)
                     await add_message_to_history(
                         role="assistant",
                         content=parsed_response.answer,
@@ -916,6 +926,7 @@ class BaseReactAgent:
                         mcp_tools=mcp_tools,
                         local_tools=local_tools,
                         session_id=session_id,
+                        event_router=event_router,  # Pass event_router callable
                     )
 
                 # check for stuck state

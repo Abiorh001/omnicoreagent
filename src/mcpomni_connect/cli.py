@@ -16,7 +16,8 @@ from rich.text import Text
 from rich.align import Align
 from rich.panel import Panel
 import asyncio
-from mcpomni_connect.events.events import event_store
+from mcpomni_connect.events.event_router import EventRouter
+from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.agents.orchestrator import OrchestratorAgent
 from mcpomni_connect.agents.react_agent import ReactAgent
 from mcpomni_connect.agents.tool_calling_agent import ToolCallingAgent
@@ -74,7 +75,9 @@ class CommandType(Enum):
     CLEAR_HISTORY = "clear_history"
     SAVE_HISTORY = "save_history"
     LOAD_HISTORY = "load_history"
-    MEMORY = "memory"
+
+    MEMORY_STORE = "memory_store"
+    EVENT_STORE = "event_store"
     MODE = "mode"
     QUIT = "quit"
     API_STATS = "api_stats"
@@ -129,14 +132,71 @@ class CommandHelp:
                     "Use to toggle to orchestrator mode",
                 ],
             },
-            "memory": {
-                "description": "Toggle memory usage between Redis and In-Memory",
-                "usage": "/memory",
+            "memory_store": {
+                "description": "Switch between different memory store backends",
+                "usage": "/memory_store:<backend>[:<database_url>]",
                 "examples": [
-                    "/memory  # Toggle memory usage between Redis and In-Memory"
+                    "/memory_store:in_memory  # Use in-memory storage",
+                    "/memory_store:redis  # Use Redis storage",
+                    "/memory_store:database  # Use database storage (defaults to SQLite)",
+                    "/memory_store:database:postgresql://user:pass@localhost/db  # Use PostgreSQL",
                 ],
-                "subcommands": {},
-                "tips": ["Use to toggle memory usage between Redis and In-Memory"],
+                "subcommands": {
+                    "in_memory": {
+                        "description": "Fast in-memory storage (default)",
+                        "usage": "/memory_store:in_memory",
+                        "examples": ["/memory_store:in_memory"],
+                        "tips": ["Best for development and testing"],
+                    },
+                    "redis": {
+                        "description": "Redis-based persistent storage",
+                        "usage": "/memory_store:redis",
+                        "examples": ["/memory_store:redis"],
+                        "tips": ["Requires Redis server running"],
+                    },
+                    "database": {
+                        "description": "Database-based persistent storage",
+                        "usage": "/memory_store:database[:<database_url>]",
+                        "examples": [
+                            "/memory_store:database  # Use SQLite (default)",
+                            "/memory_store:database:postgresql://user:pass@localhost/db",
+                        ],
+                        "tips": ["Uses SQLite by default if no URL provided."],
+                    },
+                },
+                "tips": [
+                    "Choose based on your persistence and performance needs",
+                    "Database backend supports PostgreSQL, MySQL, SQLite",
+                    "Redis provides fast in-memory persistence",
+                    "In-memory is fastest but loses data on restart",
+                ],
+            },
+            "event_store": {
+                "description": "Switch between different event store backends",
+                "usage": "/event_store:<backend>",
+                "examples": [
+                    "/event_store:in_memory  # Use in-memory event storage",
+                    "/event_store:redis_stream  # Use Redis Streams",
+                ],
+                "subcommands": {
+                    "in_memory": {
+                        "description": "Fast in-memory event storage (default)",
+                        "usage": "/event_store:in_memory",
+                        "examples": ["/event_store:in_memory"],
+                        "tips": ["Best for development and testing"],
+                    },
+                    "redis_stream": {
+                        "description": "Redis Streams for persistent event storage",
+                        "usage": "/event_store:redis_stream",
+                        "examples": ["/event_store:redis_stream"],
+                        "tips": ["Requires Redis server running"],
+                    },
+                },
+                "tips": [
+                    "Event stores handle real-time event streaming",
+                    "Redis Streams provide persistent event storage",
+                    "In-memory is fastest but loses events on restart",
+                ],
             },
             "memory_mode": {
                 "description": "Switch short-term memory strategy for the agent",
@@ -332,17 +392,17 @@ class MCPClientCLI:
         )["LLM"]["max_context_length"]
         self.USE_MEMORY = {"redis": False, "in_memory": True}
         self.MODE = {"auto": False, "chat": True, "orchestrator": False}
-        self.redis_short_term_memory = RedisShortTermMemory(
-            max_context_tokens=self.MAX_CONTEXT_TOKENS
-        )
-        self.in_memory_short_term_memory = InMemoryStore(
-            max_context_tokens=self.MAX_CONTEXT_TOKENS
+
+        # Initialize MemoryRouter and EventRouter
+        self.memory_router = MemoryRouter(memory_store_type="in_memory")
+        self.event_router = EventRouter(event_store_type="in_memory")
+
+        # Set memory config
+        self.memory_router.set_memory_config(
+            mode=self.agent_config.get("memory_config", {}).get("mode", "token_budget"),
+            value=self.agent_config.get("memory_config", {}).get("value", 10000),
         )
 
-        # TODO: add episodic memory
-        # self.episodic_memory = EpisodicMemory(
-        #     "episodic_memory", "Stores conversation patterns and insights"
-        # )
         self.console = Console()
         self.command_help = CommandHelp()
 
@@ -382,8 +442,11 @@ class MCPClientCLI:
             return CommandType.SAVE_HISTORY, input_text[14:].strip()
         elif input_text.startswith("/load_history:"):
             return CommandType.LOAD_HISTORY, input_text[14:].strip()
-        elif input_text == "/memory":
-            return CommandType.MEMORY, ""
+
+        elif input_text.startswith("/memory_store:"):
+            return CommandType.MEMORY_STORE, input_text[14:].strip()
+        elif input_text.startswith("/event_store:"):
+            return CommandType.EVENT_STORE, input_text[13:].strip()
         elif input_text.startswith("/mode:"):
             return CommandType.MODE, input_text[6:].strip()
         elif input_text.startswith("/add_servers:"):
@@ -475,22 +538,65 @@ class MCPClientCLI:
         )
         self.console.print(stats_box)
 
-    async def handle_memory_command(self, input_text: str = ""):
-        """Handle memory command"""
-        self.USE_MEMORY["redis"] = not self.USE_MEMORY["redis"]
-        self.console.print(
-            f"[{'green' if self.USE_MEMORY['redis'] else 'red'}]Redis memory "
-            f"{'enabled' if self.USE_MEMORY['redis'] else 'disabled'}[/]"
-        )
+    async def handle_memory_store_command(self, input_text: str):
+        """Handle memory store switching command"""
+        try:
+            if ":" in input_text:
+                store_type, db_url = input_text.split(":", 1)
+            else:
+                store_type = input_text.strip()
+                db_url = None
+
+            store_type = store_type.strip().lower()
+
+            if store_type == "database" and not db_url:
+                db_url = "sqlite:///mcpomni_memory.db"
+
+            # Create new memory router with specified store type
+            if store_type == "database":
+                self.memory_router = MemoryRouter(memory_store_type="database")
+                if db_url:
+                    # Update database URL if provided
+                    self.memory_router.memory_store.db_url = db_url
+            else:
+                self.memory_router = MemoryRouter(memory_store_type=store_type)
+
+            # Set memory config
+            self.memory_router.set_memory_config(
+                mode=self.agent_config.get("memory_config", {}).get(
+                    "mode", "token_budget"
+                ),
+                value=self.agent_config.get("memory_config", {}).get("value", 10000),
+            )
+
+            store_info = self.memory_router.get_memory_store_info()
+            self.console.print(
+                f"[green]Memory store switched to: {store_type}[/green]\n"
+                f"[dim]Store info: {store_info}[/dim]"
+            )
+
+        except Exception as e:
+            self.console.print(f"[red]Failed to switch memory store: {e}[/red]")
+
+    async def handle_event_store_command(self, input_text: str):
+        """Handle event store switching command"""
+        try:
+            store_type = input_text.strip().lower()
+
+            # Switch event store
+            self.event_router.switch_event_store(store_type)
+
+            store_info = self.event_router.get_event_store_info()
+            self.console.print(
+                f"[green]Event store switched to: {store_type}[/green]\n"
+                f"[dim]Store info: {store_info}[/dim]"
+            )
+
+        except Exception as e:
+            self.console.print(f"[red]Failed to switch event store: {e}[/red]")
 
     async def handle_memory_mode_command(self, input_text: str):
         """Handle memory mode command."""
-        memory = (
-            self.redis_short_term_memory
-            if self.USE_MEMORY.get("redis")
-            else self.in_memory_short_term_memory
-        )
-
         try:
             if ":" in input_text:
                 mode, value = input_text.split(":", 1)
@@ -499,7 +605,7 @@ class MCPClientCLI:
                 mode = input_text.strip()
                 value = None
 
-            memory.set_memory_config(mode=mode.strip(), value=value)
+            self.memory_router.set_memory_config(mode=mode.strip(), value=value)
 
             value_str = f" with value {value}" if value is not None else ""
             self.console.print(
@@ -784,11 +890,7 @@ class MCPClientCLI:
                     sessions=self.client.sessions,
                     system_prompt=system_prompt,
                     llm_call=self.llm_connection.llm_call,
-                    add_message_to_history=(
-                        self.redis_short_term_memory.store_message
-                        if self.USE_MEMORY["redis"]
-                        else self.in_memory_short_term_memory.store_message
-                    ),
+                    add_message_to_history=self.memory_router.store_message,
                     debug=self.client.debug,
                     available_prompts=self.client.available_prompts,
                     name=name,
@@ -822,16 +924,8 @@ class MCPClientCLI:
                         server_names=self.client.server_names,
                         tools_list=tools,
                         available_tools=self.client.available_tools,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=(self.memory_router.store_message),
+                        message_history=(self.memory_router.get_messages),
                     )
                 content = response
             else:
@@ -855,11 +949,7 @@ class MCPClientCLI:
                 initial_response = await get_prompt_with_react_agent(
                     sessions=self.client.sessions,
                     system_prompt=react_agent_prompt,
-                    add_message_to_history=(
-                        self.redis_short_term_memory.store_message
-                        if self.USE_MEMORY["redis"]
-                        else self.in_memory_short_term_memory.store_message
-                    ),
+                    add_message_to_history=self.memory_router.store_message,
                     debug=self.client.debug,
                     available_prompts=self.client.available_prompts,
                     name=name,
@@ -872,16 +962,9 @@ class MCPClientCLI:
                         system_prompt=react_agent_prompt,
                         query=initial_response,
                         llm_connection=self.llm_connection,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=(self.memory_router.store_message),
+                        message_history=(self.memory_router.get_messages),
+                        event_router=self.event_router,
                         debug=self.client.debug,
                         **extra_kwargs,
                     )
@@ -966,7 +1049,7 @@ class MCPClientCLI:
         )
 
         with Live(status_panel, console=self.console, refresh_per_second=8):
-            async for event in event_store.stream(session_id):
+            async for event in self.event_router.stream(session_id):
                 event_type = event.type
                 payload = event.payload  # This is a Pydantic model
                 ts = format_timestamp(event.timestamp)
@@ -1033,9 +1116,9 @@ class MCPClientCLI:
     async def handle_query(self, query: str):
         """Handle general query processing"""
         try:
-            stream_task = asyncio.create_task(
-                self.stream_events_to_cli(CLIENT_MAC_ADDRESS)
-            )
+            # stream_task = asyncio.create_task(
+            #     self.stream_events_to_cli(CLIENT_MAC_ADDRESS)
+            # )
             if not query or query.isspace():
                 return
 
@@ -1061,12 +1144,7 @@ class MCPClientCLI:
                 supported_tools = LLMToolSupport.check_tool_support(
                     self.llm_connection.llm_config
                 )
-                # TODO: add episodic memory
-                # episodic_query = (
-                #     await self.episodic_memory.retrieve_relevant_memories(
-                #         query=query, n_results=3
-                #     )
-                # )
+
                 # if the LLM supports tools and the mode is chat, use the tool-supporting mode
                 if supported_tools and self.MODE["chat"]:
                     # Generate system prompt for tool-supporting LLMs
@@ -1074,7 +1152,6 @@ class MCPClientCLI:
                         current_date_time=date_time_func["format_date"](),
                         available_tools=self.client.available_tools,
                         llm_connection=self.llm_connection,
-                        # episodic_memory=episodic_query,
                     )
                     agent_config = AgentConfig(
                         agent_name="tool_calling_agent",
@@ -1095,16 +1172,9 @@ class MCPClientCLI:
                         server_names=self.client.server_names,
                         tools_list=tools,
                         available_tools=self.client.available_tools,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=(self.memory_router.store_message),
+                        message_history=(self.memory_router.get_messages),
+                        event_router=self.event_router.append,
                     )
 
                 elif self.MODE["auto"]:
@@ -1129,16 +1199,9 @@ class MCPClientCLI:
                         system_prompt=react_agent_prompt,
                         query=query,
                         llm_connection=self.llm_connection,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        add_message_to_history=(self.memory_router.store_message),
+                        message_history=(self.memory_router.get_messages),
+                        event_router=self.event_router.append,
                         debug=self.client.debug,
                         **extra_kwargs,
                     )
@@ -1163,18 +1226,11 @@ class MCPClientCLI:
                     response = await orchestrator_agent.run(
                         query=query,
                         sessions=self.client.sessions,
-                        add_message_to_history=(
-                            self.redis_short_term_memory.store_message
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.store_message
-                        ),
+                        add_message_to_history=(self.memory_router.store_message),
                         llm_connection=self.llm_connection,
                         mcp_tools=self.client.available_tools,
-                        message_history=(
-                            self.redis_short_term_memory.get_messages
-                            if self.USE_MEMORY["redis"]
-                            else self.in_memory_short_term_memory.get_messages
-                        ),
+                        message_history=(self.memory_router.get_messages),
+                        event_router=self.event_router.append,
                         orchestrator_system_prompt=orchestrator_agent_prompt,
                         tool_call_timeout=self.agent_config.get("tool_call_timeout"),
                         max_steps=self.agent_config.get("max_steps"),
@@ -1185,7 +1241,7 @@ class MCPClientCLI:
                 else:
                     response = "Your current model doesn't support function calling. You must use '/mode:auto' to switch to Auto Mode - it works with both function-calling and non-function-calling models, providing seamless tool execution through our ReAct Agent. For advanced tool orchestration, use '/mode:orchestrator'."
             # stream event
-            await stream_task
+            # await stream_task
             if response:  # Only try to print if we have a response
                 if "```" in response or "#" in response:
                     self.console.print(Markdown(response))
@@ -1218,63 +1274,37 @@ class MCPClientCLI:
     async def handle_history_command(self, input_text: str = ""):
         """Handle history command"""
         prompts_table = Table(title="Message History", box=box.ROUNDED)
-        prompts_table.add_column("Role", style="cyan", no_wrap=False)
-        prompts_table.add_column("Content", style="green")
-        if self.USE_MEMORY["redis"]:
-            messages = await self.redis_short_term_memory.get_messages()
-        else:
-            messages = await self.in_memory_short_term_memory.get_all_messages()
-            prompts_table = Table(title="Message History")
-            prompts_table.add_column("Agent", style="cyan", no_wrap=True)
-            prompts_table.add_column("Role", style="magenta")
-            prompts_table.add_column("Content", style="white")
+        prompts_table.add_column("Agent", style="cyan", no_wrap=True)
+        prompts_table.add_column("Role", style="magenta")
+        prompts_table.add_column("Content", style="white")
 
+        messages = await self.memory_router.get_messages()
+
+        if messages:
             for agent_name, agent_messages in messages.items():
                 for message in agent_messages:
                     role = message.get("role", "unknown")
                     content = message.get("content", "")
                     prompts_table.add_row(agent_name, role, content)
+        else:
+            prompts_table.add_row("No messages", "N/A", "No history available")
+
         self.console.print(prompts_table)
 
     async def handle_clear_history_command(self, input_text: str = ""):
         """Handle clear history command"""
-        if self.USE_MEMORY["redis"]:
-            await self.redis_short_term_memory.clear_memory()
-        else:
-            await self.in_memory_short_term_memory.clear_memory()
+        await self.memory_router.clear_memory()
         self.console.print("[green]Message history cleared[/]")
 
     async def handle_save_history_command(self, input_text: str):
         """Handle save history command"""
-        if self.USE_MEMORY["redis"]:
-            await self.redis_short_term_memory.save_message_history_to_file(input_text)
-        else:
-            await self.in_memory_short_term_memory.save_message_history_to_file(
-                input_text
-            )
+        await self.memory_router.save_message_history_to_file(input_text)
         self.console.print(f"[green]Message history saved to {input_text}[/]")
 
     async def handle_load_history_command(self, input_text: str):
-        """Handle load history command for in memory short term memory"""
-        await self.in_memory_short_term_memory.load_message_history_from_file(
-            input_text
-        )
+        """Handle load history command"""
+        await self.memory_router.load_message_history_from_file(input_text)
         self.console.print(f"[green]Message history loaded from {input_text}[/]")
-
-    async def handle_episodic_memory_command(self):
-        """Handle episodic memory command"""
-        messages = await self.in_memory_short_term_memory.get_messages()
-        if messages:
-            # created_episodic_memory = await self.episodic_memory.create_episodic_memory(
-            #     messages=messages, llm_connection=self.llm_connection
-            # )
-            # TODO: add episodic memory
-            created_episodic_memory = None
-            self.console.print(
-                f"[green]Episodic memory created: {created_episodic_memory}[/]"
-            )
-        else:
-            self.console.print("[yellow]No messages to create episodic memory[/]")
 
     async def chat_loop(self):
         """Run an interactive chat loop with rich UI"""
@@ -1282,6 +1312,8 @@ class MCPClientCLI:
 
         # Command handlers mapping
         handlers = {
+            CommandType.MEMORY_STORE: self.handle_memory_store_command,
+            CommandType.EVENT_STORE: self.handle_event_store_command,
             CommandType.DEBUG: self.handle_debug_command,
             CommandType.REFRESH: self.handle_refresh_command,
             CommandType.HELP: self.handle_help_command,
@@ -1296,7 +1328,6 @@ class MCPClientCLI:
             CommandType.SAVE_HISTORY: self.handle_save_history_command,
             CommandType.SUBSCRIBE: self.handle_subscribe,
             CommandType.UNSUBSCRIBE: self.handle_unsubscribe,
-            CommandType.MEMORY: self.handle_memory_command,
             CommandType.MODE: self.handle_mode_command,
             CommandType.LOAD_HISTORY: self.handle_load_history_command,
             CommandType.API_STATS: self.handle_api_stats,
@@ -1312,8 +1343,6 @@ class MCPClientCLI:
                 command_type, payload = self.parse_command(query)
 
                 if command_type == CommandType.QUIT:
-                    # TODO: handle the episodic memory command
-                    # await self.handle_episodic_memory_command()
                     break
 
                 # get the handler for the command type from the handlers mapping
@@ -1372,7 +1401,7 @@ class MCPClientCLI:
             Panel(
                 content,
                 title="[bold blue]⚡ MCPOmni Connect ⚡[/]",
-                subtitle="[bold cyan]v0.1.17[/]",
+                subtitle="[bold cyan]v0.1.19[/]",
                 border_style="blue",
                 box=box.DOUBLE_EDGE,
             )
@@ -1389,6 +1418,16 @@ class MCPClientCLI:
         commands_table.add_column("[bold yellow]Example[/]", style="yellow")
 
         commands = [
+            (
+                "/memory_store:<type>[:<database_url>]",
+                "Switch memory store backend 💾",
+                "/memory_store:in_memory, /memory_store:redis, /memory_store:database",
+            ),
+            (
+                "/event_store:<type>",
+                "Switch event store backend 📡",
+                "/event_store:in_memory, /event_store:redis_stream",
+            ),
             (
                 "/memory_mode[:<mode>[:<value>]]",
                 "Configure memory mode for all agents 💾",
@@ -1407,11 +1446,6 @@ class MCPClientCLI:
                 "/remove_server:<server_name>",
             ),
             ("/api_stats", "Retrieve API usage stats for the current session 📊", ""),
-            (
-                "/memory",
-                "Toggle memory usage between Redis and In-Memory 💾",
-                "",
-            ),
             (
                 "/mode:<type>",
                 "Toggle mode between autonomous agent, orchestrator, and chat mode 🤖",

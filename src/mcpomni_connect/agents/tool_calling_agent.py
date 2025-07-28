@@ -10,6 +10,15 @@ from mcpomni_connect.agents.token_usage import (
     usage,
 )
 from mcpomni_connect.agents.types import AgentConfig
+from mcpomni_connect.events.base import (
+    Event,
+    EventType,
+    ToolCallStartedPayload,
+    ToolCallResultPayload,
+    AgentMessagePayload,
+    UserMessagePayload,
+    ToolCallErrorPayload,
+)
 from mcpomni_connect.utils import logger
 
 
@@ -137,6 +146,7 @@ class ToolCallingAgent:
         add_message_to_history: Callable[..., Any],
         available_tools: dict[str, Any] = None,
         sessions: dict[str, Any] = None,
+        event_router: Callable[[str, Event], Any] = None,
     ) -> dict:
         """Unified executor for MCP and local tool calls based on config"""
 
@@ -146,6 +156,19 @@ class ToolCallingAgent:
             except Exception:
                 logger.error(f"Failed to parse tool_args for {tool_name}: {tool_args}")
                 tool_args = {}
+
+        # Emit tool call started event
+        if event_router:
+            event = Event(
+                type=EventType.TOOL_CALL_STARTED,
+                payload=ToolCallStartedPayload(
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    tool_call_id=tool_call.id,
+                ),
+                agent_name=self.agent_name,
+            )
+            await event_router(session_id=session_id, event=event)
 
         try:
             if available_tools:
@@ -199,6 +222,20 @@ class ToolCallingAgent:
                 session_id=session_id,
             )
 
+            # Emit tool call result event
+            if event_router:
+                event = Event(
+                    type=EventType.TOOL_CALL_RESULT,
+                    payload=ToolCallResultPayload(
+                        tool_name=tool_name,
+                        tool_args=tool_args,
+                        tool_call_id=tool_call.id,
+                        result=str(tool_content),
+                    ),
+                    agent_name=self.agent_name,
+                )
+                await event_router(session_id=session_id, event=event)
+
             return {"result": str(tool_content)}
 
         except Exception as e:
@@ -226,6 +263,18 @@ class ToolCallingAgent:
                 session_id=session_id,
             )
 
+            # Emit tool call error event
+            if event_router:
+                event = Event(
+                    type=EventType.TOOL_CALL_ERROR,
+                    payload=ToolCallErrorPayload(
+                        tool_name=tool_name,
+                        error_message=error_message,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                await event_router(session_id=session_id, event=event)
+
             return {"error": error_message}
 
     async def run(
@@ -240,6 +289,7 @@ class ToolCallingAgent:
         add_message_to_history: Callable[..., Any],
         message_history: Callable[[], Any],
         available_tools: dict[str, Any] = None,
+        event_router: Callable[[str, Event], Any] = None,
     ):
         """Run the agent with the given query and return the response."""
         final_text = []
@@ -256,6 +306,15 @@ class ToolCallingAgent:
             session_id=session_id,
             metadata={"agent_name": self.agent_name},
         )
+
+        # Emit user message event
+        if event_router:
+            event = Event(
+                type=EventType.USER_MESSAGE,
+                payload=UserMessagePayload(message=query),
+                agent_name=self.agent_name,
+            )
+            await event_router(session_id=session_id, event=event)
 
         # Update working memory with message history
         await self.update_llm_working_memory(
@@ -384,6 +443,7 @@ class ToolCallingAgent:
                     add_message_to_history=add_message_to_history,
                     available_tools=available_tools,
                     sessions=sessions,
+                    event_router=event_router,
                 )
 
                 if "error" in execute_tool_result:
@@ -449,6 +509,15 @@ class ToolCallingAgent:
                     metadata={"agent_name": self.agent_name},
                 )
 
+                # Emit agent message event
+                if event_router:
+                    event = Event(
+                        type=EventType.AGENT_MESSAGE,
+                        payload=AgentMessagePayload(message=response_content),
+                        agent_name=self.agent_name,
+                    )
+                    await event_router(session_id=session_id, event=event)
+
                 final_text.append(response_content)
             except UsageLimitExceeded as e:
                 error_message = f"Usage limit error: {e}"
@@ -474,6 +543,15 @@ class ToolCallingAgent:
                 session_id=session_id,
                 metadata={"agent_name": self.agent_name},
             )
+
+            # Emit agent message event
+            if event_router:
+                event = Event(
+                    type=EventType.AGENT_MESSAGE,
+                    payload=AgentMessagePayload(message=initial_response),
+                    agent_name=self.agent_name,
+                )
+                await event_router(session_id=session_id, event=event)
 
             final_text.append(initial_response)
         current_steps = 0

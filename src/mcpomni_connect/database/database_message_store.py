@@ -150,15 +150,34 @@ class DatabaseMessageStore:
             logger.error(f"Failed to get messages: {e}")
             return []
 
-    async def clear_memory(self, session_id: str = None) -> None:
+    async def clear_memory(
+        self, session_id: str = None, agent_name: str = None
+    ) -> None:
         try:
             with self.database_session_factory() as session_factory:
-                if session_id:
+                if session_id and agent_name:
+                    # Clear messages for specific agent in specific session
+                    query = session_factory.query(StorageMessage).filter(
+                        StorageMessage.session_id == session_id,
+                        StorageMessage.msg_metadata.contains(
+                            {"agent_name": agent_name}
+                        ),
+                    )
+                    query.delete()
+                elif session_id:
+                    # Clear all messages for specific session
                     query = session_factory.query(StorageMessage).filter(
                         StorageMessage.session_id == session_id
                     )
                     query.delete()
+                elif agent_name:
+                    # Clear messages for specific agent across all sessions
+                    query = session_factory.query(StorageMessage).filter(
+                        StorageMessage.msg_metadata.contains({"agent_name": agent_name})
+                    )
+                    query.delete()
                 else:
+                    # Clear all messages
                     session_factory.query(StorageMessage).delete()
                 session_factory.commit()
         except Exception as e:

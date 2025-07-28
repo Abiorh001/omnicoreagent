@@ -25,7 +25,6 @@ from mcpomni_connect.events.base import (
     FinalAnswerPayload,
     ToolCallStartedPayload,
 )
-from mcpomni_connect.events.events import event_store
 
 
 class OrchestratorAgent(BaseReactAgent):
@@ -180,6 +179,7 @@ class OrchestratorAgent(BaseReactAgent):
         request_limit: int,
         total_tokens_limit: int,
         session_id: str,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ) -> str:
         """Execute agent and return JSON-formatted observation"""
         try:
@@ -197,7 +197,8 @@ class OrchestratorAgent(BaseReactAgent):
                 ),
                 agent_name="orchestrator",
             )
-            await event_store.append(session_id=session_id, event=event)
+            if event_router:
+                await event_router(session_id=session_id, event=event)
             agent_config = AgentConfig(
                 agent_name=agent_name,
                 tool_call_timeout=tool_call_timeout,
@@ -218,6 +219,7 @@ class OrchestratorAgent(BaseReactAgent):
                 add_message_to_history=add_message_to_history,
                 message_history=message_history,
                 debug=self.debug,
+                event_router=event_router,  # Pass event_router callable
                 **extra_kwargs,
             )
 
@@ -249,7 +251,8 @@ class OrchestratorAgent(BaseReactAgent):
                 ),
                 agent_name="orchestrator",
             )
-            await event_store.append(session_id=session_id, event=event)
+            if event_router:
+                await event_router(session_id=session_id, event=event)
             return str(e)
 
     async def agent_registry_tool(self, mcp_tools: dict[str, Any]) -> str:
@@ -299,6 +302,7 @@ class OrchestratorAgent(BaseReactAgent):
         request_limit: int,
         total_tokens_limit: int,
         session_id: str,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ) -> str | None:
         """Execute ReAct loop with XML communication"""
         # Emit user message event
@@ -307,7 +311,8 @@ class OrchestratorAgent(BaseReactAgent):
             payload=UserMessagePayload(message=query),
             agent_name="orchestrator",
         )
-        await event_store.append(session_id=session_id, event=event)
+        if event_router:
+            await event_router(session_id=session_id, event=event)
         # Initialize messages with system prompt
         agent_registry_output = await self.agent_registry_tool(mcp_tools)
         updated_systm_prompt = (
@@ -386,7 +391,8 @@ class OrchestratorAgent(BaseReactAgent):
                 error_message = f"API error: {e}"
                 logger.error(error_message)
                 # Emit error event
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 return error_message
 
             parsed_response = await self.extract_agent_action_or_answer(
@@ -413,7 +419,8 @@ class OrchestratorAgent(BaseReactAgent):
                     payload=FinalAnswerPayload(message=parsed_response.answer),
                     agent_name="orchestrator",
                 )
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 # reset the steps
                 current_steps = 0
                 return parsed_response.answer
@@ -429,7 +436,8 @@ class OrchestratorAgent(BaseReactAgent):
                     ),
                     agent_name="orchestrator",
                 )
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 # Call the agent and emit observation event after
                 observation = await self.act(
                     sessions=sessions,
@@ -444,6 +452,7 @@ class OrchestratorAgent(BaseReactAgent):
                     total_tokens_limit=total_tokens_limit,
                     request_limit=request_limit,
                     session_id=session_id,
+                    event_router=event_router,  # Pass event_router callable
                 )
                 # Ensure observation is a string for event payload
                 if not isinstance(observation, str):
@@ -459,7 +468,8 @@ class OrchestratorAgent(BaseReactAgent):
                     ),
                     agent_name="orchestrator",
                 )
-                await event_store.append(session_id=session_id, event=event)
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 continue
             elif parsed_response.error is not None:
                 error_message = parsed_response.error

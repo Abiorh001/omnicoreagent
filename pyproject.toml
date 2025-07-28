@@ -53,6 +53,9 @@ dependencies = [
     "nomic>=3.5.3",
     "sentence-transformers>=5.0.0",
     "einops>=0.8.1",
+    "chromadb>=1.0.15",
+    "apscheduler>=3.11.0",
+    "psutil>=7.0.0",
 ]
 
 [project.scripts]

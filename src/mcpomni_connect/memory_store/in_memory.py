@@ -80,7 +80,6 @@ class InMemoryStore(AbstractMemoryStore):
                 "timestamp": asyncio.get_running_loop().time(),
                 "msg_metadata": metadata,
             }
-            logger.info(f"message: {message}")
             self.sessions_history[session_id].append(message)
 
         except Exception as e:
@@ -97,7 +96,6 @@ class InMemoryStore(AbstractMemoryStore):
         Returns:
             List of messages
         """
-        logger.info(f"get memory config: {self.memory_config}")
         try:
             if session_id not in self.sessions_history:
                 self.sessions_history[session_id] = []
@@ -116,14 +114,12 @@ class InMemoryStore(AbstractMemoryStore):
                     total_tokens = sum(
                         len(str(msg["content"]).split()) for msg in messages
                     )
-            logger.info(f"messages: {messages}")
             if agent_name:
                 messages = [
                     msg
                     for msg in messages
                     if msg.get("msg_metadata", {}).get("agent_name") == agent_name
                 ]
-            logger.info(f"messages after agent name filter: {messages}")
             return messages
 
         except Exception as e:
@@ -131,16 +127,40 @@ class InMemoryStore(AbstractMemoryStore):
             self.sessions_history[session_id] = []
             return []
 
-    async def clear_memory(self, session_id: str = None) -> None:
+    async def clear_memory(
+        self, session_id: str = None, agent_name: str = None
+    ) -> None:
         """Clear memory for a session or all memory.
 
         Args:
             session_id: Session ID to clear (if None, clear all)
+            agent_name: Optional agent name to filter by
         """
         try:
             if session_id and session_id in self.sessions_history:
-                del self.sessions_history[session_id]
+                if agent_name:
+                    # Remove only messages for specific agent in this session
+                    self.sessions_history[session_id] = [
+                        msg
+                        for msg in self.sessions_history[session_id]
+                        if msg.get("msg_metadata", {}).get("agent_name") != agent_name
+                    ]
+                else:
+                    # Remove entire session
+                    del self.sessions_history[session_id]
+            elif agent_name:
+                # Remove messages for specific agent across all sessions
+                for session_id in list(self.sessions_history.keys()):
+                    self.sessions_history[session_id] = [
+                        msg
+                        for msg in self.sessions_history[session_id]
+                        if msg.get("msg_metadata", {}).get("agent_name") != agent_name
+                    ]
+                    # Remove empty sessions
+                    if not self.sessions_history[session_id]:
+                        del self.sessions_history[session_id]
             else:
+                # Clear all memory
                 self.sessions_history = {}
 
         except Exception as e:
