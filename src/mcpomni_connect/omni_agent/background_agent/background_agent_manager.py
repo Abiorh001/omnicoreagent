@@ -90,9 +90,15 @@ class BackgroundAgentManager:
             self.agents[agent_id] = agent
             self.agent_configs[agent_id] = config.copy()
 
-            # Register task in scheduler if manager is running
-            if self.is_running:
-                self._schedule_agent(agent_id, agent)
+            # Auto-start manager if not running and schedule the agent
+            if not self.is_running:
+                logger.info(
+                    "Auto-starting BackgroundAgentManager for immediate scheduling"
+                )
+                self.start()
+
+            # Register task in scheduler (now manager is guaranteed to be running)
+            self._schedule_agent(agent_id, agent)
 
             # Get event streaming information using agent's method
             event_stream_info = agent.get_event_stream_info()
@@ -106,8 +112,8 @@ class BackgroundAgentManager:
                 "event_stream_info": event_stream_info,
                 "task_registered": True,
                 "task_query": agent.get_task_query(),
-                "status": "created",
-                "message": f"Agent {agent_id} created successfully. Use session_id '{agent.get_session_id()}' for event streaming.",
+                "status": "created_and_scheduled",
+                "message": f"Agent {agent_id} created and scheduled successfully. Use session_id '{agent.get_session_id()}' for event streaming.",
             }
 
         except Exception as e:

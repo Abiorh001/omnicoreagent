@@ -135,7 +135,176 @@ class OmniAgentCLI:
             except Exception as e:
                 return f"Error listing directory: {str(e)}"
 
-        logger.info("Created comprehensive ToolRegistry with 7 tools")
+        # Background agent specific tools (from working example)
+        @tool_registry.register_tool("file_monitor")
+        def monitor_files(directory: str = "/tmp") -> str:
+            """Monitor files in a directory."""
+            import os
+
+            try:
+                if not os.path.exists(directory):
+                    return f"Directory {directory} does not exist"
+
+                files = os.listdir(directory)
+                file_count = len(files)
+                sample_files = files[:5] if files else []
+
+                return f"Found {file_count} files in {directory}. Sample files: {sample_files}"
+            except Exception as e:
+                return f"Error monitoring directory {directory}: {str(e)}"
+
+        @tool_registry.register_tool("system_status")
+        def get_system_status() -> str:
+            """Get realistic system status information."""
+            import time
+            import random
+
+            # Generate realistic system metrics
+            cpu_usage = random.uniform(5.0, 85.0)
+            memory_usage = random.uniform(20.0, 90.0)
+            disk_usage = random.uniform(30.0, 95.0)
+            uptime_hours = random.randint(1, 720)  # 1 hour to 30 days
+            active_processes = random.randint(50, 300)
+
+            # Add some system alerts based on thresholds
+            alerts = []
+            if cpu_usage > 80:
+                alerts.append("High CPU usage detected")
+            if memory_usage > 85:
+                alerts.append("High memory usage detected")
+            if disk_usage > 90:
+                alerts.append("Disk space running low")
+
+            status_report = f"""System Status Report:
+• CPU Usage: {cpu_usage:.1f}%
+• Memory Usage: {memory_usage:.1f}%
+• Disk Usage: {disk_usage:.1f}%
+• System Uptime: {uptime_hours} hours
+• Active Processes: {active_processes}
+• Timestamp: {time.strftime("%Y-%m-%d %H:%M:%S")}"""
+
+            if alerts:
+                status_report += f"\n\n⚠️  Alerts: {'; '.join(alerts)}"
+
+            return status_report
+
+        @tool_registry.register_tool("log_analyzer")
+        def analyze_logs(log_file: str = "/var/log/syslog") -> str:
+            """Analyze log files for patterns."""
+            import random
+            import time
+
+            try:
+                # Simulate log analysis with realistic data
+                total_lines = random.randint(1000, 50000)
+                error_count = random.randint(0, 50)
+                warning_count = random.randint(5, 200)
+                critical_count = random.randint(0, 10)
+
+                # Generate some realistic log patterns
+                log_patterns = []
+                if error_count > 0:
+                    log_patterns.append(
+                        f"Authentication failures: {random.randint(0, error_count // 2)}"
+                    )
+                if warning_count > 0:
+                    log_patterns.append(
+                        f"Service restarts: {random.randint(0, warning_count // 3)}"
+                    )
+                if critical_count > 0:
+                    log_patterns.append(f"System errors: {critical_count}")
+
+                analysis = f"""Log Analysis Report:
+• Total Log Lines: {total_lines:,}
+• Error Count: {error_count}
+• Warning Count: {warning_count}
+• Critical Count: {critical_count}
+• Analysis Time: {time.strftime("%H:%M:%S")}
+
+Patterns Found:"""
+
+                if log_patterns:
+                    for pattern in log_patterns:
+                        analysis += f"\n• {pattern}"
+                else:
+                    analysis += "\n• No significant patterns detected"
+
+                return analysis
+
+            except Exception as e:
+                return f"Error analyzing logs: {str(e)}"
+
+        @tool_registry.register_tool("directory_info")
+        def get_directory_info(directory: str = "/tmp") -> str:
+            """Get detailed information about a directory."""
+            import os
+            import time
+
+            try:
+                if not os.path.exists(directory):
+                    return f"Directory {directory} does not exist"
+
+                stats = os.stat(directory)
+                files = os.listdir(directory)
+                file_count = len(files)
+
+                # Get some basic file info
+                file_types = {}
+                total_size = 0
+                for file in files[:20]:  # Check first 20 files
+                    file_path = os.path.join(directory, file)
+                    try:
+                        if os.path.isfile(file_path):
+                            file_types["files"] = file_types.get("files", 0) + 1
+                            total_size += os.path.getsize(file_path)
+                        elif os.path.isdir(file_path):
+                            file_types["directories"] = (
+                                file_types.get("directories", 0) + 1
+                            )
+                    except:
+                        pass
+
+                return f"""Directory Analysis: {directory}
+• Total Items: {file_count}
+• Files: {file_types.get("files", 0)}
+• Directories: {file_types.get("directories", 0)}
+• Total Size: {total_size:,} bytes
+• Last Modified: {time.ctime(stats.st_mtime)}"""
+            except Exception as e:
+                return f"Error getting directory info: {str(e)}"
+
+        @tool_registry.register_tool("simple_calculator")
+        def calculate(operation: str, a: float, b: float = 0) -> str:
+            """Perform simple mathematical calculations.
+
+            Args:
+                operation: "add", "subtract", "multiply", "divide"
+                a: First number
+                b: Second number (default 0)
+            """
+            try:
+                if operation.lower() == "add":
+                    result = a + b
+                    operation_name = "addition"
+                elif operation.lower() == "subtract":
+                    result = a - b
+                    operation_name = "subtraction"
+                elif operation.lower() == "multiply":
+                    result = a * b
+                    operation_name = "multiplication"
+                elif operation.lower() == "divide":
+                    if b == 0:
+                        return "Error: Division by zero"
+                    result = a / b
+                    operation_name = "division"
+                else:
+                    return f"Unknown operation: '{operation}'. Supported: 'add', 'subtract', 'multiply', 'divide'"
+
+                return f"Result of {operation_name}({a}, {b}): {result}"
+            except Exception as e:
+                return f"Calculation error: {str(e)}"
+
+        logger.info("Created comprehensive ToolRegistry with 12 tools")
         return tool_registry
 
     async def initialize(self):
@@ -149,19 +318,37 @@ class OmniAgentCLI:
         # Create comprehensive tool registry
         tool_registry = await self.create_comprehensive_tool_registry()
 
-        # Initialize agent with required parameters
+        # Initialize agent with exact same config as working example
         self.agent = OmniAgent(
-            name="omniagent_cli",
-            system_instruction="You are a helpful AI assistant with access to various tools. You can help users with tasks, answer questions, and perform calculations.",
+            name="comprehensive_demo_agent",
+            system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
                 "provider": "openai",
-                "model": "gpt-4",
+                "model": "gpt-4.1",
                 "temperature": 0.7,
-                "max_tokens": 1000,
+                "max_context_length": 50000,
             },
+            mcp_tools=[
+                {
+                    "command": "npx",
+                    "args": [
+                        "-y",
+                        "@modelcontextprotocol/server-filesystem",
+                        "/home/abiorh/Desktop",
+                        "/home/abiorh/ai/",
+                    ],
+                }
+            ],
             local_tools=tool_registry,
+            agent_config={
+                "max_steps": 15,
+                "tool_call_timeout": 60,
+                "request_limit": 1000,
+                "memory_config": {"mode": "token_budget", "value": 10000},
+            },
             memory_store=self.memory_router,
             event_router=self.event_router,
+            debug=True,
         )
 
         # Initialize background agent manager
@@ -192,6 +379,8 @@ class OmniAgentCLI:
         print("  /load_history <file>      - Load history from file")
         print("  /background               - Background agent management")
         print("  /background_create        - Create a background agent")
+        print("  /background_start         - Start background agent manager")
+        print("  /background_stop          - Stop background agent manager")
         print("  /background_list          - List background agents")
         print("  /background_status        - Show background agent status")
         print("  /background_pause <id>    - Pause a background agent")
@@ -354,47 +543,206 @@ class OmniAgentCLI:
         except Exception as e:
             print(f"❌ Error loading history: {e}")
 
+    async def handle_task_register(self, agent_id: str, query: str):
+        """Register a task for a background agent."""
+        if not self.background_manager:
+            print("❌ Background manager not initialized")
+            return
+
+        try:
+            self.background_manager.register_task(agent_id, {"query": query})
+            print(f"✅ Registered task for agent: {agent_id}")
+        except Exception as e:
+            print(f"❌ Error registering task: {e}")
+
+    async def handle_task_list(self):
+        """List all registered tasks."""
+        if not self.background_manager:
+            print("❌ Background manager not initialized")
+            return
+
+        try:
+            task_ids = self.background_manager.list_tasks()
+            if task_ids:
+                print("📋 Registered Tasks:")
+                for agent_id in task_ids:
+                    task_config = self.background_manager.get_task_config(agent_id)
+                    if task_config:
+                        print(f"  {agent_id}: {task_config.get('query', 'No query')}")
+                    else:
+                        print(f"  {agent_id}: No task configuration")
+            else:
+                print("📋 No registered tasks found")
+        except Exception as e:
+            print(f"❌ Error listing tasks: {e}")
+
+    async def handle_background_start(self):
+        """Start the background agent manager."""
+        if not self.background_manager:
+            print("❌ Background manager not initialized")
+            return
+
+        try:
+            self.background_manager.start()
+            print("🚀 Background Agent Manager started!")
+            print("✅ All agents are now scheduled to run automatically")
+            print("💡 Use /background_status to monitor progress")
+        except Exception as e:
+            print(f"❌ Error starting background manager: {e}")
+
+    async def handle_background_stop(self):
+        """Stop the background agent manager."""
+        if not self.background_manager:
+            print("❌ Background manager not initialized")
+            return
+
+        try:
+            self.background_manager.shutdown()
+            print("⏹️ Background Agent Manager stopped!")
+            print("✅ All agents are now paused")
+        except Exception as e:
+            print(f"❌ Error stopping background manager: {e}")
+
     async def handle_background_create(self):
         """Create a background agent."""
         if not self.background_manager:
             print("❌ Background manager not initialized")
             return
 
-        print("🤖 Creating background agent...")
-        print("Available agent types:")
+        print("🤖 Welcome to BackgroundOmniAgent Creation!")
+        print("=" * 50)
+        print("🚀 Create a self-flying agent that runs automatically")
+        print("📋 Available agent types:")
         print("  1. file_monitor - Monitor file system changes")
         print("  2. system_monitor - Monitor system status")
         print("  3. calculator - Perform calculations")
         print("  4. custom - Custom agent with specific tools")
+        print("=" * 50)
 
         agent_type = input("Enter agent type (1-4): ").strip()
+
+        # Create tool registry for background agents
+        tool_registry = await self.create_comprehensive_tool_registry()
 
         agent_configs = {
             "1": {
                 "agent_id": "file_monitor_agent",
+                "system_instruction": "You are a file system monitoring agent. Monitor files and report changes. Use the available tools to check directories and files.",
+                "model_config": {
+                    "model": "gpt-4.1",
+                    "temperature": 0.6,
+                    "provider": "openai",
+                    "top_p": 0.9,
+                    "max_context_length": 50000,
+                },
+                "mcp_tools": [
+                    {
+                        "name": "filesystem",
+                        "transport_type": "stdio",
+                        "command": "npx",
+                        "args": [
+                            "-y",
+                            "@modelcontextprotocol/server-filesystem",
+                            "/tmp",
+                        ],
+                    }
+                ],
+                "local_tools": tool_registry,
+                "agent_config": {
+                    "max_steps": 10,
+                    "tool_call_timeout": 30,
+                    "request_limit": 1000,
+                    "memory_config": {"mode": "token_budget", "value": 5000},
+                },
                 "interval": 30,
+                "max_retries": 2,
+                "retry_delay": 30,
+                "debug": True,
                 "task_config": {
-                    "query": "Monitor file system changes in /tmp and /var/log directories"
+                    "query": "Check the /tmp directory and provide information about files and directories. Use the file_monitor and directory_info tools to analyze the directory contents.",
+                    "description": "File system monitoring task",
                 },
             },
             "2": {
                 "agent_id": "system_monitor_agent",
-                "interval": 45,
+                "system_instruction": "You are a system monitoring agent. Check system status and provide basic information. Use the available tools to get system information.",
+                "model_config": {
+                    "model": "gpt-4.1",
+                    "temperature": 0.6,
+                    "provider": "openai",
+                    "top_p": 0.9,
+                    "max_context_length": 50000,
+                },
+                "mcp_tools": [],
+                "local_tools": tool_registry,
+                "agent_config": {
+                    "max_steps": 10,
+                    "tool_call_timeout": 30,
+                    "request_limit": 1000,
+                    "memory_config": {"mode": "token_budget", "value": 5000},
+                },
+                "interval": 30,
+                "max_retries": 3,
+                "retry_delay": 30,
+                "debug": True,
                 "task_config": {
-                    "query": "Monitor system status and report critical issues"
+                    "query": "Check system status and provide basic system information. Use the system_status tool to get current system metrics.",
+                    "description": "System monitoring task",
                 },
             },
             "3": {
                 "agent_id": "calculator_agent",
+                "system_instruction": "You are a calculator agent. Perform mathematical calculations and provide results. Use the simple_calculator tool for basic operations.",
+                "model_config": {
+                    "model": "gpt-4.1",
+                    "temperature": 0.6,
+                    "provider": "openai",
+                    "top_p": 0.9,
+                    "max_context_length": 50000,
+                },
+                "mcp_tools": [],
+                "local_tools": tool_registry,
+                "agent_config": {
+                    "max_steps": 10,
+                    "tool_call_timeout": 30,
+                    "request_limit": 1000,
+                    "memory_config": {"mode": "token_budget", "value": 5000},
+                },
                 "interval": 60,
+                "max_retries": 2,
+                "retry_delay": 45,
+                "debug": True,
                 "task_config": {
-                    "query": "Perform periodic calculations and report results"
+                    "query": "Perform some sample calculations. Use the simple_calculator tool to add 15 and 25 (operation='add'), then multiply 7 and 8 (operation='multiply').",
+                    "description": "Calculator task",
                 },
             },
             "4": {
                 "agent_id": "custom_agent",
+                "system_instruction": "You are a custom agent. Use the available tools to perform tasks as requested.",
+                "model_config": {
+                    "model": "gpt-4.1",
+                    "temperature": 0.6,
+                    "provider": "openai",
+                    "top_p": 0.9,
+                    "max_context_length": 50000,
+                },
+                "mcp_tools": [],
+                "local_tools": tool_registry,
+                "agent_config": {
+                    "max_steps": 10,
+                    "tool_call_timeout": 30,
+                    "request_limit": 1000,
+                    "memory_config": {"mode": "token_budget", "value": 5000},
+                },
                 "interval": 30,
-                "task_config": {"query": input("Enter custom task query: ")},
+                "max_retries": 2,
+                "retry_delay": 30,
+                "debug": True,
+                "task_config": {
+                    "query": input("Enter custom task query: "),
+                    "description": "Custom task",
+                },
             },
         }
 
@@ -404,10 +752,32 @@ class OmniAgentCLI:
 
         config = agent_configs[agent_type]
         try:
-            session_id, event_info = self.background_manager.create_agent(config)
-            print(f"✅ Background agent created: {config['agent_id']}")
-            print(f"Session ID: {session_id}")
-            print(f"Event Store: {event_info}")
+            print(f"\n🚀 Creating BackgroundOmniAgent: {config['agent_id']}")
+            print("⏳ Please wait...")
+
+            result = self.background_manager.create_agent(config)
+
+            print("✅ BackgroundOmniAgent created successfully!")
+            print("=" * 50)
+            print(f"🤖 Agent ID: {result['agent_id']}")
+            print(f"🆔 Session ID: {result['session_id']}")
+            print(f"📡 Event Store: {result['event_stream_info']}")
+            print(f"📋 Task: {result['task_query']}")
+            print(f"💬 Message: {result['message']}")
+            print("=" * 50)
+            print("🎯 Your agent is now running automatically!")
+            print("⏰ Agent will execute tasks at scheduled intervals")
+            print("💡 Use /background_status to monitor its progress")
+            print("💡 Use /background_list to see all agents")
+
+            # Check if manager is running, if not, ask user to start it
+            status = self.background_manager.get_manager_status()
+            if status["manager_running"]:
+                print("✅ Background Agent Manager is running automatically")
+            else:
+                print("⚠️  Background Agent Manager is not running")
+                print("💡 Use /background_start to start the manager manually")
+
         except Exception as e:
             print(f"❌ Error creating background agent: {e}")
 
@@ -437,8 +807,9 @@ class OmniAgentCLI:
         try:
             status = self.background_manager.get_manager_status()
             print("📊 Background Agent Manager Status:")
-            print(f"  Running: {status['running']}")
+            print(f"  Running: {status['manager_running']}")
             print(f"  Total Agents: {status['total_agents']}")
+            print(f"  Total Tasks: {status['total_tasks']}")
             print(f"  Scheduler Running: {status['scheduler_running']}")
 
             # Show individual agent statuses
@@ -447,11 +818,17 @@ class OmniAgentCLI:
                 print("\n🤖 Individual Agent Status:")
                 for agent_id in agents:
                     agent_status = self.background_manager.get_agent_status(agent_id)
-                    print(f"  {agent_id}:")
-                    print(f"    Running: {agent_status['running']}")
-                    print(f"    Scheduled: {agent_status['scheduled']}")
-                    print(f"    Run Count: {agent_status['run_count']}")
-                    print(f"    Error Count: {agent_status['error_count']}")
+                    if agent_status:
+                        print(f"  {agent_id}:")
+                        print(f"    Running: {agent_status['is_running']}")
+                        print(f"    Has Task: {agent_status['has_task']}")
+                        print(f"    Run Count: {agent_status['run_count']}")
+                        print(f"    Error Count: {agent_status['error_count']}")
+                        print(f"    Scheduled: {agent_status['scheduled']}")
+                    else:
+                        print(f"  {agent_id}: No status available")
+            else:
+                print("\n🤖 No agents found")
         except Exception as e:
             print(f"❌ Error getting status: {e}")
 
@@ -491,35 +868,6 @@ class OmniAgentCLI:
         except Exception as e:
             print(f"❌ Error deleting agent: {e}")
 
-    async def handle_task_register(self, agent_id: str, query: str):
-        """Register a task for a background agent."""
-        if not self.background_manager:
-            print("❌ Background manager not initialized")
-            return
-
-        try:
-            self.background_manager.register_task(agent_id, {"query": query})
-            print(f"✅ Registered task for agent: {agent_id}")
-        except Exception as e:
-            print(f"❌ Error registering task: {e}")
-
-    async def handle_task_list(self):
-        """List all registered tasks."""
-        if not self.background_manager:
-            print("❌ Background manager not initialized")
-            return
-
-        try:
-            tasks = self.background_manager.list_tasks()
-            if tasks:
-                print("📋 Registered Tasks:")
-                for agent_id, task in tasks.items():
-                    print(f"  {agent_id}: {task.get('query', 'No query')}")
-            else:
-                print("📋 No registered tasks found")
-        except Exception as e:
-            print(f"❌ Error listing tasks: {e}")
-
     async def handle_task_update(self, agent_id: str, query: str):
         """Update a task."""
         if not self.background_manager:
@@ -550,9 +898,14 @@ class OmniAgentCLI:
             print("❌ Event router not initialized")
             return
 
-        print("📡 Streaming events (Press Ctrl+C to stop)...")
+        # Use current session_id or create a default one
+        session_id = self.session_id or "cli_events_session"
+
+        print(f"📡 Streaming events for session: {session_id}")
+        print("Press Ctrl+C to stop...")
+
         try:
-            async for event in self.event_router.stream():
+            async for event in self.event_router.stream(session_id):
                 print(f"🎯 Event: {event.type} - {event.timestamp}")
                 if hasattr(event, "payload") and event.payload:
                     print(f"  Payload: {event.payload}")
@@ -569,10 +922,30 @@ class OmniAgentCLI:
 
         print("🤖 Agent Information:")
         print(f"  Session ID: {self.session_id or 'None'}")
-        print(f"  Memory Store: {self.agent.get_memory_store_type()}")
-        print(f"  Event Store: {self.agent.get_event_store_type()}")
-        print(f"  Memory Available: {self.agent.is_memory_store_available()}")
-        print(f"  Event Store Available: {self.agent.is_event_store_available()}")
+        print(f"  Agent Name: {self.agent.name}")
+        print(f"  Memory Store: {self.memory_router.get_memory_store_info()}")
+        print(f"  Event Store: {self.event_router.get_event_store_info()}")
+        print(f"  Tools Available: {len(self.agent.local_tools.list_tools())}")
+
+    async def handle_background(self):
+        """Show background agent management options."""
+        print("🤖 Background Agent Management:")
+        print("  Available commands:")
+        print("    /background_create     - Create a new background agent")
+        print("    /background_start      - Start background agent manager")
+        print("    /background_stop       - Stop background agent manager")
+        print("    /background_list       - List all background agents")
+        print("    /background_status     - Show background agent status")
+        print("    /background_pause <id> - Pause a background agent")
+        print("    /background_resume <id> - Resume a background agent")
+        print("    /background_delete <id> - Delete a background agent")
+        print("    /task_register <id> <query> - Register a task for an agent")
+        print("    /task_list            - List all registered tasks")
+        print("    /task_update <id> <query> - Update a task")
+        print("    /task_remove <id>     - Remove a task")
+        print(
+            "\n💡 Tip: After creating agents, use /background_start to run them automatically!"
+        )
 
     async def handle_help(self):
         """Show detailed help."""
@@ -638,6 +1011,10 @@ class OmniAgentCLI:
                             print("❌ Please provide filename: /load_history <file>")
                     elif command == "/background_create":
                         await self.handle_background_create()
+                    elif command == "/background_start":
+                        await self.handle_background_start()
+                    elif command == "/background_stop":
+                        await self.handle_background_stop()
                     elif command == "/background_list":
                         await self.handle_background_list()
                     elif command == "/background_status":
@@ -694,6 +1071,12 @@ class OmniAgentCLI:
                         await self.handle_events()
                     elif command == "/agent_info":
                         await self.handle_agent_info()
+                    elif command == "/background":
+                        await self.handle_background()
+                    elif command == "/background_start":
+                        await self.handle_background_start()
+                    elif command == "/background_stop":
+                        await self.handle_background_stop()
                     elif command == "/help":
                         await self.handle_help()
                     else:
