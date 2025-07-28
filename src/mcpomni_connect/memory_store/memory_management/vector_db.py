@@ -45,8 +45,8 @@ def get_embed_model():
 # ==== 🔥 Warm up Qdrant client at module import ====
 _qdrant_client = None
 _qdrant_enabled = False
-_qdrant_host = config("QDRANT_HOST")
-_qdrant_port = config("QDRANT_PORT")
+_qdrant_host = config("QDRANT_HOST", default=None)
+_qdrant_port = config("QDRANT_PORT", default=None)
 logger.info(f"QDRANT_HOST: {_qdrant_host}")
 logger.info(f"QDRANT_PORT: {_qdrant_port}")
 if _qdrant_host and _qdrant_port:
