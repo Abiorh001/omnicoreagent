@@ -17,7 +17,7 @@ from mcpomni_connect.omni_agent.prompts.prompt_builder import OmniAgentPromptBui
 from mcpomni_connect.omni_agent.prompts.react_suffix import SYSTEM_SUFFIX
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.utils import logger
-from mcpomni_connect.events.events import event_store
+from mcpomni_connect.events.event_router import EventRouter
 
 
 class OmniAgent:
@@ -37,6 +37,7 @@ class OmniAgent:
         local_tools: Optional[Any] = None,  # LocalToolsIntegration instance
         agent_config: Optional[Union[Dict[str, Any], AgentConfig]] = None,
         memory_store: Optional[MemoryRouter] = None,
+        event_router: Optional[EventRouter] = None,
         debug: bool = False,
     ):
         """
@@ -50,6 +51,7 @@ class OmniAgent:
             local_tools: LocalToolsIntegration instance (optional)
             agent_config: Optional agent configuration
             memory_store: Optional memory store (MemoryRouter)
+            event_router: Optional event router (EventRouter)
             debug: Enable debug logging
         """
         # Core attributes
@@ -60,7 +62,8 @@ class OmniAgent:
         self.local_tools = local_tools
         self.agent_config = agent_config
         self.debug = debug
-        self.memory_store = memory_store
+        self.memory_store = memory_store or MemoryRouter(memory_store_type="in_memory")
+        self.event_router = event_router or EventRouter(event_store_type="in_memory")
 
         # Internal components
         self.config_transformer = config_transformer
@@ -189,6 +192,7 @@ class OmniAgent:
             add_message_to_history=self.memory_store.store_message,
             message_history=self.memory_store.get_messages,
             debug=self.debug,
+            event_router=self.event_router.append,
             **extra_kwargs,
         )
 
@@ -216,11 +220,28 @@ class OmniAgent:
             await self.memory_store.clear_memory(agent_name=self.name)
 
     async def stream_events(self, session_id: str):
-        async for event in event_store.stream(session_id=session_id):
+        async for event in self.event_router.stream(session_id=session_id):
             yield event
 
     async def get_events(self, session_id: str):
-        return await event_store.get_events(session_id=session_id)
+        return await self.event_router.get_events(session_id=session_id)
+
+    # EventRouter methods exposed through OmniAgent
+    def get_event_store_type(self) -> str:
+        """Get the current event store type."""
+        return self.event_router.get_event_store_type()
+
+    def is_event_store_available(self) -> bool:
+        """Check if the event store is available."""
+        return self.event_router.is_available()
+
+    def get_event_store_info(self) -> Dict[str, Any]:
+        """Get information about the current event store."""
+        return self.event_router.get_event_store_info()
+
+    def switch_event_store(self, event_store_type: str):
+        """Switch to a different event store type."""
+        self.event_router.switch_event_store(event_store_type)
 
     async def cleanup(self):
         """Clean up resources"""

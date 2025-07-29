@@ -14,6 +14,11 @@ class EventType(str, Enum):
     TOOL_CALL_RESULT = "tool_call_result"
     TOOL_CALL_ERROR = "tool_call_error"
     FINAL_ANSWER = "final_answer"
+    # Background agent events
+    BACKGROUND_TASK_STARTED = "background_task_started"
+    BACKGROUND_TASK_COMPLETED = "background_task_completed"
+    BACKGROUND_TASK_ERROR = "background_task_error"
+    BACKGROUND_AGENT_STATUS = "background_agent_status"
 
 
 class UserMessagePayload(BaseModel):
@@ -46,6 +51,42 @@ class FinalAnswerPayload(BaseModel):
     message: str
 
 
+# Background agent payload models
+class BackgroundTaskStartedPayload(BaseModel):
+    agent_id: str
+    session_id: str
+    timestamp: str
+    run_count: int
+    kwargs: Dict[str, Any]
+
+
+class BackgroundTaskCompletedPayload(BaseModel):
+    agent_id: str
+    session_id: str
+    timestamp: str
+    run_count: int
+    result: Any
+
+
+class BackgroundTaskErrorPayload(BaseModel):
+    agent_id: str
+    session_id: str
+    timestamp: str
+    error: str
+    error_count: int
+
+
+class BackgroundAgentStatusPayload(BaseModel):
+    agent_id: str
+    status: str
+    timestamp: str
+    session_id: Optional[str] = None
+    last_run: Optional[str] = None
+    run_count: Optional[int] = None
+    error_count: Optional[int] = None
+    error: Optional[str] = None
+
+
 EventPayload = Union[
     UserMessagePayload,
     AgentMessagePayload,
@@ -53,6 +94,10 @@ EventPayload = Union[
     ToolCallResultPayload,
     ToolCallErrorPayload,
     FinalAnswerPayload,
+    BackgroundTaskStartedPayload,
+    BackgroundTaskCompletedPayload,
+    BackgroundTaskErrorPayload,
+    BackgroundAgentStatusPayload,
 ]
 
 
@@ -71,6 +116,10 @@ EVENT_PAYLOAD_MAP: dict[EventType, Type[BaseModel]] = {
     EventType.TOOL_CALL_RESULT: ToolCallResultPayload,
     EventType.TOOL_CALL_ERROR: ToolCallErrorPayload,
     EventType.FINAL_ANSWER: FinalAnswerPayload,
+    EventType.BACKGROUND_TASK_STARTED: BackgroundTaskStartedPayload,
+    EventType.BACKGROUND_TASK_COMPLETED: BackgroundTaskCompletedPayload,
+    EventType.BACKGROUND_TASK_ERROR: BackgroundTaskErrorPayload,
+    EventType.BACKGROUND_AGENT_STATUS: BackgroundAgentStatusPayload,
 }
 
 

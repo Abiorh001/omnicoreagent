@@ -51,8 +51,9 @@ class DatabaseMemory(AbstractMemoryStore):
     async def clear_memory(
         self,
         session_id: str = None,
+        agent_name: str = None,
     ) -> None:
         """
         Delete messages for a session_id from the database.
         """
-        await self.db_session.clear_memory(session_id=session_id)
+        await self.db_session.clear_memory(session_id=session_id, agent_name=agent_name)

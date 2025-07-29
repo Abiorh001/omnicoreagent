@@ -23,7 +23,7 @@ from mcpomni_connect.system_prompts import (
 )
 from mcpomni_connect.utils import logger
 from mcpomni_connect.resources import read_resource, list_resources
-from mcpomni_connect.events.events import event_store
+from mcpomni_connect.events.event_router import EventRouter
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 
 
@@ -36,7 +36,8 @@ class MCPClientConnect:
         )["LLM"]["max_context_length"]
         self.MODE = {"auto": True, "orchestrator": False}
         self.client.debug = True
-        self.memory_router = MemoryRouter(memory_store_type="database")
+        self.memory_router = MemoryRouter(memory_store_type="in_memory")
+        self.event_router = EventRouter(event_store_type="in_memory")
 
     async def add_agent_registry(self):
         for server_name in self.client.server_names:
@@ -95,6 +96,7 @@ class MCPClientConnect:
                 llm_connection=self.llm_connection,
                 add_message_to_history=(self.memory_router.store_message),
                 message_history=(self.memory_router.get_messages),
+                event_router=(self.event_router.append),
                 debug=self.client.debug,
                 **extra_kwargs,
             )
@@ -184,7 +186,9 @@ def format_msg(usid, msg, meta, message_id, role="assistant"):
 @app.get("/events/{session_id}")
 async def stream_events(request: Request, session_id: str):
     async def event_generator():
-        async for event in event_store.stream(session_id):
+        async for event in request.app.state.client_connection.event_router.stream(
+            session_id=session_id
+        ):
             yield f"event: {event.type}\ndata: {event.json()}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

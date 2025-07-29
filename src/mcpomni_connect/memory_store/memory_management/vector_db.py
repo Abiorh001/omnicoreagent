@@ -6,7 +6,6 @@ from typing import List, Dict, Any, Callable
 import uuid
 from datetime import datetime, timedelta
 from qdrant_client import models
-from sentence_transformers import SentenceTransformer
 from mcpomni_connect.memory_store.memory_management.system_prompts import (
     episodic_memory_constructor_system_prompt,
     long_term_memory_constructor_system_prompt,
@@ -18,24 +17,18 @@ import logging
 import traceback
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from mcpomni_connect.memory_store.memory_management.shared_embedding import (
+    get_embed_model,
+    embed_text,
+    NOMIC_VECTOR_SIZE,
+)
 
+# ==== 🔥 Get shared embedding model at module import ====
+_EMBED_MODEL = get_embed_model()
+
+# Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
-_CACHE_TTL = 1800
-NOMIC_VECTOR_SIZE = 768
-
-
-# ==== 🔥 Eagerly load and warm up embedding model at module import ====
-try:
-    _EMBED_MODEL = SentenceTransformer(
-        "nomic-ai/nomic-embed-text-v1", trust_remote_code=True
-    )
-    _ = _EMBED_MODEL.encode("warmup")  # Force lazy-load model weights
-    logger.info(
-        "[Warmup] Embedding model 'nomic-ai/nomic-embed-text-v1' loaded successfully."
-    )
-except Exception as e:
-    _EMBED_MODEL = None
-    logger.error(f"[Warmup] Failed to load embedding model: {e}")
+_CACHE_TTL = 1800  # 30 minutes
 
 
 def get_embed_model():
@@ -49,6 +42,8 @@ _qdrant_host = config("QDRANT_HOST", default=None)
 _qdrant_port = config("QDRANT_PORT", default=None)
 logger.info(f"QDRANT_HOST: {_qdrant_host}")
 logger.info(f"QDRANT_PORT: {_qdrant_port}")
+
+# Try to initialize Qdrant first
 if _qdrant_host and _qdrant_port:
     try:
         _qdrant_client = QdrantClient(host=_qdrant_host, port=_qdrant_port)
@@ -56,15 +51,26 @@ if _qdrant_host and _qdrant_port:
         logger.info("[Warmup] Qdrant client initialized successfully.")
     except Exception as e:
         logger.error(f"[Warmup] Failed to initialize Qdrant client: {e}")
+        _qdrant_enabled = False
 else:
     logger.warning(
-        "[Warmup] QDRANT_HOST or QDRANT_PORT not set. Qdrant will be disabled."
+        "[Warmup] QDRANT_HOST or QDRANT_PORT not set. Will fallback to ChromaDB for local storage."
     )
+
+# Import ChromaDB as fallback
+try:
+    from mcpomni_connect.memory_store.memory_management.chroma_db import ChromaDBMemory
+
+    _chromadb_available = True
+    logger.info("[Warmup] ChromaDB fallback available for local vector storage.")
+except ImportError as e:
+    _chromadb_available = False
+    logger.warning(f"[Warmup] ChromaDB not available: {e}")
 
 
 class QdrantVectorDB:
     def __init__(self, session_id: str, memory_type: str):
-        """Initialize Qdrant vector database with open-source embeddings.
+        """Initialize Qdrant vector database with ChromaDB fallback for local storage.
 
         Args:
             session_id: Session ID for the collection
@@ -73,29 +79,54 @@ class QdrantVectorDB:
         self.qdrant_host = _qdrant_host
         self.qdrant_port = _qdrant_port
         self.enabled = _qdrant_enabled
+        self.use_chromadb_fallback = False
+
         if not self.enabled:
-            logger.warning(
-                "QDRANT_HOST or QDRANT_PORT not set. Qdrant memory operations will be disabled."
-            )
+            # Try ChromaDB fallback
+            if _chromadb_available:
+                try:
+                    self.chromadb_instance = ChromaDBMemory(
+                        session_id=session_id, memory_type=memory_type
+                    )
+                    if self.chromadb_instance.enabled:
+                        self.use_chromadb_fallback = True
+                        logger.info(
+                            f"Qdrant not available. Using ChromaDB fallback for {memory_type} memory with session: {session_id}"
+                        )
+                    else:
+                        logger.warning(
+                            "Both Qdrant and ChromaDB are disabled. Vector memory operations will be disabled."
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to initialize ChromaDB fallback: {e}")
+                    logger.warning(
+                        "Both Qdrant and ChromaDB are disabled. Vector memory operations will be disabled."
+                    )
+            else:
+                logger.warning(
+                    "QDRANT_HOST or QDRANT_PORT not set and ChromaDB not available. Vector memory operations will be disabled."
+                )
         else:
             self.client = _qdrant_client
+
         self.collection_name = f"{memory_type}_{session_id}"
         self.session_id = session_id
         self.memory_type = memory_type
         self._embed_model = get_embed_model()
         self._vector_size = NOMIC_VECTOR_SIZE
-        logger.info(
-            f"Initialized QdrantVectorDB for {memory_type} memory with session: {session_id} using nomic-ai/nomic-embed-text-v1"
-        )
+
+        if self.enabled:
+            logger.info(
+                f"Initialized QdrantVectorDB for {memory_type} memory with session: {session_id} using nomic-ai/nomic-embed-text-v1"
+            )
+        elif self.use_chromadb_fallback:
+            logger.info(
+                f"Initialized ChromaDB fallback for {memory_type} memory with session: {session_id} using nomic-ai/nomic-embed-text-v1"
+            )
 
     def embed_text(self, text: str) -> list[float]:
-        """Embed text using nomic-ai/nomic-embed-text-v1 model."""
-        try:
-            embedding = self._embed_model.encode(text).tolist()
-            return embedding
-        except Exception as e:
-            logger.error(f"Error generating embedding: {e}")
-            raise
+        """Embed text using shared nomic-ai/nomic-embed-text-v1 model."""
+        return embed_text(text)
 
     async def create_episodic_memory(
         self, message: str, llm_connection: Callable
@@ -267,21 +298,19 @@ class QdrantVectorDB:
     def query_collection(
         self, query: str, n_results: int = 3, distance_threshold: float = 0.4
     ) -> Dict[str, Any]:
-        """Query the collection.
-
-        Args:
-            query: The query text
-            n_results: Number of results to return
-            distance_threshold: Minimum similarity score
-
-        Returns:
-            Dict containing query results
-        """
-        if not self.enabled:
+        """Query the collection."""
+        if not self.enabled and not self.use_chromadb_fallback:
             logger.warning(
-                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+                "Neither Qdrant nor ChromaDB is enabled. Skipping memory operation."
             )
             return "No relevant memory found"
+
+        # Use ChromaDB fallback if Qdrant is not available
+        if not self.enabled and self.use_chromadb_fallback:
+            return self.chromadb_instance.query_collection(
+                query, n_results, distance_threshold
+            )
+
         try:
             # Search for similar documents
             logger.info(
@@ -396,11 +425,19 @@ class QdrantVectorDB:
     async def process_conversation_memory(
         self, messages: list, llm_connection: Callable
     ):
-        if not self.enabled:
+        if not self.enabled and not self.use_chromadb_fallback:
             logger.warning(
-                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+                "Neither Qdrant nor ChromaDB is enabled. Skipping memory operation."
             )
             return
+
+        # Use ChromaDB fallback if Qdrant is not available
+        if not self.enabled and self.use_chromadb_fallback:
+            await self.chromadb_instance.process_conversation_memory(
+                messages, llm_connection
+            )
+            return
+
         """Process conversation memory only if 30min have passed since last summary. Summarize only new messages."""
         try:
             # Ensure collection exists (run in background)
@@ -542,11 +579,21 @@ class QdrantVectorDB:
     async def add_to_collection_async(
         self, doc_id: str, document: str, session_id: str, metadata: Dict
     ):
-        if not self.enabled:
+        if not self.enabled and not self.use_chromadb_fallback:
             logger.warning(
-                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+                "Neither Qdrant nor ChromaDB is enabled. Skipping memory operation."
             )
             return
+
+        if not self.enabled and self.use_chromadb_fallback:
+            # ChromaDB add_to_collection is synchronous
+            self.chromadb_instance.add_to_collection(
+                documents=[document],
+                metadatas=[metadata],
+                ids=[doc_id],
+            )
+            return True
+
         try:
             # Prepare rest of the metadata
             metadata["text"] = document
@@ -571,11 +618,18 @@ class QdrantVectorDB:
     async def query_collection_async(
         self, query: str, n_results: int = 5, distance_threshold: float = 0.70
     ) -> Dict[str, Any]:
-        if not self.enabled:
+        if not self.enabled and not self.use_chromadb_fallback:
             logger.warning(
-                "Qdrant is not enabled. Skipping memory operation please set QDRANT_HOST and QDRANT_PORT in the environment variables."
+                "Neither Qdrant nor ChromaDB is enabled. Skipping memory operation."
             )
             return {}
+
+        if not self.enabled and self.use_chromadb_fallback:
+            # ChromaDB query_collection is synchronous
+            return self.chromadb_instance.query_collection(
+                query, n_results, distance_threshold
+            )
+
         try:
             # Search for similar documents
             search_result = self.client.query_points(
@@ -614,6 +668,21 @@ class QdrantVectorDB:
 
     async def get_most_recent_summary(self) -> dict | None:
         """Fetch all points in the collection, return the most recent summary by end_time, with 30min cache."""
+        if not self.enabled and not self.use_chromadb_fallback:
+            logger.warning(
+                "Neither Qdrant nor ChromaDB is enabled. Skipping memory operation."
+            )
+            return None
+
+        if not self.enabled and self.use_chromadb_fallback:
+            # ChromaDB does not have a direct 'scroll' equivalent or a concept of 'most recent summary'
+            # in the same way Qdrant does. We'd need to implement a custom logic for ChromaDB.
+            # For now, return None or a placeholder if ChromaDB doesn't support this directly.
+            logger.warning(
+                "ChromaDB fallback does not fully support 'get_most_recent_summary' in the same way as Qdrant. Returning None."
+            )
+            return None
+
         cache_key = (self.collection_name, self.memory_type)
         now = time.time()
         # Check cache
@@ -658,12 +727,39 @@ class QdrantVectorDB:
         distance_threshold: float = 0.5,
     ) -> tuple:
         """Query both long-term and episodic memory collections in a single operation."""
-        if not self.enabled:
-            logger.warning("Qdrant is not enabled. Skipping memory operation.")
+        if not self.enabled and not self.use_chromadb_fallback:
+            logger.warning(
+                "Neither Qdrant nor ChromaDB is enabled. Skipping memory operation."
+            )
             return (
                 "No relevant long-term memory found",
                 "No relevant episodic memory found",
             )
+
+        if not self.enabled and self.use_chromadb_fallback:
+            # Create separate ChromaDB instances for each memory type
+            try:
+                long_term_chroma = ChromaDBMemory(
+                    session_id=session_id, memory_type="long_term"
+                )
+                episodic_chroma = ChromaDBMemory(
+                    session_id=session_id, memory_type="episodic"
+                )
+
+                # ChromaDB query_collection is synchronous
+                long_term_result = long_term_chroma.query_collection(
+                    query, n_results, distance_threshold
+                )
+                episodic_result = episodic_chroma.query_collection(
+                    query, n_results, distance_threshold
+                )
+                return long_term_result, episodic_result
+            except Exception as e:
+                logger.error(f"Error in ChromaDB fallback query_both_memory_types: {e}")
+                return (
+                    "No relevant long-term memory found",
+                    "No relevant episodic memory found",
+                )
 
         try:
             # Create embeddings for the query
@@ -731,7 +827,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
                 episodic_db = QdrantVectorDB(
                     session_id=session_id, memory_type="episodic"
                 )
-                if episodic_db.enabled:
+                if episodic_db.enabled or episodic_db.use_chromadb_fallback:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
@@ -747,7 +843,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
                         loop.close()
                 else:
                     logger.warning(
-                        f"Episodic memory processing skipped - Qdrant disabled for session {session_id}"
+                        f"Episodic memory processing skipped - neither Qdrant nor ChromaDB enabled for session {session_id}"
                     )
             except Exception as e:
                 logger.error(
@@ -760,7 +856,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
                 long_term_db = QdrantVectorDB(
                     session_id=session_id, memory_type="long_term"
                 )
-                if long_term_db.enabled:
+                if long_term_db.enabled or long_term_db.use_chromadb_fallback:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
@@ -776,7 +872,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
                         loop.close()
                 else:
                     logger.warning(
-                        f"Long-term memory processing skipped - Qdrant disabled for session {session_id}"
+                        f"Long-term memory processing skipped - neither Qdrant nor ChromaDB enabled for session {session_id}"
                     )
             except Exception as e:
                 logger.error(

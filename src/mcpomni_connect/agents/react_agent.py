@@ -22,6 +22,7 @@ class ReactAgent(BaseReactAgent):
         llm_connection: Callable,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         message_history: Callable[[], Any],
+        event_router: Callable,
         debug: bool = False,
         **kwargs,
     ):
@@ -31,6 +32,7 @@ class ReactAgent(BaseReactAgent):
             llm_connection=llm_connection,
             add_message_to_history=add_message_to_history,
             message_history=message_history,
+            event_router=event_router,
             debug=debug,
             sessions=kwargs.get("sessions"),
             mcp_tools=kwargs.get("mcp_tools"),
