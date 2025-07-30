@@ -693,7 +693,7 @@ class BaseReactAgent:
                                         tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
 
                             # Index the tool for semantic search
-                            self.tool_retriever.upsert_markdown_tool(tool_md)
+                            self.tool_retriever.upsert_tools(tool_md)
                             logger.debug(f"Indexed MCP tool: {tool_name}")
                             
                             all_tools_md.append({
@@ -729,7 +729,7 @@ class BaseReactAgent:
                                         tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
 
                             # Index the tool for semantic search
-                            self.tool_retriever.upsert_markdown_tool(tool_md)
+                            self.tool_retriever.upsert_tools(tool_md)
                             logger.debug(f"Indexed local tool: {tool_name}")
                             
                             all_tools_md.append({

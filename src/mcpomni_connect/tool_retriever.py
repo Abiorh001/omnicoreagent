@@ -40,33 +40,7 @@ class ToolRetriever:
             logger.warning(f"Qdrant initialization failed: {e}")
             self.client = None
 
-    def upsert_tools(self, tools: List[Dict[str, Any]]) -> None:
-        """
-        Upsert tool embeddings into Qdrant using built-in model support.
-        
-        Args:
-            tools: List of tool dictionaries with name, description, and input_schema
-        """
-        if not self.client:
-            return
-            
-        docs = [
-            models.Document(
-                text=f"{tool['name']} {tool.get('description', '')} {tool.get('input_schema', '')} ",
-                model=self.model_name,
-            )
-            for tool in tools
-        ]
-        payload = tools
-        ids = [i for i, _ in enumerate(tools)]
-        self.client.upload_collection(
-            collection_name=self.collection_name,
-            vectors=docs,
-            ids=ids,
-            payload=payload,
-        )
-
-    def upsert_markdown_tool(self, tool_md: str) -> None:
+    def upsert_tools(self, tool_md: str) -> None:
         """
         Upsert a single markdown-formatted tool description into Qdrant.
         
