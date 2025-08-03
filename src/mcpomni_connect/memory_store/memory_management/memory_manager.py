@@ -62,20 +62,24 @@ class MemoryManager:
             except Exception as e:
                 logger.warning(f"Failed to initialize Qdrant: {e}")
 
-        # Fallback to ChromaDB 
+        # Fallback to ChromaDB
         try:
             self.vector_db = ChromaDBVectorDB(
                 self.collection_name, session_id=session_id, memory_type=memory_type
             )
-            
+
             if self.vector_db.enabled:
                 logger.debug(f"Using ChromaDB for {memory_type} memory")
             else:
-                logger.warning(f"Both Qdrant and ChromaDB are disabled for {memory_type} memory")
+                logger.warning(
+                    f"Both Qdrant and ChromaDB are disabled for {memory_type} memory"
+                )
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
             self.vector_db = None
-            logger.warning(f"Vector database completely disabled for {memory_type} memory")
+            logger.warning(
+                f"Vector database completely disabled for {memory_type} memory"
+            )
 
     async def create_episodic_memory(
         self, message: str, llm_connection: Callable
@@ -202,8 +206,6 @@ class MemoryManager:
             # Ensure collection exists
             self.vector_db._ensure_collection()
 
-    
-
             # Get the most recent summary
             most_recent = await self.get_most_recent_summary()
             last_end_time = None
@@ -211,7 +213,6 @@ class MemoryManager:
             if most_recent:
                 # Extract end_time using universal helper method
                 last_end_time = self._extract_end_time(most_recent)
-
 
                 if last_end_time and isinstance(last_end_time, str):
                     try:
@@ -230,7 +231,6 @@ class MemoryManager:
 
             now = datetime.now(timezone.utc)
 
-
             # Extract and validate timestamps, converting to UTC datetimes
             valid_timestamps = []
             for m in messages:
@@ -246,24 +246,25 @@ class MemoryManager:
                 window_start = now
                 window_start_dt = now
 
-
             # Only proceed if at least 30min have passed since last summary
             if last_end_time is None:
-                logger.debug("No previous memory summary found, proceeding with all messages")
+                logger.debug(
+                    "No previous memory summary found, proceeding with all messages"
+                )
             else:
                 time_diff_seconds = (now - last_end_time).total_seconds()
                 time_diff_minutes = time_diff_seconds / 60
 
-
                 if time_diff_seconds < 1800:  # 30 minutes = 1800 seconds
-                    logger.debug(f"Less than 30min since last summary ({time_diff_minutes:.1f} min), skipping")
+                    logger.debug(
+                        f"Less than 30min since last summary ({time_diff_minutes:.1f} min), skipping"
+                    )
                     return
                 else:
                     logger.debug(f"More than 30min since last summary, proceeding")
 
             # Filter messages after last_end_time
             if last_end_time:
-
                 messages_to_summarize = []
 
                 for m in messages:
@@ -283,8 +284,6 @@ class MemoryManager:
             # Summarize and store
             conversation_text = self._format_conversation(messages_to_summarize)
 
-
-
             if self.memory_type == "episodic":
                 memory_content = await self.create_episodic_memory(
                     conversation_text, llm_connection
@@ -301,9 +300,7 @@ class MemoryManager:
 
             doc_id = str(uuid.uuid4())
 
-
             # window_start_dt is already properly set above as UTC datetime
-
 
             await self.vector_db.add_to_collection_async(
                 document=memory_content,
@@ -320,7 +317,6 @@ class MemoryManager:
             )
 
             self.invalidate_recent_summary_cache()
-
 
         except Exception as e:
             pass  # Silent background processing
@@ -396,7 +392,6 @@ class MemoryManager:
                 valid_metadatas, key=lambda x: x[1]
             )
 
-
             with _CACHE_LOCK:
                 _RECENT_SUMMARY_CACHE[cache_key] = (most_recent_metadata, now)
             return most_recent_metadata
@@ -441,7 +436,6 @@ class MemoryManager:
 def process_both_memory_types_threaded(session_id, validated_messages, llm_connection):
     """Process both episodic and long-term memory in a single threaded operation."""
     try:
-
         # Process episodic memory in a completely separate thread
         def episodic_task():
             try:
@@ -449,9 +443,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
                     session_id=session_id, memory_type="episodic"
                 )
 
-
                 if episodic_manager.vector_db and episodic_manager.vector_db.enabled:
-
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
@@ -492,11 +484,8 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
         episodic_thread = threading.Thread(target=episodic_task, daemon=True)
         episodic_thread.start()
 
-
         long_term_thread = threading.Thread(target=long_term_task, daemon=True)
         long_term_thread.start()
-
-
 
     except Exception as e:
         pass  # Silent background processing

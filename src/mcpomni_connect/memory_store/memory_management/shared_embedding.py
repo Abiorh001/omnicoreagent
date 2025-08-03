@@ -20,7 +20,9 @@ try:
     # Get actual vector size from the model
     test_embedding = _EMBED_MODEL.encode("test")
     NOMIC_VECTOR_SIZE = len(test_embedding)
-    logger.debug(f"[Warmup] Shared embedding model loaded. Vector size: {NOMIC_VECTOR_SIZE}")
+    logger.debug(
+        f"[Warmup] Shared embedding model loaded. Vector size: {NOMIC_VECTOR_SIZE}"
+    )
 except Exception as e:
     logger.error(f"[Warmup] Failed to load shared embedding model: {e}")
 
@@ -39,10 +41,8 @@ def embed_text(text: str) -> list[float]:
         # Clean the text first to avoid tensor dimension issues
         cleaned_text = clean_text_for_embedding(text)
 
-
         # Generate embedding
         embedding = _EMBED_MODEL.encode(cleaned_text)
-
 
         # Validate embedding size
         if len(embedding) != NOMIC_VECTOR_SIZE:
@@ -54,7 +54,6 @@ def embed_text(text: str) -> list[float]:
             raise ValueError(
                 f"Embedding dim mismatch: got {len(embedding)}, expected {NOMIC_VECTOR_SIZE}"
             )
-
 
         return embedding.tolist()
     except Exception as e:
@@ -78,7 +77,6 @@ def clean_text_for_embedding(text: str) -> str:
     # Ensure minimum length to avoid tensor dimension issues
     if len(text) < 10:
         text = f"content summary: {text} additional context for consistent embedding"
-
 
     # Truncate if too long (nomic-embed-text-v1 has a limit)
     if len(text) > 8192:

@@ -162,7 +162,6 @@ class QdrantVectorDB(VectorDBBase):
 
             # Log all scores before filtering
             all_scores = [hit.score for hit in search_result]
-            
 
             # Filter by distance threshold and format results
             filtered_results = [
@@ -299,7 +298,6 @@ class QdrantVectorDB(VectorDBBase):
 
             # Log all scores before filtering
             all_scores = [hit.score for hit in search_result]
-            
 
             # Filter by distance threshold and format results
             filtered_results = [
