@@ -43,10 +43,11 @@ from mcpomni_connect.events.base import (
     AgentMessagePayload,
     UserMessagePayload,
 )
-from mcpomni_connect.memory_store.memory_management.vector_db import (
+from mcpomni_connect.memory_store.memory_management.memory_manager import (
     fire_and_forget_memory_processing,
-    QdrantVectorDB,
+    MemoryManagerFactory,
 )
+import traceback
 
 
 class BaseReactAgent:
@@ -61,7 +62,12 @@ class BaseReactAgent:
         total_tokens_limit: int,
     ):
         self.agent_name = agent_name
-        self.max_steps = max_steps
+        # Enforce minimum 5 steps to allow proper tool usage and reasoning
+        self.max_steps = max(max_steps, 5)
+        if max_steps < 5:
+            logger.warning(
+                f"Agent {agent_name}: max_steps increased from {max_steps} to 5 (minimum required for tool usage)"
+            )
         self.tool_call_timeout = tool_call_timeout
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
@@ -79,14 +85,24 @@ class BaseReactAgent:
     async def get_long_episodic_memory(self, query: str, session_id: str):
         """Get long-term and episodic memory for a given query and session ID using optimized single query"""
         try:
-            # Use a single QdrantVectorDB instance to query both memory types
-            memory_db = QdrantVectorDB(session_id=session_id, memory_type="long_term")
-            long_term_result, episodic_result = await memory_db.query_both_memory_types(
-                query=query, session_id=session_id
+            # Create both memory managers
+            episodic_manager, long_term_manager = (
+                MemoryManagerFactory.create_both_memory_managers(session_id=session_id)
             )
-            return long_term_result, episodic_result
+
+            # Query both memory types
+            episodic_results = await episodic_manager.query_memory(
+                query, n_results=3, distance_threshold=0.4
+            )
+
+            long_term_results = await long_term_manager.query_memory(
+                query, n_results=3, distance_threshold=0.4
+            )
+
+            return long_term_results, episodic_results
         except Exception as e:
-            logger.warning(f"Failed to retrieve memory: {e}")
+            logger.error(f"❌ Failed to retrieve memory for session {session_id}: {e}")
+            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
             return (
                 "No relevant long-term memory found",
                 "No relevant episodic memory found",
@@ -210,7 +226,6 @@ class BaseReactAgent:
             agent_name=self.agent_name, session_id=session_id
         )
         if not short_term_memory_message_history:
-            logger.warning(f"No message history found for agent: {self.agent_name}")
             return
 
         validated_messages = [
@@ -218,17 +233,16 @@ class BaseReactAgent:
             for msg in short_term_memory_message_history
         ]
 
-        logger.info(f"Processing memory asynchronously for agent: {self.agent_name}")
         try:
             # Create long-term and episodic memory processor (background task)
             fire_and_forget_memory_processing(
                 session_id, validated_messages, llm_connection
             )
         except ImportError as e:
-            logger.warning(f"Memory processing not available: {e}")
+            logger.warning(f"⚠️ Memory processing not available: {e}")
         except Exception as e:
-            logger.error(f"Error in memory processing: {e}")
-
+            logger.error(f"❌ Error in memory processing: {e}")
+            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
         for message in validated_messages:
             role = message.role
             metadata = message.metadata
@@ -280,7 +294,7 @@ class BaseReactAgent:
                 )
 
             else:
-                logger.warning(f"Unknown message role encountered: {role}")
+                logger.warning(f"⚠️ Unknown message role encountered: {role}")
 
     def _try_flush_pending(self):
         if self.assistant_with_tool_calls:
@@ -593,13 +607,14 @@ class BaseReactAgent:
             loop_message = (
                 f"Observation:\n"
                 f"⚠️ Tool call loop detected: {loop_type}\n\n"
-                f"Current approach is not working. Please:\n"
-                f"1. Analyze why the previous attempts failed\n"
-                f"2. Try a completely different tool or approach\n"
-                f"3. If stuck, explain the issue to the user\n"
-                f"4. Consider breaking down the task into smaller steps\n"
-                f"5. Check if the tool parameters need adjustment\n"
-                f"6. If the issue persists, stop immediately.\n"
+                f"Current approach is not working. You MUST now provide a final answer to the user.\n"
+                f"Please:\n"
+                f"1. Stop trying the same approach\n"
+                f"2. Provide your best response to the user based on what you know\n"
+                f"3. Use <final_answer>Your response here</final_answer> format\n"
+                f"4. Be helpful and explain any limitations if needed\n"
+                f"5. Do NOT continue with more tool calls\n"
+                f"\nYou MUST respond with <final_answer> tags now.\n"
             )
             # handle loop detection event
             event = Event(
@@ -757,8 +772,6 @@ class BaseReactAgent:
         long_term_memory, episodic_memory = await self.get_long_episodic_memory(
             query=query, session_id=session_id
         )
-        logger.info(f"long_term_memory: {long_term_memory}")
-        logger.info(f"episodic_memory: {episodic_memory}")
         #  append the tools section if needed
         system_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
         # now update the system prompt with the long term and episodic memory using the XML-based template
@@ -766,7 +779,7 @@ class BaseReactAgent:
             system_prompt
             + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
         )
-        # logger.info(f"system updated prompt: {system_updated_prompt}")
+        
         self.messages[self.agent_name] = [
             Message(role="system", content=system_updated_prompt)
         ]
@@ -794,7 +807,11 @@ class BaseReactAgent:
         # set the agent state to running
         async with self.agent_state_context(AgentState.RUNNING):
             current_steps = 0
-            while self.state != AgentState.FINISHED and current_steps < self.max_steps:
+            last_valid_response = None  # Track last valid response
+            while (
+                self.state not in [AgentState.FINISHED, AgentState.STUCK]
+                and current_steps < self.max_steps
+            ):
                 if debug:
                     logger.info(
                         f"Sending {len(self.messages[self.agent_name])} messages to LLM"
@@ -875,6 +892,9 @@ class BaseReactAgent:
                     logger.info(f"current steps: {current_steps}")
                 # check for final answer
                 if parsed_response.answer is not None:
+                    last_valid_response = (
+                        parsed_response.answer
+                    )  # Store last valid response
                     self.messages[self.agent_name].append(
                         Message(
                             role="assistant",
@@ -932,6 +952,19 @@ class BaseReactAgent:
                 # check for stuck state
                 if current_steps >= self.max_steps:
                     self.state = AgentState.STUCK
-                    return f"Agent got stuck after {self.max_steps} steps"
+                    if last_valid_response:
+                        # Prepend max steps context for judge evaluation
+                        max_steps_context = f"[SYSTEM_CONTEXT: MAX_STEPS_REACHED - Agent hit {self.max_steps} step limit]\n\n"
+                        return max_steps_context + last_valid_response
+                    else:
+                        return f"[SYSTEM_CONTEXT: MAX_STEPS_REACHED - Agent hit {self.max_steps} step limit without valid response]"
+
+        # If we exit the loop due to STUCK state, return last valid response with context
+        if self.state == AgentState.STUCK and last_valid_response:
+            # Prepend loop detection context for judge evaluation
+            loop_context = (
+                f"[SYSTEM_CONTEXT: LOOP_DETECTED - Agent stuck in tool call loop]\n\n"
+            )
+            return loop_context + last_valid_response
 
         return None

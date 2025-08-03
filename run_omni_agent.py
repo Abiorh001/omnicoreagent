@@ -951,150 +951,215 @@ Patterns Found:"""
         """Show detailed help."""
         self.print_welcome()
 
+    async def cleanup(self):
+        """Clean up all resources before exit."""
+        print("🧹 Cleaning up resources...")
+
+        try:
+            # Clean up the main agent
+            if self.agent:
+                await self.agent.cleanup()
+                print("✅ Main agent cleaned up")
+
+            # Clean up background manager
+            if self.background_manager:
+                self.background_manager.shutdown()
+                print("✅ Background agent manager shut down")
+
+            # Clean up routers
+            if self.memory_router:
+                await self.memory_router.clear_memory()
+                print("✅ Memory router cleaned up")
+
+            if self.event_router:
+                # Event router cleanup if needed
+                print("✅ Event router cleaned up")
+
+            print("🎯 All resources cleaned up successfully!")
+
+        except Exception as e:
+            print(f"⚠️  Warning: Some cleanup operations failed: {e}")
+
     async def run(self):
         """Run the CLI interface."""
-        await self.initialize()
-        self.print_welcome()
+        try:
+            await self.initialize()
+            self.print_welcome()
 
-        print("💬 Start chatting with OmniAgent! Type /help for commands.")
-        print()
+            print("💬 Start chatting with OmniAgent! Type /help for commands.")
+            print()
 
-        while True:
-            try:
-                user_input = input("🤖 OmniAgent> ").strip()
+            while True:
+                try:
+                    user_input = input("🤖 OmniAgent> ").strip()
 
-                if not user_input:
-                    continue
+                    if not user_input:
+                        continue
 
-                if user_input.lower() in ["/quit", "/exit", "quit", "exit"]:
-                    print("👋 Goodbye!")
-                    break
+                    if user_input.lower() in ["/quit", "/exit", "quit", "exit"]:
+                        print("👋 Goodbye! Cleaning up...")
+                        await self.cleanup()
+                        break
 
-                # Handle commands
-                if user_input.startswith("/"):
-                    parts = user_input.split(" ", 1)
-                    command = parts[0].lower()
-                    args = parts[1] if len(parts) > 1 else ""
+                    # Handle commands
+                    if user_input.startswith("/"):
+                        parts = user_input.split(" ", 1)
+                        command = parts[0].lower()
+                        args = parts[1] if len(parts) > 1 else ""
 
-                    if command == "/chat":
-                        if args:
-                            await self.handle_chat(args)
-                        else:
-                            print("❌ Please provide a message: /chat <message>")
-                    elif command == "/tools":
-                        await self.handle_tools()
-                    elif command == "/memory":
-                        await self.handle_memory()
-                    elif command == "/memory_store":
-                        if args:
-                            await self.handle_memory_store(args)
-                        else:
-                            print("❌ Please provide store type: /memory_store <type>")
-                    elif command == "/event_store":
-                        if args:
-                            await self.handle_event_store(args)
-                        else:
-                            print("❌ Please provide store type: /event_store <type>")
-                    elif command == "/history":
-                        await self.handle_history()
-                    elif command == "/clear_history":
-                        await self.handle_clear_history()
-                    elif command == "/save_history":
-                        if args:
-                            await self.handle_save_history(args)
-                        else:
-                            print("❌ Please provide filename: /save_history <file>")
-                    elif command == "/load_history":
-                        if args:
-                            await self.handle_load_history(args)
-                        else:
-                            print("❌ Please provide filename: /load_history <file>")
-                    elif command == "/background_create":
-                        await self.handle_background_create()
-                    elif command == "/background_start":
-                        await self.handle_background_start()
-                    elif command == "/background_stop":
-                        await self.handle_background_stop()
-                    elif command == "/background_list":
-                        await self.handle_background_list()
-                    elif command == "/background_status":
-                        await self.handle_background_status()
-                    elif command == "/background_pause":
-                        if args:
-                            await self.handle_background_pause(args)
-                        else:
-                            print("❌ Please provide agent ID: /background_pause <id>")
-                    elif command == "/background_resume":
-                        if args:
-                            await self.handle_background_resume(args)
-                        else:
-                            print("❌ Please provide agent ID: /background_resume <id>")
-                    elif command == "/background_delete":
-                        if args:
-                            await self.handle_background_delete(args)
-                        else:
-                            print("❌ Please provide agent ID: /background_delete <id>")
-                    elif command == "/task_register":
-                        if args:
-                            parts = args.split(" ", 1)
-                            if len(parts) == 2:
-                                await self.handle_task_register(parts[0], parts[1])
+                        if command == "/chat":
+                            if args:
+                                await self.handle_chat(args)
+                            else:
+                                print("❌ Please provide a message: /chat <message>")
+                        elif command == "/tools":
+                            await self.handle_tools()
+                        elif command == "/memory":
+                            await self.handle_memory()
+                        elif command == "/memory_store":
+                            if args:
+                                await self.handle_memory_store(args)
+                            else:
+                                print(
+                                    "❌ Please provide store type: /memory_store <type>"
+                                )
+                        elif command == "/event_store":
+                            if args:
+                                await self.handle_event_store(args)
+                            else:
+                                print(
+                                    "❌ Please provide store type: /event_store <type>"
+                                )
+                        elif command == "/history":
+                            await self.handle_history()
+                        elif command == "/clear_history":
+                            await self.handle_clear_history()
+                        elif command == "/save_history":
+                            if args:
+                                await self.handle_save_history(args)
+                            else:
+                                print(
+                                    "❌ Please provide filename: /save_history <file>"
+                                )
+                        elif command == "/load_history":
+                            if args:
+                                await self.handle_load_history(args)
+                            else:
+                                print(
+                                    "❌ Please provide filename: /load_history <file>"
+                                )
+                        elif command == "/background_create":
+                            await self.handle_background_create()
+                        elif command == "/background_start":
+                            await self.handle_background_start()
+                        elif command == "/background_stop":
+                            await self.handle_background_stop()
+                        elif command == "/background_list":
+                            await self.handle_background_list()
+                        elif command == "/background_status":
+                            await self.handle_background_status()
+                        elif command == "/background_pause":
+                            if args:
+                                await self.handle_background_pause(args)
+                            else:
+                                print(
+                                    "❌ Please provide agent ID: /background_pause <id>"
+                                )
+                        elif command == "/background_resume":
+                            if args:
+                                await self.handle_background_resume(args)
+                            else:
+                                print(
+                                    "❌ Please provide agent ID: /background_resume <id>"
+                                )
+                        elif command == "/background_delete":
+                            if args:
+                                await self.handle_background_delete(args)
+                            else:
+                                print(
+                                    "❌ Please provide agent ID: /background_delete <id>"
+                                )
+                        elif command == "/task_register":
+                            if args:
+                                parts = args.split(" ", 1)
+                                if len(parts) == 2:
+                                    await self.handle_task_register(parts[0], parts[1])
+                                else:
+                                    print(
+                                        "❌ Please provide agent ID and query: /task_register <id> <query>"
+                                    )
                             else:
                                 print(
                                     "❌ Please provide agent ID and query: /task_register <id> <query>"
                                 )
-                        else:
-                            print(
-                                "❌ Please provide agent ID and query: /task_register <id> <query>"
-                            )
-                    elif command == "/task_list":
-                        await self.handle_task_list()
-                    elif command == "/task_update":
-                        if args:
-                            parts = args.split(" ", 1)
-                            if len(parts) == 2:
-                                await self.handle_task_update(parts[0], parts[1])
+                        elif command == "/task_list":
+                            await self.handle_task_list()
+                        elif command == "/task_update":
+                            if args:
+                                parts = args.split(" ", 1)
+                                if len(parts) == 2:
+                                    await self.handle_task_update(parts[0], parts[1])
+                                else:
+                                    print(
+                                        "❌ Please provide agent ID and query: /task_update <id> <query>"
+                                    )
                             else:
                                 print(
                                     "❌ Please provide agent ID and query: /task_update <id> <query>"
                                 )
+                        elif command == "/task_remove":
+                            if args:
+                                await self.handle_task_remove(args)
+                            else:
+                                print("❌ Please provide agent ID: /task_remove <id>")
+                        elif command == "/events":
+                            await self.handle_events()
+                        elif command == "/agent_info":
+                            await self.handle_agent_info()
+                        elif command == "/background":
+                            await self.handle_background()
+                        elif command == "/background_start":
+                            await self.handle_background_start()
+                        elif command == "/background_stop":
+                            await self.handle_background_stop()
+                        elif command == "/help":
+                            await self.handle_help()
                         else:
-                            print(
-                                "❌ Please provide agent ID and query: /task_update <id> <query>"
-                            )
-                    elif command == "/task_remove":
-                        if args:
-                            await self.handle_task_remove(args)
-                        else:
-                            print("❌ Please provide agent ID: /task_remove <id>")
-                    elif command == "/events":
-                        await self.handle_events()
-                    elif command == "/agent_info":
-                        await self.handle_agent_info()
-                    elif command == "/background":
-                        await self.handle_background()
-                    elif command == "/background_start":
-                        await self.handle_background_start()
-                    elif command == "/background_stop":
-                        await self.handle_background_stop()
-                    elif command == "/help":
-                        await self.handle_help()
+                            print(f"❌ Unknown command: {command}")
+                            print("💡 Type /help for available commands")
                     else:
-                        print(f"❌ Unknown command: {command}")
-                        print("💡 Type /help for available commands")
-                else:
-                    # Treat as chat message
-                    await self.handle_chat(user_input)
+                        # Treat as chat message
+                        await self.handle_chat(user_input)
 
-            except KeyboardInterrupt:
-                print("\n👋 Goodbye!")
-                break
+                except KeyboardInterrupt:
+                    print("\n👋 Goodbye! Cleaning up...")
+                    await self.cleanup()
+                    break
+                except Exception as e:
+                    print(f"❌ Error: {e}")
+        except Exception as e:
+            print(f"❌ Fatal error: {e}")
+        finally:
+            # Ensure cleanup happens even if there's an error
+            try:
+                await self.cleanup()
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f"⚠️  Cleanup error: {e}")
 
 
 def main():
     """Main entry point."""
+    import signal
+
+    def signal_handler(signum, frame):
+        """Handle interrupt signals gracefully."""
+        print("\n🛑 Received interrupt signal. Shutting down gracefully...")
+        sys.exit(0)
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     parser = argparse.ArgumentParser(description="OmniAgent Unified Interface")
     parser.add_argument(
         "--mode",
@@ -1108,7 +1173,14 @@ def main():
     if args.mode == "cli":
         # Run CLI interface
         cli = OmniAgentCLI()
-        asyncio.run(cli.run())
+        try:
+            asyncio.run(cli.run())
+        except KeyboardInterrupt:
+            print("\n👋 Interrupted by user. Goodbye!")
+        except Exception as e:
+            print(f"❌ Fatal error: {e}")
+        finally:
+            print("🎯 Application shutdown complete.")
     elif args.mode == "web":
         # Run web interface
         print("🌐 Starting web interface...")

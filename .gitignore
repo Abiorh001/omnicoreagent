@@ -17,3 +17,4 @@ qdrant_db/
 # MkDocs
 site/
 .chroma_db/
+venv/

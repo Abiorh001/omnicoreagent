@@ -441,21 +441,6 @@ def handle_stuck_state(original_system_prompt: str, message_stuck_prompt: bool =
     return modified_system_prompt
 
 
-def embed_text(text: str) -> list[float]:
-    """Embed text using Nomic's nomic-embed-text-v1 model."""
-    try:
-        from nomic import embed
-
-        response = embed.text(texts=[text], model="nomic-embed-text-v1")
-        return response["embeddings"][0]
-    except ImportError:
-        logger.error("nomic not installed. Install with: pip install nomic")
-        raise
-    except Exception as e:
-        logger.error(f"Error generating embedding with Nomic: {e}")
-        raise
-
-
 def normalize_metadata(obj):
     if isinstance(obj, dict):
         return {k: normalize_metadata(v) for k, v in obj.items()}
@@ -504,21 +489,6 @@ def show_tool_response(agent_name, tool_name, tool_args, observation):
 
     panel = Panel.fit(content, title="🔧 TOOL CALL LOG", border_style="bright_black")
     console.print(panel)
-
-
-# # Initialize the model once at module level
-# EMBEDDING_MODEL = SentenceTransformer('BAAI/bge-large-en-v1.5')
-
-
-# def embed_text(text: str) -> List[float]:
-#     """Embed text using Sentence Transformers."""
-#     try:
-#         # Get the embedding
-#         embedding = EMBEDDING_MODEL.encode(text)
-#         return embedding.tolist()
-#     except Exception as e:
-#         logger.error(f"Error generating embedding: {e}")
-#         return []
 
 
 def get_mac_address() -> str:

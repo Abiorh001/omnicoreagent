@@ -175,30 +175,37 @@ class Configuration:
         """Load server configuration from JSON file."""
         config_path = Path(file_path)
         logger.info(f"Loading configuration from: {config_path.name}")
-        if config_path.name.lower() != "servers_config.json":
-            raise FileNotFoundError(
-                f"Configuration file not found: {config_path}, it should be 'servers_config.json'"
-            )
 
-        # First try to load from hidden directory
-        hidden_path = Path(".mcp_config") / "servers_config.json"
-        if hidden_path.exists():
-            logger.info(f"Loading configuration from hidden location: {hidden_path}")
-            with open(hidden_path, encoding="utf-8") as f:
-                return json.load(f)
+        # First check: filename must start with "servers_config"
+        if not config_path.name.startswith("servers_config"):
+            raise ValueError("Config file name must start with 'servers_config'")
 
-        # Fallback to original location
+        # Second check: if it's a full path (agent config), use it directly
+        if config_path.is_absolute() or config_path.parent != Path("."):
+            if config_path.exists():
+                with open(config_path, encoding="utf-8") as f:
+                    return json.load(f)
+            else:
+                raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+        # Third check: use as relative path in current directory which is mcpclient
         if config_path.exists():
             with open(config_path, encoding="utf-8") as f:
                 return json.load(f)
 
-        raise FileNotFoundError("Configuration file not found in any location")
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
 
 class MCPClient:
-    def __init__(self, config: dict[str, Any], debug: bool = False):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        debug: bool = False,
+        config_filename: str = "servers_config.json",
+    ):
         # Initialize session and client objects
         self.config = config
+        self.config_filename = config_filename
         self.sessions = {}
         self._cleanup_lock = asyncio.Lock()
         self.available_tools = {}
@@ -208,14 +215,14 @@ class MCPClient:
         self.added_servers_names = {}  # this to map the name used in the config and the actual server name gotten after initialization
         self.debug = debug
         self.system_prompt = None
-        self.llm_connection = LLMConnection(self.config)
+        self.llm_connection = LLMConnection(self.config, self.config_filename)
         self.sampling_callback = samplingCallback()
         self.tasks = {}
         self.server_count = 0
 
-    async def connect_to_servers(self):
+    async def connect_to_servers(self, config_filename: str = "servers_config.json"):
         """Connect to an MCP server"""
-        server_config = self.config.load_config("servers_config.json")
+        server_config = self.config.load_config(config_filename)
         servers = [
             {"name": name, "srv_config": srv_config}
             for name, srv_config in server_config["mcpServers"].items()
