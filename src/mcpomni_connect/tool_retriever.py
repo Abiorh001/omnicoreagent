@@ -1,46 +1,24 @@
-from qdrant_client import QdrantClient, models
 from typing import List, Dict, Any
 import hashlib
 import logging
+from mcpomni_connect.memory_store.memory_management.qdrant_vector_db import QdrantVectorDB
+from mcpomni_connect.memory_store.memory_management.chromadb_vector_db import ChromaDBVectorDB
 
 logger = logging.getLogger(__name__)
 
 
 class ToolRetriever:
-    def __init__(self):
+    def __init__(self,collection_name:str):
         # Internal tool search optimization - no public API needed
-        self.client = None
-        self.collection_name = "tools_collection"
-        self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        self.tools_storage = {}
-        self._initialized = False
-        
-        # Initialize Qdrant client
-        self._initialize_qdrant()
-    
-    def _initialize_qdrant(self):
-        """Initialize Qdrant client and collection."""
         try:
-            self.client = QdrantClient(":memory:")
-            vector_size = self.client.get_embedding_size(self.model_name)
-            self.client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=models.VectorParams(
-                    size=vector_size, distance=models.Distance.COSINE
-                ),
-                optimizers_config=models.OptimizersConfigDiff(memmap_threshold=20000),
-                on_disk=True,
-            )
-            self._initialized = True
-            logger.info(f"Successfully initialized Qdrant collection: {self.collection_name}")
-        except ImportError:
-            logger.warning("fastembed not available, using simple text matching")
-            self.client = None
+            self.vector_db = QdrantVectorDB(collection_name)
+            if not self.vector_db.enabled:
+                self.vector_db = ChromaDBVectorDB(collection_name)
         except Exception as e:
-            logger.warning(f"Qdrant initialization failed: {e}")
-            self.client = None
-
-    def upsert_tools(self, tool_md: str) -> None:
+            self.vector_db = ChromaDBVectorDB(collection_name)
+    
+   
+    def upsert_tools(self, tool_md: str,metadata:Dict[str,Any]) -> None:
         """
         Upsert a single markdown-formatted tool description into Qdrant.
         
@@ -52,24 +30,16 @@ class ToolRetriever:
             unique_id = hashlib.md5(tool_md.encode()).hexdigest()[:8]
             
             # Store in simple dict if Qdrant is not available
-            if not self.client:
-                self.tools_storage[unique_id] = {
-                    "content": tool_md,
-                    "type": "markdown"
-                }
-                return
+            if metadata is None:
+                metadata = {}
                 
-            doc = models.Document(
-                text=tool_md,
-                model=self.model_name,
-            )
+            
             payload = {"content": tool_md, "type": "markdown"}
             
-            self.client.upload_collection(
-                collection_name=self.collection_name,
-                vectors=[doc],
-                ids=[unique_id],
-                payload=[payload],
+            self.vector_db.upsert_document(
+                doc_id=unique_id,
+                document=tool_md,
+                metadata=metadata
             )
         except Exception as e:
             logger.warning(f"Failed to upsert markdown tool: {e}")
@@ -89,14 +59,15 @@ class ToolRetriever:
         logger.info(f"ToolRetriever: Enhanced query: '{enhanced_query}'")
         
         # Primary: Vector search (semantic)
-        if self.client:
-            try:
-                query_doc = models.Document(text=enhanced_query, model=self.model_name)
-                search_result = self.client.query_points(
-                    collection_name=self.collection_name, query=query_doc, limit=top_k
-                ).points
-                
-                if search_result:
+        
+        try:
+            search_result = self.vector_db.query_collection(
+                query=enhanced_query,
+                n_results=top_k,
+                distance_threshold=0.5
+            )
+
+            if search_result:
                     # Fast lookup using content hash
                     content_to_tool = {tool.get("md", ""): tool for tool in all_tools}
                     relevant_tools = []
@@ -111,12 +82,12 @@ class ToolRetriever:
                     if relevant_tools:
                         logger.info(f"ToolRetriever: Vector search found {len(relevant_tools)} relevant tools")
                         return relevant_tools
-            except Exception as e:
-                logger.warning(f"Vector search failed: {e}")
+        except Exception as e:
+            logger.warning(f"Vector search failed: {e}")
         
-        # Fallback: Enhanced text search (still semantic-aware)
-        logger.info("ToolRetriever: Using enhanced text search fallback")
-        result = self._enhanced_text_search(enhanced_query, all_tools, top_k)
+        # Fallback: Simple text search
+        logger.info("ToolRetriever: Using simple text search fallback")
+        result = self._simple_text_search(enhanced_query, all_tools, top_k)
         logger.info(f"ToolRetriever: Text search found {len(result)} relevant tools")
         return result
     
