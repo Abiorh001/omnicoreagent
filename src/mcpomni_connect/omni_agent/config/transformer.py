@@ -289,9 +289,7 @@ class ConfigTransformer:
 
         return config
 
-    def save_config(
-        self, config: Dict[str, Any], filepath: str = "servers_config.json"
-    ):
+    def save_config(self, config: Dict[str, Any], filepath: str):
         """Save configuration to file"""
         try:
             with open(filepath, "w") as f:

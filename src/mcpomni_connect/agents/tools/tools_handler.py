@@ -174,12 +174,17 @@ class ToolExecutor:
             result = await self.tool_handler.call(tool_name, tool_args)
 
             if isinstance(result, dict):
+                # Handle structured dict responses (local tools)
                 if result.get("status") == "success":
                     tool_result = result.get("data", result)
                     response = {"status": "success", "data": tool_result}
+                elif result.get("status") == "error":
+                    response = result  # Keep error as-is
                 else:
-                    response = result
+                    # Dict without status field - treat as data
+                    response = {"status": "success", "data": result}
             elif hasattr(result, "content"):
+                # Handle MCP-style responses
                 tool_content = result.content
                 tool_result = (
                     tool_content[0].text
@@ -188,16 +193,21 @@ class ToolExecutor:
                 )
                 response = {"status": "success", "data": tool_result}
             else:
+                # Handle raw responses (strings, numbers, etc.) - common for simple tools
                 response = {"status": "success", "data": result}
 
             tool_content = response.get("data")
-            if tool_content in (None, "", [], {}, "[]", "{}"):
+            # Only flag as error if tool_content is explicitly None (not empty string, list, etc.)
+            # Empty results might be valid responses from tools
+            if tool_content is None:
                 response = {
                     "status": "error",
                     "message": (
-                        "No results found from the tool. Please try again or use a different approach. "
-                        "If the issue persists, please provide a detailed description of the problem and "
-                        "the current state of the conversation. And stop immediately, do not try again."
+                        f"Tool '{tool_name}' returned None/null result. This might indicate:\n"
+                        f"1. Tool execution failed silently\n"
+                        f"2. Tool doesn't support the provided parameters\n"
+                        f"3. Network/connection issue (for MCP tools)\n"
+                        f"Please verify tool parameters or try a different approach."
                     ),
                 }
                 tool_content = response["message"]

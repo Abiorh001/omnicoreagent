@@ -116,23 +116,40 @@ class OmniAgent:
             }
 
     def _save_config_hidden(self, config: Dict[str, Any]):
-        """Save config to hidden location"""
-        hidden_dir = Path(".mcp_config")
+        """Save config to hidden location with agent-specific filename"""
+        hidden_dir = Path(".omniagent_config")
         hidden_dir.mkdir(exist_ok=True)
 
-        hidden_config_path = hidden_dir / "servers_config.json"
+        # Use agent name to create unique config file
+        safe_agent_name = (
+            self.name.replace(" ", "_").replace("/", "_").replace("\\", "_")
+        )
+        hidden_config_path = hidden_dir / f"servers_config_{safe_agent_name}.json"
         self.config_transformer.save_config(config, str(hidden_config_path))
+
+        # Store the config path for cleanup
+        self._config_file_path = hidden_config_path
 
     def _create_agent(self):
         """Create the appropriate agent based on configuration"""
+        # Create shared configuration
+        shared_config = Configuration()
+
         # Initialize MCP client (only if MCP tools are provided)
         if self.mcp_tools:
-            config = Configuration()
-            self.mcp_client = MCPClient(config, debug=self.debug)
+            self.mcp_client = MCPClient(
+                shared_config,
+                debug=self.debug,
+                config_filename=str(self._config_file_path),
+            )
+            # Use the LLMConnection from MCPClient to avoid duplication
+            self.llm_connection = self.mcp_client.llm_connection
         else:
             self.mcp_client = None
-
-        self.llm_connection = LLMConnection(Configuration())
+            # Create LLMConnection only if no MCP client exists
+            self.llm_connection = LLMConnection(
+                shared_config, config_filename=str(self._config_file_path)
+            )
 
         # Get agent config from internal config
         agent_config_dict = self.internal_config["AgentConfig"]
@@ -155,7 +172,8 @@ class OmniAgent:
     async def connect_mcp_servers(self):
         """Connect to MCP servers if MCP tools are configured"""
         if self.mcp_client and self.mcp_tools:
-            await self.mcp_client.connect_to_servers()
+            # Use the config_filename that's already stored in the MCPClient
+            await self.mcp_client.connect_to_servers(self.mcp_client.config_filename)
 
     async def run(self, query: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -252,11 +270,16 @@ class OmniAgent:
         self._cleanup_config()
 
     def _cleanup_config(self):
-        """Clean up the config files"""
+        """Clean up the agent-specific config file"""
         try:
-            hidden_dir = Path(".mcp_config")
-            if hidden_dir.exists():
-                shutil.rmtree(hidden_dir)
+            # Only clean up this agent's specific config file
+            if hasattr(self, "_config_file_path") and self._config_file_path.exists():
+                self._config_file_path.unlink()
+
+            # If no more config files in directory, remove the directory
+            hidden_dir = Path(".omniagent_config")
+            if hidden_dir.exists() and not list(hidden_dir.glob("*.json")):
+                hidden_dir.rmdir()
         except Exception:
             # Silently handle cleanup errors
             pass

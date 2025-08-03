@@ -26,10 +26,6 @@ from mcpomni_connect.client import MCPClient
 from mcpomni_connect.constants import AGENTS_REGISTRY, date_time_func
 from mcpomni_connect.llm import LLMConnection
 from mcpomni_connect.llm_support import LLMToolSupport
-from mcpomni_connect.memory import (
-    InMemoryStore,
-    RedisShortTermMemory,
-)
 from mcpomni_connect.prompts import (
     get_prompt,
     get_prompt_with_react_agent,
@@ -51,10 +47,7 @@ from mcpomni_connect.system_prompts import (
 from mcpomni_connect.tools import list_tools
 from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
 
-CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "_")
-# TODO: add episodic memory
-# from mcpomni_connect.memory import EpisodicMemory
-# from mcpomni_connect.mcp_omni_agents import OrchestratorAgent
+CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "rr2r")
 
 
 class CommandType(Enum):
@@ -384,13 +377,11 @@ class MCPClientCLI:
     def __init__(self, client: MCPClient, llm_connection: LLMConnection):
         self.client = client
         self.llm_connection = llm_connection
-        self.agent_config = self.llm_connection.config.load_config(
-            "servers_config.json"
-        )["AgentConfig"]
-        self.MAX_CONTEXT_TOKENS = self.llm_connection.config.load_config(
-            "servers_config.json"
-        )["LLM"]["max_context_length"]
-        self.USE_MEMORY = {"redis": False, "in_memory": True}
+
+        # Use the already-loaded configuration from LLMConnection to avoid duplication
+        config = llm_connection.get_loaded_config()
+        self.agent_config = config["AgentConfig"]
+        self.MAX_CONTEXT_TOKENS = config["LLM"]["max_context_length"]
         self.MODE = {"auto": False, "chat": True, "orchestrator": False}
 
         # Initialize MemoryRouter and EventRouter
