@@ -5,6 +5,7 @@ from mcpomni_connect.memory_store.memory_management.shared_embedding import (
     get_embed_model,
     embed_text,
     NOMIC_VECTOR_SIZE,
+    is_vector_db_enabled,
 )
 
 
@@ -18,14 +19,29 @@ class VectorDBBase(ABC):
             **kwargs: Additional parameters
         """
         self.collection_name = collection_name
-        self._embed_model = get_embed_model()
-        self._vector_size = NOMIC_VECTOR_SIZE
-        self.enabled = False
+
+        # Check if vector DB is enabled
+        if not is_vector_db_enabled():
+            self._embed_model = None
+            self._vector_size = NOMIC_VECTOR_SIZE
+            self.enabled = False
+        else:
+            try:
+                self._embed_model = get_embed_model()
+                self._vector_size = NOMIC_VECTOR_SIZE
+                self.enabled = True
+            except Exception as e:
+                logger.warning(f"Failed to initialize embedding model: {e}")
+                self._embed_model = None
+                self.enabled = False
+
         for key, value in kwargs.items():
             setattr(self, key, value)
 
     def embed_text(self, text: str) -> List[float]:
         """Embed text using shared nomic-ai/nomic-embed-text-v1 model."""
+        if not is_vector_db_enabled():
+            raise RuntimeError("Vector database is disabled by configuration")
         return embed_text(text)
 
     @abstractmethod

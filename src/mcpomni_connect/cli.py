@@ -47,7 +47,7 @@ from mcpomni_connect.system_prompts import (
 from mcpomni_connect.tools import list_tools
 from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
 
-CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "rr2r")
+CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "abiorh")
 
 
 class CommandType(Enum):
@@ -391,7 +391,7 @@ class MCPClientCLI:
         # Set memory config
         self.memory_router.set_memory_config(
             mode=self.agent_config.get("memory_config", {}).get("mode", "token_budget"),
-            value=self.agent_config.get("memory_config", {}).get("value", 10000),
+            value=self.agent_config.get("memory_config", {}).get("value", 32000),
         )
 
         self.console = Console()

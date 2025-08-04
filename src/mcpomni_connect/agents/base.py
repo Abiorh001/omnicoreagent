@@ -48,6 +48,9 @@ from mcpomni_connect.memory_store.memory_management.memory_manager import (
     MemoryManagerFactory,
 )
 import traceback
+from mcpomni_connect.memory_store.memory_management.shared_embedding import (
+    is_vector_db_enabled,
+)
 
 
 class BaseReactAgent:
@@ -85,6 +88,11 @@ class BaseReactAgent:
     async def get_long_episodic_memory(self, query: str, session_id: str):
         """Get long-term and episodic memory for a given query and session ID using optimized single query"""
         try:
+            # Check if vector database is enabled
+
+            if not is_vector_db_enabled():
+                return [], []
+
             # Create both memory managers
             episodic_manager, long_term_manager = (
                 MemoryManagerFactory.create_both_memory_managers(session_id=session_id)
@@ -222,6 +230,7 @@ class BaseReactAgent:
         llm_connection: Callable,
     ):
         """Update the LLM's working memory with the current message history and process memory asynchronously"""
+
         short_term_memory_message_history = await message_history(
             agent_name=self.agent_name, session_id=session_id
         )

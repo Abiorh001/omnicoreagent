@@ -14,6 +14,10 @@ from mcpomni_connect.memory_store.memory_management.system_prompts import (
     episodic_memory_constructor_system_prompt,
     long_term_memory_constructor_system_prompt,
 )
+from mcpomni_connect.memory_store.memory_management.shared_embedding import (
+    is_vector_db_enabled,
+    load_embed_model,
+)
 
 # Import both vector database implementations
 from mcpomni_connect.memory_store.memory_management.qdrant_vector_db import (
@@ -45,6 +49,15 @@ class MemoryManager:
         self.session_id = session_id
         self.memory_type = memory_type
         self.collection_name = f"{memory_type}_{session_id}"
+
+        # Check if vector database is enabled
+        if not is_vector_db_enabled():
+            logger.debug(f"Vector database is disabled by configuration")
+            self.vector_db = None
+            return
+
+        # Load embedding model once (shared across all instances)
+        load_embed_model()
 
         # Check Qdrant availability
         qdrant_host = config("QDRANT_HOST", default=None)
@@ -493,6 +506,9 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
 
 def fire_and_forget_memory_processing(session_id, validated_messages, llm_connection):
     """Fire and forget memory processing using actual threading."""
+    if not is_vector_db_enabled():
+        return
+
     # Submit to thread pool and return immediately
     future = _THREAD_POOL.submit(
         process_both_memory_types_threaded,
