@@ -4,13 +4,10 @@ Comprehensive OmniAgent Example - Demonstrates all features and capabilities.
 """
 
 import asyncio
-import sys
 import os
-from typing import Dict, Any
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
+from dotenv import load_dotenv
 
 from mcpomni_connect.omni_agent import OmniAgent
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
@@ -405,6 +402,16 @@ async def main():
     logger.info("🚀 Starting Comprehensive OmniAgent Example")
     logger.info("=" * 60)
 
+    # Load environment variables
+    load_dotenv()
+
+    # Check for required environment variables
+    if not os.getenv("LLM_API_KEY"):
+        logger.error("❌ LLM_API_KEY environment variable not found!")
+        logger.error("Please set it in your .env file:")
+        logger.error("LLM_API_KEY=your_api_key_here")
+        return
+
     try:
         # 1. Initialize components
         logger.info("\n📦 Initializing Components...")
@@ -421,8 +428,8 @@ async def main():
             name="comprehensive_demo_agent",
             system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
-                "provider": "openai",
-                "model": "gpt-4.1",
+                "provider": "openai",  # Change to your preferred provider
+                "model": "gpt-4",  # Use valid model name
                 "temperature": 0.7,
                 "max_context_length": 50000,
             },
@@ -432,8 +439,8 @@ async def main():
                     "args": [
                         "-y",
                         "@modelcontextprotocol/server-filesystem",
-                        "/home/abiorh/Desktop",
-                        "/home/abiorh/ai/",
+                        str(Path.home()),  # Use user's home directory
+                        str(Path.cwd()),  # Use current working directory
                     ],
                 }
             ],
@@ -485,18 +492,28 @@ async def main():
         final_history = await agent.get_session_history(final_session)
         final_events = await agent.get_events(final_session)
 
-        logger.info(f"   Total sessions created: 6")
+        logger.info("   Total sessions created: 6")
         logger.info(f"   Total messages in final session: {len(final_history)}")
         logger.info(f"   Total events in final session: {len(final_events)}")
-        logger.info(f"   Tools available: 7")
+        logger.info("   Tools available: 7")
         logger.info(f"   Memory store: {memory_store.get_memory_store_info()}")
         logger.info(f"   Event store: {agent.get_event_store_info()}")
 
         # 5. Cleanup
         logger.info("\n🧹 Cleaning up...")
-        await agent.cleanup()
+        try:
+            await agent.cleanup()
+            logger.info("✅ Agent cleanup completed")
+        except Exception as e:
+            logger.warning(f"⚠️ Cleanup warning: {e}")
 
         logger.info("✅ Comprehensive OmniAgent Example completed successfully!")
+        logger.info(
+            "📋 Summary: Demonstrated memory management, event streaming, tool orchestration,"
+        )
+        logger.info(
+            "           session management, advanced features, and configuration management."
+        )
 
     except Exception as e:
         logger.error(f"❌ Error in main: {e}")

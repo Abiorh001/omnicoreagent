@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
 import colorlog
-from decouple import config
-from openai import OpenAI
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.pretty import Pretty

@@ -1,9 +1,7 @@
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
-import os
 from mcpomni_connect.utils import logger
-from typing import List, Dict, Any, Optional
-import uuid
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from qdrant_client import models
 from decouple import config
@@ -160,9 +158,6 @@ class QdrantVectorDB(VectorDBBase):
                     "ids": [],
                 }
 
-            # Log all scores before filtering
-            all_scores = [hit.score for hit in search_result]
-
             # Filter by distance threshold and format results
             filtered_results = [
                 hit for hit in search_result if hit.score >= distance_threshold
@@ -250,7 +245,7 @@ class QdrantVectorDB(VectorDBBase):
             # Generate embedding with error handling
             try:
                 vector = self.embed_text(document)
-            except Exception as e:
+            except Exception:
                 return False
 
             # Create point
@@ -262,7 +257,7 @@ class QdrantVectorDB(VectorDBBase):
             )
 
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     async def query_collection_async(
@@ -295,9 +290,6 @@ class QdrantVectorDB(VectorDBBase):
                     "metadatas": [],
                     "ids": [],
                 }
-
-            # Log all scores before filtering
-            all_scores = [hit.score for hit in search_result]
 
             # Filter by distance threshold and format results
             filtered_results = [

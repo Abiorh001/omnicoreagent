@@ -12,10 +12,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.live import Live
 from rich.spinner import Spinner
-from rich.text import Text
 from rich.align import Align
-from rich.panel import Panel
-import asyncio
 from mcpomni_connect.events.event_router import EventRouter
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.agents.orchestrator import OrchestratorAgent
@@ -1078,7 +1075,7 @@ class MCPClientCLI:
                 elif event_type == "tool_call_result":
                     result = payload.result or ""
                     tool_name = payload.tool_name or "unknown_tool"
-                    tool_args = payload.tool_args or "unknown_args"
+
                     self.console.print(
                         Panel(
                             result.strip(),
