@@ -4,7 +4,6 @@ OmniAgent Web Interface Entry Point
 Provides web interface for OmniAgent.
 """
 
-import uvicorn
 import sys
 from pathlib import Path
 

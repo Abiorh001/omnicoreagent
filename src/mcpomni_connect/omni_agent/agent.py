@@ -1,4 +1,3 @@
-import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -7,6 +6,7 @@ from mcpomni_connect.agents.react_agent import ReactAgent
 from mcpomni_connect.agents.types import AgentConfig as ReactAgentConfig
 from mcpomni_connect.client import Configuration, MCPClient
 from mcpomni_connect.llm import LLMConnection
+from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.omni_agent.config import (
     config_transformer,
     ModelConfig,
@@ -15,8 +15,6 @@ from mcpomni_connect.omni_agent.config import (
 )
 from mcpomni_connect.omni_agent.prompts.prompt_builder import OmniAgentPromptBuilder
 from mcpomni_connect.omni_agent.prompts.react_suffix import SYSTEM_SUFFIX
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.utils import logger
 from mcpomni_connect.events.event_router import EventRouter
 
 

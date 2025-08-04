@@ -3,7 +3,7 @@ Base scheduler interface for background agent system.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict
+from typing import Callable
 
 
 class BackgroundTaskScheduler(ABC):

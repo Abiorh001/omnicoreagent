@@ -4,14 +4,13 @@ Background OmniAgent for self-flying automation.
 
 import asyncio
 import uuid
-import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from mcpomni_connect.omni_agent.agent import OmniAgent
-from mcpomni_connect.omni_agent.config import AgentConfig, ModelConfig, MCPToolConfig
+
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
+
 from mcpomni_connect.utils import logger
 from mcpomni_connect.events.event_router import EventRouter
 from mcpomni_connect.events.base import (

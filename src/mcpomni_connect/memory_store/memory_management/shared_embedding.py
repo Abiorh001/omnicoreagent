@@ -101,7 +101,7 @@ def clean_text_for_embedding(text: str) -> str:
 
     if len(text) > 8192:
         text = text[:8192]
-        logger.warning(f"Text truncated to 8192 characters for embedding")
+        logger.warning("Text truncated to 8192 characters for embedding")
 
     if not text or text.isspace() or len(text) < 5:
         return "default placeholder text for consistent embedding dimensions"

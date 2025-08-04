@@ -20,7 +20,7 @@ from mcpomni_connect.events.event_router import EventRouter
 from mcpomni_connect.omni_agent.background_agent.background_agent_manager import (
     BackgroundAgentManager,
 )
-from mcpomni_connect.omni_agent.background_agent.task_registry import TaskRegistry
+
 from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
 from mcpomni_connect.utils import logger
 
@@ -261,7 +261,7 @@ Patterns Found:"""
                             file_types["directories"] = (
                                 file_types.get("directories", 0) + 1
                             )
-                    except:
+                    except:  # noqa: E722
                         pass
 
                 return f"""Directory Analysis: {directory}

@@ -3,12 +3,8 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Callable, Optional, Tuple
 from mcpomni_connect.utils import logger
 from decouple import config
-import time
 import asyncio
-import logging
-import traceback
 import threading
-import litellm
 from concurrent.futures import ThreadPoolExecutor
 from mcpomni_connect.memory_store.memory_management.system_prompts import (
     episodic_memory_constructor_system_prompt,
@@ -52,7 +48,7 @@ class MemoryManager:
 
         # Check if vector database is enabled
         if not is_vector_db_enabled():
-            logger.debug(f"Vector database is disabled by configuration")
+            logger.debug("Vector database is disabled by configuration")
             self.vector_db = None
             return
 
@@ -115,7 +111,7 @@ class MemoryManager:
                 return content
             else:
                 return None
-        except Exception as e:
+        except Exception:
             return None
 
     async def create_long_term_memory(
@@ -140,7 +136,7 @@ class MemoryManager:
                 return content
             else:
                 return None
-        except Exception as e:
+        except Exception:
             return None
 
     def _format_conversation(self, messages: List[Any]) -> str:
@@ -274,7 +270,7 @@ class MemoryManager:
                     )
                     return
                 else:
-                    logger.debug(f"More than 30min since last summary, proceeding")
+                    logger.debug("More than 30min since last summary, proceeding")
 
             # Filter messages after last_end_time
             if last_end_time:
@@ -331,7 +327,7 @@ class MemoryManager:
 
             self.invalidate_recent_summary_cache()
 
-        except Exception as e:
+        except Exception:
             pass  # Silent background processing
 
     async def get_most_recent_summary(self) -> Optional[Dict]:
@@ -390,7 +386,7 @@ class MemoryManager:
                         # Ensure it's timezone-aware UTC
                         end_time = self._ensure_utc_datetime(end_time)
                         valid_metadatas.append((metadata, end_time))
-                    except Exception as e:
+                    except Exception:
                         logger.warning(f"⚠️ Failed to parse end_time: {end_time_str}")
                         continue
 
@@ -468,7 +464,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
 
                     finally:
                         loop.close()
-            except Exception as e:
+            except Exception:
                 pass  # Silent background processing
 
         # Process long-term memory in a completely separate thread
@@ -489,7 +485,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
                         )
                     finally:
                         loop.close()
-            except Exception as e:
+            except Exception:
                 pass  # Silent background processing
 
         # Start both tasks in separate threads without waiting
@@ -500,7 +496,7 @@ def process_both_memory_types_threaded(session_id, validated_messages, llm_conne
         long_term_thread = threading.Thread(target=long_term_task, daemon=True)
         long_term_thread.start()
 
-    except Exception as e:
+    except Exception:
         pass  # Silent background processing
 
 

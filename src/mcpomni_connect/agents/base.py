@@ -972,7 +972,7 @@ class BaseReactAgent:
         if self.state == AgentState.STUCK and last_valid_response:
             # Prepend loop detection context for judge evaluation
             loop_context = (
-                f"[SYSTEM_CONTEXT: LOOP_DETECTED - Agent stuck in tool call loop]\n\n"
+                "[SYSTEM_CONTEXT: LOOP_DETECTED - Agent stuck in tool call loop]\n\n"
             )
             return loop_context + last_valid_response
 

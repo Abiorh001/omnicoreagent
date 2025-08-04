@@ -3,7 +3,7 @@ Background Agent Manager for orchestrating multiple background agents.
 """
 
 import asyncio
-import uuid
+
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
@@ -137,7 +137,7 @@ class BackgroundAgentManager:
 
             # Update agent if it exists
             if agent_id in self.agents:
-                agent = self.agents[agent_id]
+                self.agents[agent_id]
                 # The agent will automatically pick up the new task from TaskRegistry
                 logger.info(f"Updated task for existing agent {agent_id}")
 
@@ -159,7 +159,7 @@ class BackgroundAgentManager:
 
             # Update agent if it exists
             if agent_id in self.agents:
-                agent = self.agents[agent_id]
+                self.agents[agent_id]
                 # The agent will automatically pick up the updated task from TaskRegistry
                 logger.info(f"Updated task for agent {agent_id}")
 

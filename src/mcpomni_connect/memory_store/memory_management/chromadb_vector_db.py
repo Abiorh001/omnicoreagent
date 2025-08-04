@@ -13,14 +13,9 @@ except ImportError as e:
     CHROMADB_AVAILABLE = False
     chromadb = None
     Settings = None
-from typing import List, Dict, Any, Optional
-import uuid
+from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
-from mcpomni_connect.memory_store.memory_management.shared_embedding import (
-    embed_text,
-    get_embed_model,
-)
 
 # ==== 🔥 Warm up ChromaDB client at module import ====
 _chroma_client = None
@@ -313,7 +308,7 @@ class ChromaDBVectorDB(VectorDBBase):
             )
 
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     async def query_collection_async(

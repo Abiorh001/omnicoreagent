@@ -6,7 +6,7 @@ Background Agent Example - Demonstrates the new standardized TaskRegistry approa
 import asyncio
 import sys
 import os
-from typing import Dict, Any
+
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
@@ -14,7 +14,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 from mcpomni_connect.omni_agent.background_agent.background_agent_manager import (
     BackgroundAgentManager,
 )
-from mcpomni_connect.omni_agent.background_agent.task_registry import TaskRegistry
+
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.events.event_router import EventRouter
 from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
@@ -151,7 +151,7 @@ Patterns Found:"""
                         total_size += os.path.getsize(file_path)
                     elif os.path.isdir(file_path):
                         file_types["directories"] = file_types.get("directories", 0) + 1
-                except:
+                except:  # noqa: E722
                     pass
 
             return f"""Directory Analysis: {directory}
@@ -456,14 +456,14 @@ async def demonstrate_agent_management(manager: BackgroundAgentManager):
 
     # 1. Get manager status
     status = manager.get_manager_status()
-    logger.info(f"\n📊 Manager Status:")
+    logger.info("\n📊 Manager Status:")
     logger.info(f"   Running: {status['manager_running']}")
     logger.info(f"   Total Agents: {status['total_agents']}")
     logger.info(f"   Total Tasks: {status['total_tasks']}")
     logger.info(f"   Scheduler Running: {status['scheduler_running']}")
 
     # 2. Get individual agent statuses
-    logger.info(f"\n🤖 Agent Statuses:")
+    logger.info("\n🤖 Agent Statuses:")
     for agent_id in manager.list_agents():
         agent_status = manager.get_agent_status(agent_id)
         if agent_status:
@@ -475,7 +475,7 @@ async def demonstrate_agent_management(manager: BackgroundAgentManager):
             logger.info(f"     Scheduled: {agent_status['scheduled']}")
 
     # 3. Demonstrate pausing/resuming
-    logger.info(f"\n⏸️  Pausing file_monitor_agent:")
+    logger.info("\n⏸️  Pausing file_monitor_agent:")
     try:
         manager.pause_agent("file_monitor_agent")
         logger.info("   ✅ Agent paused")
@@ -485,7 +485,7 @@ async def demonstrate_agent_management(manager: BackgroundAgentManager):
         logger.info(f"   Scheduled: {status['scheduled']}")
 
         # Resume
-        logger.info(f"\n▶️  Resuming file_monitor_agent:")
+        logger.info("\n▶️  Resuming file_monitor_agent:")
         manager.resume_agent("file_monitor_agent")
         logger.info("   ✅ Agent resumed")
 
@@ -493,7 +493,7 @@ async def demonstrate_agent_management(manager: BackgroundAgentManager):
         logger.error(f"   ❌ Error: {e}")
 
     # 4. Get metrics
-    logger.info(f"\n📈 Agent Metrics:")
+    logger.info("\n📈 Agent Metrics:")
     metrics = manager.get_all_metrics()
     for agent_id, agent_metrics in metrics.items():
         logger.info(f"   {agent_id}:")
