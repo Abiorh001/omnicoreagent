@@ -1,4 +1,3 @@
-import json
 from collections.abc import Callable
 from typing import Any
 
@@ -14,6 +13,18 @@ from mcpomni_connect.agents.types import AgentConfig, ParsedResponse
 from mcpomni_connect.constants import AGENTS_REGISTRY
 from mcpomni_connect.system_prompts import generate_react_agent_prompt_template
 from mcpomni_connect.utils import logger
+import json
+import re
+from mcpomni_connect.events.base import (
+    Event,
+    EventType,
+    UserMessagePayload,
+    AgentMessagePayload,
+    ToolCallErrorPayload,
+    ToolCallResultPayload,
+    FinalAnswerPayload,
+    ToolCallStartedPayload,
+)
 
 
 class OrchestratorAgent(BaseReactAgent):
@@ -21,7 +32,6 @@ class OrchestratorAgent(BaseReactAgent):
         self,
         config: AgentConfig,
         agents_registry: AGENTS_REGISTRY,
-        chat_id: int,
         current_date_time: str,
         debug: bool = False,
     ):
@@ -31,65 +41,93 @@ class OrchestratorAgent(BaseReactAgent):
             tool_call_timeout=config.tool_call_timeout,
             request_limit=config.request_limit,
             total_tokens_limit=config.total_tokens_limit,
-            mcp_enabled=config.mcp_enabled,
         )
         self.agents_registry = agents_registry
-        self.chat_id = chat_id
         self.current_date_time = current_date_time
         self.orchestrator_messages = []
         self.max_steps = 20
         self.debug = debug
 
-    async def extract_action_json(self, response: ParsedResponse):
-        action_data = await super().extract_action_json(response=response)
-        # Parse the JSON
+    async def extract_action_or_answer(
+        self,
+        response: str,
+        debug: bool = False,
+    ) -> ParsedResponse:
+        """Override to prevent orchestrator from parsing tool calls from sub-agents."""
+        # Orchestrator should only parse agent calls and final answers, not tool calls
+        return await self.extract_agent_action_or_answer(response, debug)
 
+    async def extract_agent_action_or_answer(
+        self,
+        response: str,
+        debug: bool = False,
+    ) -> ParsedResponse:
+        """Parse LLM response to extract XML-formatted agent calls or final answers."""
         try:
-            action_json = action_data.get("data")
-            action = json.loads(action_json)
-            agent_name_to_act = action.get("agent_name")
-            # strip away if Agent or agent is part of the agent name
-            agent_name_to_act = (
-                agent_name_to_act.replace("Agent", "").replace("agent", "").strip()
-            )
-            task_to_act = action.get("task")
-            # if tool_name is None or tool_args is None, return an error
-            if agent_name_to_act is None or task_to_act is None:
-                return {
-                    "error": "Invalid JSON format",
-                    "action": False,
-                }
+            # Check for XML-style agent call format
+            if "<agent_call>" in response and "</agent_call>" in response:
+                if debug:
+                    logger.info(
+                        "XML agent call format detected in response: %s", response
+                    )
+                agent_name_match = re.search(
+                    r"<agent_name>(.*?)</agent_name>", response, re.DOTALL
+                )
+                task_match = re.search(r"<task>(.*?)</task>", response, re.DOTALL)
+                if agent_name_match and task_match:
+                    agent_name = agent_name_match.group(1).strip()
+                    task = task_match.group(1).strip()
+                    # strip away if Agent or agent is part of the agent name
+                    agent_name = (
+                        agent_name.replace("Agent", "").replace("agent", "").strip()
+                    )
 
-            # Validate JSON structure and tool exists
-            if "agent_name" in action and "task" in action:
-                for (
-                    agent_name,
-                    agent_description,
-                ) in self.agents_registry.items():
-                    agent_names = [
-                        agent_name.lower() for agent_name in self.agents_registry.keys()
-                    ]
-                    if agent_name_to_act.lower() in agent_names:
-                        return {
-                            "action": True,
-                            "agent_name": agent_name_to_act,
-                            "task": task_to_act,
-                        }
-            logger.warning("Agent not found: %s", agent_name_to_act)
-            return {
-                "action": False,
-                "error": f"Agent {agent_name_to_act} not found",
-            }
-        except json.JSONDecodeError:
-            return {
-                "error": "Invalid JSON format",
-                "action": False,
-            }
+                    # Validate agent exists in registry
+                    agent_names = [name.lower() for name in self.agents_registry.keys()]
+                    if agent_name.lower() in agent_names:
+                        action_json = json.dumps(
+                            {"agent_name": agent_name, "task": task}
+                        )
+                        return ParsedResponse(action=True, data=action_json)
+                    else:
+                        logger.warning("Agent not found: %s", agent_name)
+                        return ParsedResponse(error=f"Agent {agent_name} not found")
+                else:
+                    return ParsedResponse(
+                        error="Invalid XML agent call format - missing agent_name or task"
+                    )
+
+            # Check for XML-style final answer format
+            if "<final_answer>" in response and "</final_answer>" in response:
+                if debug:
+                    logger.info(
+                        "XML final answer format detected in response: %s", response
+                    )
+                final_answer_match = re.search(
+                    r"<final_answer>(.*?)</final_answer>", response, re.DOTALL
+                )
+                if final_answer_match:
+                    answer = final_answer_match.group(1).strip()
+                    return ParsedResponse(answer=answer)
+                else:
+                    return ParsedResponse(error="Invalid XML final answer format")
+
+            # If no XML tags found, treat as conversational response (likely final answer after agent observation)
+            if debug:
+                logger.info(
+                    "No XML tags found, treating as conversational response: %s",
+                    response,
+                )
+            return ParsedResponse(answer=response.strip())
+
+        except Exception as e:
+            logger.error("Error parsing model response: %s", str(e))
+            return ParsedResponse(error=str(e))
 
     async def create_agent_system_prompt(
         self,
         agent_name: str,
-        available_tools: dict[str, Any],
+        mcp_tools: dict[str, Any],
     ) -> str:
         server_name = agent_name
         agent_role = self.agents_registry[server_name]
@@ -99,10 +137,12 @@ class OrchestratorAgent(BaseReactAgent):
         )
         return agent_system_prompt
 
-    async def update_llm_working_memory(self, message_history: Callable[[], Any]):
+    async def update_llm_working_memory(
+        self, message_history: Callable[[], Any], session_id: str
+    ):
         """Update the LLM's working memory with the current message history"""
         short_term_memory_message_history = await message_history(
-            agent_name="orchestrator", chat_id=self.chat_id
+            agent_name="orchestrator", session_id=session_id
         )
 
         for _, message in enumerate(short_term_memory_message_history):
@@ -132,34 +172,44 @@ class OrchestratorAgent(BaseReactAgent):
         task: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
-        available_tools: dict[str, Any],
+        mcp_tools: dict[str, Any],
         message_history: Callable[[], Any],
         tool_call_timeout: int,
         max_steps: int,
         request_limit: int,
         total_tokens_limit: int,
+        session_id: str,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ) -> str:
         """Execute agent and return JSON-formatted observation"""
         try:
             agent_system_prompt = await self.create_agent_system_prompt(
                 agent_name=agent_name,
-                available_tools=available_tools,
+                mcp_tools=mcp_tools,
             )
-            logger.info(f"request limit: {request_limit}")
+            # tool call start event
+            event = Event(
+                type=EventType.TOOL_CALL_STARTED,
+                payload=ToolCallStartedPayload(
+                    tool_name=agent_name,
+                    tool_args={"task": task},
+                    tool_call_id=None,
+                ),
+                agent_name="orchestrator",
+            )
+            if event_router:
+                await event_router(session_id=session_id, event=event)
             agent_config = AgentConfig(
                 agent_name=agent_name,
                 tool_call_timeout=tool_call_timeout,
                 max_steps=max_steps,
                 request_limit=request_limit,
                 total_tokens_limit=total_tokens_limit,
-                mcp_enabled=True,
             )
             extra_kwargs = {
                 "sessions": sessions,
-                "available_tools": available_tools,
-                "tools_registry": None,
-                "is_generic_agent": False,
-                "chat_id": self.chat_id,
+                "mcp_tools": mcp_tools,
+                "session_id": session_id,
             }
             react_agent = ReactAgent(config=agent_config)
             observation = await react_agent._run(
@@ -169,6 +219,7 @@ class OrchestratorAgent(BaseReactAgent):
                 add_message_to_history=add_message_to_history,
                 message_history=message_history,
                 debug=self.debug,
+                event_router=event_router,  # Pass event_router callable
                 **extra_kwargs,
             )
 
@@ -183,22 +234,34 @@ class OrchestratorAgent(BaseReactAgent):
                 }
             )
             await add_message_to_history(
-                agent_name="orchestrator",
                 role="user",
                 content=f"{agent_name} Agent Observation:\n{observation}",
-                chat_id=self.chat_id,
+                session_id=session_id,
+                metadata={"agent_name": agent_name},
             )
             return observation
         except Exception as e:
             logger.error("Error executing agent: %s", str(e))
+            # tool call error event
+            event = Event(
+                type=EventType.TOOL_CALL_ERROR,
+                payload=ToolCallErrorPayload(
+                    tool_name="orchestrator",
+                    error_message=str(e),
+                ),
+                agent_name="orchestrator",
+            )
+            if event_router:
+                await event_router(session_id=session_id, event=event)
+            return str(e)
 
-    async def agent_registry_tool(self, available_tools: dict[str, Any]) -> str:
+    async def agent_registry_tool(self, mcp_tools: dict[str, Any]) -> str:
         """
         This function is used to create a tool that will return the agent registry
         """
         try:
             agent_registries = []
-            for server_name, tools in available_tools.items():
+            for server_name, tools in mcp_tools.items():
                 if server_name not in self.agents_registry:
                     logger.warning(f"No agent registry entry for {server_name}")
                     continue
@@ -231,17 +294,27 @@ class OrchestratorAgent(BaseReactAgent):
         query: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
-        available_tools: dict[str, Any],
+        mcp_tools: dict[str, Any],
         message_history: Callable[[], Any],
         orchestrator_system_prompt: str,
         tool_call_timeout: int,
         max_steps: int,
         request_limit: int,
         total_tokens_limit: int,
+        session_id: str,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ) -> str | None:
-        """Execute ReAct loop with JSON communication"""
+        """Execute ReAct loop with XML communication"""
+        # Emit user message event
+        event = Event(
+            type=EventType.USER_MESSAGE,
+            payload=UserMessagePayload(message=query),
+            agent_name="orchestrator",
+        )
+        if event_router:
+            await event_router(session_id=session_id, event=event)
         # Initialize messages with system prompt
-        agent_registry_output = await self.agent_registry_tool(available_tools)
+        agent_registry_output = await self.agent_registry_tool(mcp_tools)
         updated_systm_prompt = (
             orchestrator_system_prompt
             + f"[AVAILABLE AGENTS REGISTRY]\n\n{agent_registry_output}"
@@ -252,9 +325,12 @@ class OrchestratorAgent(BaseReactAgent):
 
         # Add initial user message to message history
         await add_message_to_history(
-            agent_name="orchestrator", role="user", content=query, chat_id=self.chat_id
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": "orchestrator"},
         )
-        await self.update_llm_working_memory(message_history)
+        await self.update_llm_working_memory(message_history, session_id)
         current_steps = 0
         while current_steps < self.max_steps:
             current_steps += 1
@@ -314,12 +390,15 @@ class OrchestratorAgent(BaseReactAgent):
             except Exception as e:
                 error_message = f"API error: {e}"
                 logger.error(error_message)
+                # Emit error event
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 return error_message
 
-            parsed_response = await self.extract_action_or_answer(
+            parsed_response = await self.extract_agent_action_or_answer(
                 response=response, debug=self.debug
             )
-            # check for final answe
+            # check for final answer
             if parsed_response.answer is not None:
                 # add the final answer to the message history and the messages that will be sent to LLM
                 self.orchestrator_messages.append(
@@ -329,32 +408,68 @@ class OrchestratorAgent(BaseReactAgent):
                     }
                 )
                 await add_message_to_history(
-                    agent_name="orchestrator",
                     role="assistant",
                     content=parsed_response.answer,
-                    chat_id=self.chat_id,
+                    session_id=session_id,
+                    metadata={"agent_name": "orchestrator"},
                 )
+                # Emit final answer event
+                event = Event(
+                    type=EventType.FINAL_ANSWER,
+                    payload=FinalAnswerPayload(message=parsed_response.answer),
+                    agent_name="orchestrator",
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 # reset the steps
                 current_steps = 0
                 return parsed_response.answer
 
             elif parsed_response.action is not None:
-                extract_action_json_data = await self.extract_action_json(
-                    response=response
+                # Parse the action data from the XML response
+                action_data = json.loads(parsed_response.data)
+                # Emit agent call event
+                event = Event(
+                    type=EventType.AGENT_MESSAGE,
+                    payload=AgentMessagePayload(
+                        message=f"Dispatching to agent: {action_data['agent_name']} with task: {action_data['task']}"
+                    ),
+                    agent_name="orchestrator",
                 )
-                await self.act(
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
+                # Call the agent and emit observation event after
+                observation = await self.act(
                     sessions=sessions,
-                    agent_name=extract_action_json_data["agent_name"],
-                    task=extract_action_json_data["task"],
+                    agent_name=action_data["agent_name"],
+                    task=action_data["task"],
                     add_message_to_history=add_message_to_history,
                     llm_connection=llm_connection,
-                    available_tools=available_tools,
+                    mcp_tools=mcp_tools,
                     message_history=message_history,
                     max_steps=max_steps,
                     tool_call_timeout=tool_call_timeout,
                     total_tokens_limit=total_tokens_limit,
                     request_limit=request_limit,
+                    session_id=session_id,
+                    event_router=event_router,  # Pass event_router callable
                 )
+                # Ensure observation is a string for event payload
+                if not isinstance(observation, str):
+                    observation = str(observation)
+                # Emit agent observation event
+                event = Event(
+                    type=EventType.TOOL_CALL_RESULT,
+                    payload=ToolCallResultPayload(
+                        tool_name=action_data["agent_name"],
+                        tool_args={"task": action_data["task"]},
+                        result=observation,
+                        tool_call_id=None,
+                    ),
+                    agent_name="orchestrator",
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 continue
             elif parsed_response.error is not None:
                 error_message = parsed_response.error
@@ -370,8 +485,8 @@ class OrchestratorAgent(BaseReactAgent):
                 }
             )
             await add_message_to_history(
-                agent_name="orchestrator",
                 role="user",
                 content=error_message,
-                chat_id=self.chat_id,
+                session_id=session_id,
+                metadata={"agent_name": "orchestrator"},
             )

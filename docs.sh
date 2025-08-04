@@ -48,4 +48,4 @@ case "${1:-help}" in
         echo "  ./docs.sh build     # Build for production"
         echo "  ./docs.sh deploy    # Deploy to GitHub Pages"
         ;;
-esac 
+esac

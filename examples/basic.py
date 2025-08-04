@@ -9,7 +9,7 @@ from mcpomni_connect.agents.types import AgentConfig
 from mcpomni_connect.client import Configuration, MCPClient
 from mcpomni_connect.constants import AGENTS_REGISTRY, date_time_func
 from mcpomni_connect.llm import LLMConnection
-from mcpomni_connect.memory import InMemoryShortTermMemory
+from mcpomni_connect.memory import InMemoryStore
 from mcpomni_connect.refresh_server_capabilities import (
     generate_react_agent_role_prompt_func,
 )
@@ -30,7 +30,7 @@ class MCPClientConnect:
         )["LLM"]["max_context_length"]
         self.MODE = {"auto": False, "chat": False, "orchestrator": True}
         self.client.debug = True
-        self.in_memory_short_term_memory = InMemoryShortTermMemory(
+        self.in_memory_short_term_memory = InMemoryStore(
             max_context_tokens=self.MAX_CONTEXT_TOKENS
         )
 
@@ -52,7 +52,6 @@ class MCPClientConnect:
             max_steps=15,
             request_limit=100,
             total_tokens_limit=1000000,
-            mcp_enabled=True,
         )
         if self.MODE["auto"]:
             react_agent_prompt = generate_react_agent_prompt(
@@ -62,8 +61,7 @@ class MCPClientConnect:
             extra_kwargs = {
                 "sessions": self.client.sessions,
                 "available_tools": self.client.available_tools,
-                "is_generic_agent": True,
-                "chat_id": chat_id,
+                "session_id": chat_id,
             }
             react_agent = ReactAgent(config=agent_config)
             response = await react_agent._run(
@@ -83,7 +81,7 @@ class MCPClientConnect:
             orchestrator_agent = OrchestratorAgent(
                 config=agent_config,
                 agents_registry=AGENTS_REGISTRY,
-                chat_id=chat_id,
+                session_id=chat_id,
                 current_date_time=date_time_func["format_date"](),
                 debug=self.client.debug,
             )

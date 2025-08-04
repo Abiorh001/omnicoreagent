@@ -72,18 +72,18 @@ graph TB
     A --> C[Session Management]
     A --> D[Tool Management]
     A --> E[AI Integration]
-    
+
     B --> B1[Stdio Transport]
     B --> B2[SSE Transport]
     B --> B3[Docker Integration]
-    
+
     C --> C1[Multi-Server Orchestration]
     C --> C2[Connection Lifecycle]
-    
+
     D --> D1[Dynamic Tool Discovery]
     D --> D2[Cross-Server Tool Routing]
     D --> D3[Tool Execution Engine]
-    
+
     E --> E1[LLM Processing]
     E --> E2[Context Management]
     E --> E3[Response Generation]
@@ -105,49 +105,49 @@ graph TB
 -   **🚀 Getting Started**
 
     ---
-    
+
     Installation, quick start, and basic setup instructions
-    
+
     [:octicons-arrow-right-24: Get Started](getting-started/installation.md)
 
 -   **⚙️ Configuration**
 
     ---
-    
+
     Complete configuration guide including transport types and authentication
-    
+
     [:octicons-arrow-right-24: Configure](configuration/configuration-guide.md)
 
 -   **📚 User Guide**
 
     ---
-    
+
     Detailed usage instructions, commands, and operation modes
-    
+
     [:octicons-arrow-right-24: Learn](user-guide/basic-usage.md)
 
 -   **🎯 Features**
 
     ---
-    
+
     Deep dive into agent systems, tool orchestration, and advanced features
-    
+
     [:octicons-arrow-right-24: Explore](features/agent-system.md)
 
 -   **🔧 Advanced**
 
     ---
-    
+
     Architecture details, API reference, and advanced examples
-    
+
     [:octicons-arrow-right-24: Advanced](advanced/architecture.md)
 
 -   **👨‍💻 Development**
 
     ---
-    
+
     Testing, contributing, and development guidelines
-    
+
     [:octicons-arrow-right-24: Contribute](development/contributing.md)
 
 </div>
@@ -170,4 +170,4 @@ MCPOmni Connect excels in scenarios requiring:
 
 ---
 
-*Ready to connect your AI to everything? Let's get started!* 🚀 
+*Ready to connect your AI to everything? Let's get started!* 🚀

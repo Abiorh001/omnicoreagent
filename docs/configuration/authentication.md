@@ -299,7 +299,7 @@ CUSTOM_SECRET=custom-secret-456
 
 !!! failure "OAuth Server Error"
     **Error**: `Failed to start OAuth callback server`
-    
+
     **Solutions**:
     - Check if port 3000 is available
     - Stop other applications using port 3000
@@ -307,7 +307,7 @@ CUSTOM_SECRET=custom-secret-456
 
 !!! failure "Invalid Token"
     **Error**: `401 Unauthorized`
-    
+
     **Solutions**:
     - Verify token is correct and not expired
     - Check token has required permissions
@@ -315,7 +315,7 @@ CUSTOM_SECRET=custom-secret-456
 
 !!! failure "Missing Headers"
     **Error**: `Authentication headers missing`
-    
+
     **Solutions**:
     - Verify all required headers are configured
     - Check header names match server requirements
@@ -397,4 +397,4 @@ curl -H "Authorization: Bearer your-token" \
 
 ---
 
-**Next**: [Troubleshooting →](troubleshooting.md) 
+**Next**: [Troubleshooting →](troubleshooting.md)

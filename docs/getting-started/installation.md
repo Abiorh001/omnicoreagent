@@ -119,12 +119,12 @@ Once installation is complete:
 
 !!! failure "Python Version Error"
     **Error**: `MCPOmni Connect requires Python 3.10+`
-    
+
     **Solution**: Upgrade your Python version:
     ```bash
     # Check available Python versions
     python3.10 --version  # or python3.11, python3.12
-    
+
     # Use specific Python version with UV
     uv python install 3.11
     uv add mcpomni-connect
@@ -132,7 +132,7 @@ Once installation is complete:
 
 !!! failure "Permission Denied"
     **Error**: Permission denied during installation
-    
+
     **Solution**: Use user installation:
     ```bash
     pip install --user mcpomni-connect
@@ -140,12 +140,12 @@ Once installation is complete:
 
 !!! failure "Command Not Found"
     **Error**: `mcpomni_connect: command not found`
-    
+
     **Solution**: Add to PATH or use full path:
     ```bash
     # Check installation path
     pip show mcpomni-connect
-    
+
     # Or run with python -m
     python -m mcpomni_connect
     ```
@@ -164,4 +164,4 @@ If you encounter issues:
 
 ---
 
-**Next**: [Quick Start Guide →](quick-start.md) 
+**Next**: [Quick Start Guide →](quick-start.md)

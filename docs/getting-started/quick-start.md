@@ -52,7 +52,7 @@ You should see the MCPOmni Connect CLI start up:
 Connected to 0 MCP servers
 Mode: CHAT (type /mode:auto for autonomous mode)
 
-> 
+>
 ```
 
 ## Step 3: Test Basic Functionality
@@ -187,21 +187,21 @@ Now that you have MCPOmni Connect running:
 
 !!! failure "Connection Failed"
     If you see "Failed to connect to server":
-    
+
     1. Check your `servers_config.json` syntax
     2. Verify the MCP server is actually running
     3. See the [troubleshooting guide](../configuration/troubleshooting.md)
 
 !!! failure "API Key Error"
     If you see "Invalid API key":
-    
+
     1. Verify your `.env` file contains the correct key
     2. Check you're using the right provider in `servers_config.json`
     3. Ensure the API key has proper permissions
 
 !!! failure "Command Not Found"
     If `mcpomni_connect` command isn't found:
-    
+
     1. Try `python -m mcpomni_connect`
     2. Check your PATH includes the installation directory
     3. Reinstall with `pip install --user mcpomni-connect`
@@ -215,4 +215,4 @@ Now that you have MCPOmni Connect running:
 
 **Congratulations!** 🎉 You now have MCPOmni Connect running. Ready to explore more advanced features?
 
-**Next**: [Configuration Guide →](../configuration/configuration-guide.md) 
+**Next**: [Configuration Guide →](../configuration/configuration-guide.md)

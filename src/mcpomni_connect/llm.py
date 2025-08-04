@@ -4,13 +4,21 @@ from typing import Any
 from dotenv import load_dotenv
 import litellm
 from mcpomni_connect.utils import logger
+import warnings
+from pydantic import BaseModel
+
+warnings.filterwarnings(
+    "ignore", message="Pydantic serializer warnings", module="pydantic.main"
+)
+
 
 load_dotenv()
 
 
 class LLMConnection:
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], config_filename: str):
         self.config = config
+        self.config_filename = config_filename
         self.llm_config = None
 
         # Set LiteLLM API key
@@ -27,9 +35,17 @@ class LLMConnection:
             self.llm_configuration()
             logger.info(f"LLM configuration: {self.llm_config}")
 
+    def get_loaded_config(self):
+        """Get the already-loaded configuration without reloading it"""
+        if not hasattr(self, "_loaded_config"):
+            self._loaded_config = self.config.load_config(self.config_filename)
+        return self._loaded_config
+
     def llm_configuration(self):
         """Load the LLM configuration"""
-        llm_config = self.config.load_config("servers_config.json")["LLM"]
+        # Use cached config if available, otherwise load it
+        config = self.get_loaded_config()
+        llm_config = config["LLM"]
         try:
             provider = llm_config.get("provider", "openai")
             model = llm_config.get("model", "gpt-4o-mini")
@@ -83,6 +99,24 @@ class LLMConnection:
             logger.error(f"Error loading LLM configuration: {e}")
             return None
 
+    def to_dict(self, msg):
+        if hasattr(msg, "model_dump"):
+            msg_dict = msg.model_dump(exclude_none=True)
+            # Fix timestamp for OpenAI compatibility
+            if "timestamp" in msg_dict and hasattr(msg_dict["timestamp"], "timestamp"):
+                # Convert timezone-aware datetime to timestamp (float)
+                msg_dict["timestamp"] = msg_dict["timestamp"].timestamp()
+            elif "timestamp" in msg_dict and hasattr(msg_dict["timestamp"], "tzinfo"):
+                # Convert timezone-aware datetime to timestamp (float)
+                msg_dict["timestamp"] = msg_dict["timestamp"].timestamp()
+            return msg_dict
+        elif isinstance(msg, dict):
+            return msg
+        elif hasattr(msg, "__dict__"):
+            return {k: v for k, v in msg.__dict__.items() if v is not None}
+        else:
+            return msg
+
     async def llm_call(
         self,
         messages: list[Any],
@@ -90,18 +124,7 @@ class LLMConnection:
     ):
         """Call the LLM using LiteLLM"""
         try:
-            # Convert Message objects to dicts before sending to LiteLLM
-            def to_dict(msg):
-                if hasattr(msg, "model_dump"):
-                    return msg.model_dump(exclude_none=True)
-                elif isinstance(msg, dict):
-                    return msg
-                elif hasattr(msg, "__dict__"):
-                    return {k: v for k, v in msg.__dict__.items() if v is not None}
-                else:
-                    return msg
-
-            messages_dicts = [to_dict(m) for m in messages]
+            messages_dicts = [self.to_dict(m) for m in messages]
 
             # Prepare the parameters for LiteLLM
             params = {
@@ -124,9 +147,40 @@ class LLMConnection:
 
             # Call LiteLLM
             response = await litellm.acompletion(**params)
-
             return response
 
         except Exception as e:
             logger.error(f"Error calling LLM: {e}")
+            return None
+
+    def llm_call_sync(
+        self,
+        messages: list[Any],
+        tools: list[dict[str, Any]] = None,
+    ):
+        """Synchronous call to the LLM using LiteLLM"""
+        try:
+            messages_dicts = [self.to_dict(m) for m in messages]
+
+            params = {
+                "model": self.llm_config["model"],
+                "messages": messages_dicts,
+                "max_tokens": self.llm_config["max_tokens"],
+                "temperature": self.llm_config["temperature"],
+                "top_p": self.llm_config["top_p"],
+            }
+
+            if tools:
+                params["tools"] = tools
+                params["tool_choice"] = "auto"
+
+            if self.llm_config["provider"].lower() == "openrouter":
+                if not tools:
+                    params["stop"] = ["\n\nObservation:"]
+
+            response = litellm.completion(**params)
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in sync LLM call: {e}")
             return None

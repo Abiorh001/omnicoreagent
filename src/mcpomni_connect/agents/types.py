@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
-
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 
@@ -12,7 +12,7 @@ class AgentConfig(BaseModel):
     total_tokens_limit: int
     max_steps: int = Field(gt=0, le=1000)
     tool_call_timeout: int = Field(gt=1, le=1000)
-    mcp_enabled: bool = False
+    memory_config: dict = {"mode": "sliding_window", "value": 10000}
 
 
 class AgentState(str, Enum):
@@ -40,6 +40,7 @@ class ToolCallMetadata(BaseModel):
     has_tool_calls: bool = False
     tool_calls: list[ToolCall] = []
     tool_call_id: UUID | None = None
+    agent_name: str | None = None
 
 
 class Message(BaseModel):
@@ -48,6 +49,34 @@ class Message(BaseModel):
     tool_call_id: str = None
     tool_calls: str = None
     metadata: ToolCallMetadata | None = None
+    timestamp: datetime = None
+
+    def __init__(self, **data):
+        # Always set proper timezone-aware datetime if not provided or invalid
+        if "timestamp" not in data or data["timestamp"] is None:
+            # No timestamp provided - use current UTC time
+            data["timestamp"] = datetime.now(timezone.utc)
+        else:
+            ts = data["timestamp"]
+            if isinstance(ts, (int, float)):
+                # Convert timestamp to timezone-aware datetime
+                if ts < 946684800:  # Before year 2000 - probably bad
+                    data["timestamp"] = datetime.now(timezone.utc)
+                else:
+                    data["timestamp"] = datetime.fromtimestamp(ts, tz=timezone.utc)
+            elif isinstance(ts, datetime):
+                # Ensure datetime is timezone-aware UTC
+                if ts.tzinfo is None:
+                    if ts.year < 2000:
+                        data["timestamp"] = datetime.now(timezone.utc)
+                    else:
+                        # Assume naive datetime is UTC
+                        data["timestamp"] = ts.replace(tzinfo=timezone.utc)
+                else:
+                    # Convert to UTC if it has timezone info
+                    data["timestamp"] = ts.astimezone(timezone.utc)
+
+        super().__init__(**data)
 
 
 class ParsedResponse(BaseModel):

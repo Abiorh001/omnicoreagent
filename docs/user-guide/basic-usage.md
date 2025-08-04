@@ -24,7 +24,7 @@ When you start MCPOmni Connect, you'll see:
 Connected to 3 MCP servers: filesystem, database, notifications
 Mode: CHAT (type /mode:auto for autonomous mode)
 
-> 
+>
 ```
 
 ### Interface Elements
@@ -289,7 +289,7 @@ Deploy the latest changes to the staging environment
 
 > Can you help me find all Python files in this project?
 
-I'll help you find Python files. Let me list the directory contents 
+I'll help you find Python files. Let me list the directory contents
 and look for .py files.
 
 🔧 Tool: list_directory
@@ -432,4 +432,4 @@ Solutions:
 
 ---
 
-**Next**: [Operation Modes →](operation-modes.md) 
+**Next**: [Operation Modes →](operation-modes.md)

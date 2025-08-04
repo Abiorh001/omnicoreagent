@@ -13,7 +13,6 @@ class ReactAgent(BaseReactAgent):
             tool_call_timeout=config.tool_call_timeout,
             request_limit=config.request_limit,
             total_tokens_limit=config.total_tokens_limit,
-            mcp_enabled=config.mcp_enabled,
         )
 
     async def _run(
@@ -23,6 +22,7 @@ class ReactAgent(BaseReactAgent):
         llm_connection: Callable,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         message_history: Callable[[], Any],
+        event_router: Callable,
         debug: bool = False,
         **kwargs,
     ):
@@ -32,11 +32,11 @@ class ReactAgent(BaseReactAgent):
             llm_connection=llm_connection,
             add_message_to_history=add_message_to_history,
             message_history=message_history,
+            event_router=event_router,
             debug=debug,
             sessions=kwargs.get("sessions"),
-            available_tools=kwargs.get("available_tools"),
-            tools_registry=kwargs.get("tools_registry"),
-            is_generic_agent=kwargs.get("is_generic_agent"),
-            chat_id=kwargs.get("chat_id"),
+            mcp_tools=kwargs.get("mcp_tools"),
+            local_tools=kwargs.get("local_tools"),  # Pass local tools
+            session_id=kwargs.get("session_id"),
         )
         return response

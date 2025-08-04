@@ -13,6 +13,8 @@ servers_config.json
 *.log
 *.log.*
 qdrant_db/
-
+*.db
 # MkDocs
 site/
+.chroma_db/
+venv/

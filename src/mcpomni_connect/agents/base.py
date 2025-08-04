@@ -31,8 +31,25 @@ from mcpomni_connect.utils import (
     RobustLoopDetector,
     handle_stuck_state,
     logger,
-    strip_json_comments,
     show_tool_response,
+)
+from mcpomni_connect.events.base import (
+    Event,
+    EventType,
+    ToolCallErrorPayload,
+    ToolCallStartedPayload,
+    ToolCallResultPayload,
+    FinalAnswerPayload,
+    AgentMessagePayload,
+    UserMessagePayload,
+)
+from mcpomni_connect.memory_store.memory_management.memory_manager import (
+    fire_and_forget_memory_processing,
+    MemoryManagerFactory,
+)
+import traceback
+from mcpomni_connect.memory_store.memory_management.shared_embedding import (
+    is_vector_db_enabled,
 )
 
 
@@ -46,14 +63,18 @@ class BaseReactAgent:
         tool_call_timeout: int,
         request_limit: int,
         total_tokens_limit: int,
-        mcp_enabled: bool,
     ):
         self.agent_name = agent_name
-        self.max_steps = max_steps
+        # Enforce minimum 5 steps to allow proper tool usage and reasoning
+        self.max_steps = max(max_steps, 5)
+        if max_steps < 5:
+            logger.warning(
+                f"Agent {agent_name}: max_steps increased from {max_steps} to 5 (minimum required for tool usage)"
+            )
         self.tool_call_timeout = tool_call_timeout
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
-        self.mcp_enabled = mcp_enabled
+
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
 
@@ -64,121 +85,156 @@ class BaseReactAgent:
             request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
         )
 
-    async def extract_action_json(self, response: str) -> dict[str, Any]:
-        """
-        Extract a JSON-formatted action from a model response string.
-        Returns a dictionary with the parsed content or an error structure.
-        """
+    async def get_long_episodic_memory(self, query: str, session_id: str):
+        """Get long-term and episodic memory for a given query and session ID using optimized single query"""
         try:
-            action_start = response.find("Action:")
-            if action_start == -1:
-                return {
-                    "error": "No 'Action:' section found in response",
-                    "action": False,
-                }
+            # Check if vector database is enabled
 
-            action_text = response[action_start + len("Action:") :].strip()
+            if not is_vector_db_enabled():
+                return [], []
 
-            # Find start of JSON
-            if "{" not in action_text:
-                return {
-                    "error": "No JSON object found after 'Action:'",
-                    "action": False,
-                }
+            # Create both memory managers
+            episodic_manager, long_term_manager = (
+                MemoryManagerFactory.create_both_memory_managers(session_id=session_id)
+            )
 
-            json_start = action_text.find("{")
-            json_text = action_text[json_start:]
+            # Query both memory types
+            episodic_results = await episodic_manager.query_memory(
+                query, n_results=3, distance_threshold=0.4
+            )
 
-            # Track balanced braces
-            open_braces = 0
-            json_end_pos = 0
+            long_term_results = await long_term_manager.query_memory(
+                query, n_results=3, distance_threshold=0.4
+            )
 
-            for i, char in enumerate(json_text):
-                if char == "{":
-                    open_braces += 1
-                elif char == "}":
-                    open_braces -= 1
-                    if open_braces == 0:
-                        json_end_pos = i + 1
-                        break
-
-            if json_end_pos == 0:
-                return {"error": "Unbalanced JSON braces", "action": False}
-
-            json_str = json_text[:json_end_pos]
-
-            # Clean up LLM quirks safely
-            json_str = strip_json_comments(json_str)
-            json_str = re.sub(r",\s*([\]}])", r"\1", json_str)
-
-            logger.debug("Extracted JSON: %s", json_str)
-
-            return {"action": True, "data": json_str}
-
-        except json.JSONDecodeError as e:
-            logger.error("JSON decode error: %s", str(e))
-            return {"error": f"Invalid JSON format: {str(e)}", "action": False}
-
+            return long_term_results, episodic_results
         except Exception as e:
-            logger.error("Error parsing response: %s", str(e))
-            return {"error": str(e), "action": False}
+            logger.error(f"❌ Failed to retrieve memory for session {session_id}: {e}")
+            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
+            return (
+                "No relevant long-term memory found",
+                "No relevant episodic memory found",
+            )
 
     async def extract_action_or_answer(
         self,
         response: str,
         debug: bool = False,
     ) -> ParsedResponse:
-        """Parse LLM response to extract a final answer or a tool action."""
+        """Parse LLM response to extract a final answer or a tool action using XML format only."""
         try:
-            # Final answer present
-            if "Final Answer:" in response or "Answer:" in response:
+            # Check for XML-style tool call format first
+            if "<tool_call>" in response and "</tool_call>" in response:
                 if debug:
-                    logger.info("Final answer detected in response: %s", response)
+                    logger.info(
+                        "XML tool call format detected in response: %s", response
+                    )
+                try:
+                    # Extract single tool call
+                    tool_call_match = re.search(
+                        r"<tool_call>(.*?)</tool_call>", response, re.DOTALL
+                    )
+                    if not tool_call_match:
+                        return ParsedResponse(error="No valid <tool_call> block found")
 
-                parts = re.split(
-                    r"(?:Final Answer:|Answer:)", response, flags=re.IGNORECASE
+                    block = tool_call_match.group(1)
+
+                    name_match = re.search(
+                        r"<tool_name>(.*?)</tool_name>", block, re.DOTALL
+                    )
+                    args_match = re.search(
+                        r"<parameters>(.*?)</parameters>", block, re.DOTALL
+                    )
+
+                    if name_match and args_match:
+                        tool_name = name_match.group(1).strip()
+                        args_str = args_match.group(1).strip()
+
+                        try:
+                            # Handle both JSON format and XML parameter format
+                            if args_str.startswith("{") and args_str.endswith("}"):
+                                # JSON format
+                                args = json.loads(args_str)
+                            else:
+                                # XML parameter format - extract key-value pairs
+                                args = {}
+                                param_matches = re.findall(
+                                    r"<(\w+)>(.*?)</\1>", args_str, re.DOTALL
+                                )
+                                for key, value in param_matches:
+                                    args[key] = value.strip()
+
+                            tool_call = {"tool": tool_name, "parameters": args}
+                        except json.JSONDecodeError as e:
+                            return ParsedResponse(
+                                error=f"Invalid JSON in args: {str(e)}"
+                            )
+                    else:
+                        return ParsedResponse(
+                            error="Invalid tool call format - missing tool name or parameters"
+                        )
+
+                    # Create JSON format for compatibility with existing code
+                    action_json = json.dumps(tool_call)
+
+                    return ParsedResponse(action=True, data=action_json)
+
+                except Exception as e:
+                    logger.error("Error parsing XML tool call: %s", str(e))
+                    return ParsedResponse(
+                        error=f"Error parsing XML tool call: {str(e)}"
+                    )
+
+            # Check for XML final answer format
+            if "<final_answer>" in response and "</final_answer>" in response:
+                if debug:
+                    logger.info(
+                        "XML final answer format detected in response: %s", response
+                    )
+                final_answer_match = re.search(
+                    r"<final_answer>(.*?)</final_answer>", response, re.DOTALL
                 )
-                if len(parts) > 1:
-                    return ParsedResponse(answer=parts[-1].strip())
-
-            # Tool action present
-            if "Action" in response:
-                if debug:
-                    logger.info("Tool action detected in response: %s", response)
-
-                action_result = await self.extract_action_json(response=response)
-
-                if action_result.get("action"):
-                    return ParsedResponse(
-                        action=action_result.get("action"),
-                        data=action_result.get("data"),
-                    )
-                elif "error" in action_result:
-                    return ParsedResponse(error=action_result["error"])
+                if final_answer_match:
+                    answer = final_answer_match.group(1).strip()
+                    return ParsedResponse(answer=answer)
                 else:
-                    return ParsedResponse(
-                        error="No valid action or answer found in response"
-                    )
+                    return ParsedResponse(error="Invalid XML final answer format")
 
-            # Fallback to raw response
+            # If no XML format detected, treat as conversational response
             if debug:
-                logger.info("Returning raw response as answer: %s", response)
+                logger.info(
+                    "No XML format detected, treating as conversational response: %s",
+                    response,
+                )
 
-            return ParsedResponse(answer=response.strip())
+            # Check if response contains any XML tags at all
+            if "<" in response and ">" in response:
+                # Has some XML but not the required format - return error
+                return ParsedResponse(
+                    error="Response contains XML tags but not in the required format. You MUST use <thought> and <final_answer> tags for all responses."
+                )
+
+            # No XML at all - return error
+            return ParsedResponse(
+                error="Response must use XML format. You MUST wrap your response in <thought> and <final_answer> tags. Example: <thought>Your reasoning here</thought><final_answer>Your answer here</final_answer>"
+            )
 
         except Exception as e:
             logger.error("Error parsing model response: %s", str(e))
             return ParsedResponse(error=str(e))
 
     async def update_llm_working_memory(
-        self, message_history: Callable[[], Any], chat_id: str
+        self,
+        message_history: Callable[[], Any],
+        session_id: str,
+        llm_connection: Callable,
     ):
-        """Update the LLM's working memory with the current message history"""
+        """Update the LLM's working memory with the current message history and process memory asynchronously"""
+
         short_term_memory_message_history = await message_history(
-            agent_name=self.agent_name, chat_id=chat_id
+            agent_name=self.agent_name, session_id=session_id
         )
         if not short_term_memory_message_history:
-            logger.warning(f"No message history found for agent: {self.agent_name}")
             return
 
         validated_messages = [
@@ -186,35 +242,30 @@ class BaseReactAgent:
             for msg in short_term_memory_message_history
         ]
 
+        try:
+            # Create long-term and episodic memory processor (background task)
+            fire_and_forget_memory_processing(
+                session_id, validated_messages, llm_connection
+            )
+        except ImportError as e:
+            logger.warning(f"⚠️ Memory processing not available: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error in memory processing: {e}")
+            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
         for message in validated_messages:
             role = message.role
             metadata = message.metadata
             if role == "user":
                 # Flush any pending assistant-tool-call + responses before new "user" message
-                if self.assistant_with_tool_calls:
-                    self.messages[self.agent_name].append(
-                        self.assistant_with_tool_calls
-                    )
-                    self.messages[self.agent_name].extend(self.pending_tool_responses)
-                    self.assistant_with_tool_calls = None
-                    self.pending_tool_responses = []
-
+                self._try_flush_pending()
                 self.messages[self.agent_name].append(
                     Message(role="user", content=message.content)
                 )
 
             elif role == "assistant":
                 if metadata.has_tool_calls:
-                    # If we already have a pending assistant with tool calls, flush it
-                    if self.assistant_with_tool_calls:
-                        self.messages[self.agent_name].append(
-                            self.assistant_with_tool_calls
-                        )
-                        self.messages[self.agent_name].extend(
-                            self.pending_tool_responses
-                        )
-                        self.pending_tool_responses = []
-
+                    # If we already have a pending assistant with tool calls, try to flush it
+                    self._try_flush_pending()
                     # Store this assistant message for later (until we collect all tool responses)
                     self.assistant_with_tool_calls = {
                         "role": "assistant",
@@ -225,81 +276,137 @@ class BaseReactAgent:
                             else []
                         ),
                     }
+                    self.pending_tool_responses = []
                 else:
                     # Regular assistant message without tool calls
                     # First flush any pending tool calls
-                    if self.assistant_with_tool_calls:
-                        self.messages[self.agent_name].append(
-                            self.assistant_with_tool_calls
-                        )
-                        self.messages[self.agent_name].extend(
-                            self.pending_tool_responses
-                        )
-                        self.assistant_with_tool_calls = None
-                        self.pending_tool_responses = []
-
+                    self._try_flush_pending()
                     self.messages[self.agent_name].append(
                         Message(role="assistant", content=message.content)
                     )
 
-            elif role == "tool" and hasattr(metadata, "tool_call_id"):
-                # Collect tool responses
-                # Only add if we have a preceding assistant message with tool calls
-                if self.assistant_with_tool_calls:
-                    self.pending_tool_responses.append(
-                        {
-                            "role": "tool",
-                            "content": message.content,
-                            "tool_call_id": str(metadata.tool_call_id),
-                        }
-                    )
+            elif role == "tool":
+                self.pending_tool_responses.append(
+                    {
+                        "role": "tool",
+                        "content": message.content,
+                        "tool_call_id": metadata.tool_call_id,
+                    }
+                )
+                # After adding, try to flush if all responses are present
+                self._try_flush_pending()
 
             elif role == "system":
+                self._try_flush_pending()
                 self.messages[self.agent_name].append(
                     Message(role="system", content=message.content)
                 )
 
             else:
-                logger.warning(f"Unknown message role encountered: {role}")
+                logger.warning(f"⚠️ Unknown message role encountered: {role}")
+
+    def _try_flush_pending(self):
+        if self.assistant_with_tool_calls:
+            expected_tool_calls = {
+                tc["id"] for tc in self.assistant_with_tool_calls.get("tool_calls", [])
+            }
+            actual_tool_calls = {
+                resp["tool_call_id"] for resp in self.pending_tool_responses
+            }
+            missing = expected_tool_calls - actual_tool_calls
+            if not missing:
+                self.messages[self.agent_name].append(self.assistant_with_tool_calls)
+                self.messages[self.agent_name].extend(self.pending_tool_responses)
+                self.assistant_with_tool_calls = None
+                self.pending_tool_responses = []
 
     async def resolve_tool_call_request(
         self,
         parsed_response: ParsedResponse,
         sessions: dict,
-        available_tools: dict,
-        tools_registry: dict,
+        mcp_tools: dict,
+        local_tools: Any = None,  # LocalToolsIntegration instance
     ) -> ToolError | ToolCallResult:
-        if self.mcp_enabled:
-            mcp_tool_handler = MCPToolHandler(
-                sessions=sessions,
-                tool_data=parsed_response.data,
-                available_tools=available_tools,
-            )
-            tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
-            tool_data = await mcp_tool_handler.validate_tool_call_request(
-                tool_data=parsed_response.data,
-                available_tools=available_tools,
-            )
-        else:
-            local_tool_handler = LocalToolHandler(tools_registry=tools_registry)
-            tool_executor = ToolExecutor(tool_handler=local_tool_handler)
-            tool_data = await local_tool_handler.validate_tool_call_request(
-                tool_data=parsed_response.data,
-                available_tools=tools_registry,
-            )
+        """
+        Resolve tool call request for both MCP and local tools.
 
-        if not tool_data.get("action"):
+        Args:
+            parsed_response: Parsed response from LLM
+            sessions: MCP sessions dict
+            mcp_tools: MCP tools dict
+            local_tools: LocalToolsIntegration instance for local tool execution
+        """
+        try:
+            action = json.loads(parsed_response.data)
+            tool_name = action.get("tool", "").strip()
+            tool_args = action.get("parameters", {})
+
+            if not tool_name:
+                return ToolError(
+                    observation="No tool name provided in the request",
+                    tool_name="N/A",
+                    tool_args=tool_args,
+                )
+
+            # First, check if tool exists in MCP tools
+            mcp_tool_found = False
+            if mcp_tools:
+                for server_name, tools in mcp_tools.items():
+                    for tool in tools:
+                        if tool.name.lower() == tool_name.lower():
+                            # MCP tool found
+                            mcp_tool_handler = MCPToolHandler(
+                                sessions=sessions,
+                                tool_data=parsed_response.data,
+                                mcp_tools=mcp_tools,
+                            )
+                            tool_executor = ToolExecutor(tool_handler=mcp_tool_handler)
+                            tool_data = (
+                                await mcp_tool_handler.validate_tool_call_request(
+                                    tool_data=parsed_response.data,
+                                    mcp_tools=mcp_tools,
+                                )
+                            )
+                            mcp_tool_found = True
+                            break
+                    if mcp_tool_found:
+                        break
+
+            # If not found in MCP tools, check local tools
+            if not mcp_tool_found and local_tools:
+                local_tool_handler = LocalToolHandler(local_tools=local_tools)
+                tool_executor = ToolExecutor(tool_handler=local_tool_handler)
+                tool_data = await local_tool_handler.validate_tool_call_request(
+                    tool_data=parsed_response.data,
+                    local_tools=local_tools,
+                )
+            elif not mcp_tool_found:
+                # Tool not found in either MCP or local tools
+                return ToolError(
+                    observation=f"The tool named '{tool_name}' does not exist in the available tools.",
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                )
+
+            if not tool_data.get("action"):
+                return ToolError(
+                    observation=tool_data.get("error", "Tool validation failed"),
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                )
+
+            return ToolCallResult(
+                tool_executor=tool_executor,
+                tool_name=tool_data.get("tool_name"),
+                tool_args=tool_data.get("tool_args"),
+            )
+        except Exception as e:
+            logger.error(f"Error resolving tool call request: {e}")
             return ToolError(
-                observation=tool_data.get("error", "N/A"),
-                tool_name=tool_data.get("tool_name", "N/A"),
-                tool_args=tool_data.get("tool_args", None),
+                observation=f"Error resolving tool call request: {e}",
+                tool_name="unknown",
+                tool_args={},
             )
-
-        return ToolCallResult(
-            tool_executor=tool_executor,
-            tool_name=tool_data.get("tool_name"),
-            tool_args=tool_data.get("tool_args"),
-        )
 
     async def act(
         self,
@@ -309,24 +416,37 @@ class BaseReactAgent:
         system_prompt: str,
         debug: bool = False,
         sessions: dict = None,
-        available_tools: dict = None,
-        tools_registry: dict = None,
-        chat_id: str = None,
+        mcp_tools: dict = None,
+        local_tools: Any = None,  # LocalToolsIntegration instance
+        session_id: str = None,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ):
         tool_call_result = await self.resolve_tool_call_request(
             parsed_response=parsed_response,
-            available_tools=available_tools,
+            mcp_tools=mcp_tools,
             sessions=sessions,
-            tools_registry=tools_registry,
+            local_tools=local_tools,
         )
 
         # Early exit on tool validation failure
         if isinstance(tool_call_result, ToolError):
             observation = tool_call_result.observation
+            event = Event(
+                type=EventType.TOOL_CALL_ERROR,
+                payload=ToolCallErrorPayload(
+                    tool_name=tool_call_result.tool_name,
+                    error_message=observation,
+                ),
+                agent_name=self.agent_name,
+            )
+            if event_router:
+                await event_router(session_id=session_id, event=event)
+
         else:
             # Create proper tool call metadata
             tool_call_id = str(uuid.uuid4())
             tool_calls_metadata = ToolCallMetadata(
+                agent_name=self.agent_name,
                 has_tool_calls=True,
                 tool_call_id=tool_call_id,
                 tool_calls=[
@@ -339,13 +459,23 @@ class BaseReactAgent:
                     )
                 ],
             )
-
-            await add_message_to_history(
+            # Add tool call started event
+            event = Event(
+                type=EventType.TOOL_CALL_STARTED,
+                payload=ToolCallStartedPayload(
+                    tool_name=tool_call_result.tool_name,
+                    tool_args=tool_call_result.tool_args,
+                    tool_call_id=tool_call_id,
+                ),
                 agent_name=self.agent_name,
+            )
+            if event_router:
+                await event_router(session_id=session_id, event=event)
+            await add_message_to_history(
                 role="assistant",
                 content=response,
-                metadata=tool_calls_metadata,
-                chat_id=chat_id,
+                metadata=tool_calls_metadata.model_dump(),
+                session_id=session_id,
             )
 
             try:
@@ -356,7 +486,7 @@ class BaseReactAgent:
                         tool_name=tool_call_result.tool_name,
                         tool_call_id=tool_call_id,
                         add_message_to_history=add_message_to_history,
-                        chat_id=chat_id,
+                        session_id=session_id,
                     )
                     try:
                         parsed = json.loads(observation)
@@ -370,6 +500,19 @@ class BaseReactAgent:
                         observation = f"Error: {parsed['message']}"
                     else:
                         observation = str(parsed["data"])
+                # Handle tool call result event
+                event = Event(
+                    type=EventType.TOOL_CALL_RESULT,
+                    payload=ToolCallResultPayload(
+                        tool_name=tool_call_result.tool_name,
+                        tool_args=tool_call_result.tool_args,
+                        result=observation,
+                        tool_call_id=tool_call_id,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
 
             except asyncio.TimeoutError:
                 observation = (
@@ -377,12 +520,25 @@ class BaseReactAgent:
                 )
                 logger.warning(observation)
                 await add_message_to_history(
-                    agent_name=self.agent_name,
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id},
-                    chat_id=chat_id,
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "agent_name": self.agent_name,
+                    },
+                    session_id=session_id,
                 )
+                # handle tool call timeout event
+                event = Event(
+                    type=EventType.TOOL_CALL_ERROR,
+                    payload=ToolCallErrorPayload(
+                        tool_name=tool_call_result.tool_name,
+                        error_message=observation,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -393,13 +549,25 @@ class BaseReactAgent:
                 observation = f"Error executing tool: {str(e)}"
                 logger.error(observation)
                 await add_message_to_history(
-                    agent_name=self.agent_name,
                     role="tool",
                     content=observation,
-                    metadata={"tool_call_id": tool_call_id},
-                    chat_id=chat_id,
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "agent_name": self.agent_name,
+                    },
+                    session_id=session_id,
                 )
-
+                # handle tool call error event
+                event = Event(
+                    type=EventType.TOOL_CALL_ERROR,
+                    payload=ToolCallErrorPayload(
+                        tool_name=tool_call_result.tool_name,
+                        error_message=observation,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
                 self.messages[self.agent_name].append(
                     Message(
                         role="user",
@@ -427,10 +595,10 @@ class BaseReactAgent:
             )
         )
         await add_message_to_history(
-            agent_name=self.agent_name,
             role="user",
             content=f"OBSERVATION(RESULT FROM {tool_call_result.tool_name} TOOL CALL): \n{observation}",
-            chat_id=chat_id,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
         if debug:
             logger.info(
@@ -448,14 +616,26 @@ class BaseReactAgent:
             loop_message = (
                 f"Observation:\n"
                 f"⚠️ Tool call loop detected: {loop_type}\n\n"
-                f"Current approach is not working. Please:\n"
-                f"1. Analyze why the previous attempts failed\n"
-                f"2. Try a completely different tool or approach\n"
-                f"3. If stuck, explain the issue to the user\n"
-                f"4. Consider breaking down the task into smaller steps\n"
-                f"5. Check if the tool parameters need adjustment\n"
-                f"6. If the issue persists, stop immediately.\n"
+                f"Current approach is not working. You MUST now provide a final answer to the user.\n"
+                f"Please:\n"
+                f"1. Stop trying the same approach\n"
+                f"2. Provide your best response to the user based on what you know\n"
+                f"3. Use <final_answer>Your response here</final_answer> format\n"
+                f"4. Be helpful and explain any limitations if needed\n"
+                f"5. Do NOT continue with more tool calls\n"
+                f"\nYou MUST respond with <final_answer> tags now.\n"
             )
+            # handle loop detection event
+            event = Event(
+                type=EventType.TOOL_CALL_ERROR,
+                payload=ToolCallErrorPayload(
+                    tool_name=tool_call_result.tool_name,
+                    error_message=loop_message,
+                ),
+                agent_name=self.agent_name,
+            )
+            if event_router:
+                await event_router(session_id=session_id, event=event)
             self.messages[self.agent_name].append(
                 Message(role="user", content=loop_message)
             )
@@ -491,41 +671,74 @@ class BaseReactAgent:
             self.state = previous_state
 
     async def get_tools_registry(
-        self, available_tools: dict, agent_name: str = None
+        self, mcp_tools: dict = None, local_tools: Any = None
     ) -> str:
         tools_section = []
         try:
-            if agent_name:
-                tools = available_tools.get(agent_name, [])
-            else:
-                # Flatten all tools across agents (ignoring server/agent names)
-                tools = [
-                    tool
-                    for tools_list in available_tools.values()
-                    for tool in tools_list
-                ]
+            # Process MCP tools
+            if mcp_tools:
+                for server_name, tools in mcp_tools.items():
+                    if not tools:
+                        continue
 
-            for tool in tools:
-                tool_name = str(tool.name)
-                tool_description = str(tool.description)
-                tool_md = f"### `{tool_name}`\n{tool_description}"
+                    # Add server header
+                    tools_section.append(f"## {server_name.upper()} TOOLS (MCP)")
 
-                if hasattr(tool, "inputSchema") and tool.inputSchema:
-                    params = tool.inputSchema.get("properties", {})
-                    if params:
-                        tool_md += "\n\n**Parameters:**\n"
-                        tool_md += "| Name | Type | Description |\n"
-                        tool_md += "|------|------|-------------|\n"
-                        for param_name, param_info in params.items():
-                            param_desc = param_info.get(
-                                "description", "**No description**"
-                            )
-                            param_type = param_info.get("type", "any")
-                            tool_md += (
-                                f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-                            )
+                    # Handle MCP Tool objects
+                    for tool in tools:
+                        if hasattr(tool, "name"):  # MCP Tool object
+                            tool_name = str(tool.name)
+                            tool_description = str(tool.description)
 
-                tools_section.append(tool_md)
+                            tool_md = f"### `{tool_name}`\n{tool_description}"
+
+                            if hasattr(tool, "inputSchema") and tool.inputSchema:
+                                params = tool.inputSchema.get("properties", {})
+                                if params:
+                                    tool_md += "\n\n**Parameters:**\n"
+                                    tool_md += "| Name | Type | Description |\n"
+                                    tool_md += "|------|------|-------------|\n"
+                                    for param_name, param_info in params.items():
+                                        param_desc = param_info.get(
+                                            "description", "**No description**"
+                                        )
+                                        param_type = param_info.get("type", "any")
+                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
+                            tools_section.append(tool_md)
+
+            # Process local tools
+            if local_tools:
+                local_tools_list = local_tools.get_available_tools()
+                if local_tools_list:
+                    tools_section.append("## LOCAL TOOLS")
+
+                    # Handle local tool dictionaries
+                    for tool in local_tools_list:
+                        if isinstance(tool, dict):
+                            tool_name = tool.get("name", "Unknown")
+                            tool_description = tool.get("description", "No description")
+
+                            tool_md = f"### `{tool_name}`\n{tool_description}"
+
+                            input_schema = tool.get("inputSchema", {})
+                            if input_schema:
+                                params = input_schema.get("properties", {})
+                                if params:
+                                    tool_md += "\n\n**Parameters:**\n"
+                                    tool_md += "| Name | Type | Description |\n"
+                                    tool_md += "|------|------|-------------|\n"
+                                    for param_name, param_info in params.items():
+                                        param_desc = param_info.get(
+                                            "description", "**No description**"
+                                        )
+                                        param_type = param_info.get("type", "any")
+                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
+                            tools_section.append(tool_md)
+
+            if not tools_section:
+                return "No tools available"
 
         except Exception as e:
             logger.error(f"Error getting tools registry: {e}")
@@ -542,20 +755,38 @@ class BaseReactAgent:
         message_history: Callable[[], Any],
         debug: bool = False,
         sessions: dict = None,
-        available_tools: dict = None,
-        tools_registry: dict = None,
-        is_generic_agent: bool = True,
-        chat_id: str = None,
+        mcp_tools: dict = None,
+        local_tools: Any = None,  # LocalToolsIntegration instance
+        session_id: str = None,
+        event_router: Callable[[str, Event], Any] = None,  # Event router callable
     ) -> str | None:
         """Execute ReAct loop with JSON communication
-        kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be tools_registry
+        kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be local_tools
         """
+        # handle start of agent run
+        event = Event(
+            type=EventType.USER_MESSAGE,
+            payload=UserMessagePayload(
+                message=query,
+            ),
+            agent_name=self.agent_name,
+        )
+        if event_router:
+            await event_router(session_id=session_id, event=event)
+
         # Initialize messages with system prompt
         tools_section = await self.get_tools_registry(
-            available_tools, agent_name=None if is_generic_agent else self.agent_name
+            mcp_tools=mcp_tools, local_tools=local_tools
         )
+        long_term_memory, episodic_memory = await self.get_long_episodic_memory(
+            query=query, session_id=session_id
+        )
+        #  append the tools section if needed
+        system_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
+        # now update the system prompt with the long term and episodic memory using the XML-based template
         system_updated_prompt = (
-            system_prompt + f"[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
+            system_prompt
+            + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
         )
 
         self.messages[self.agent_name] = [
@@ -563,11 +794,16 @@ class BaseReactAgent:
         ]
         # Add initial user message to message history
         await add_message_to_history(
-            agent_name=self.agent_name, role="user", content=query, chat_id=chat_id
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
         # Initialize messages with current message history (only once at start)
         await self.update_llm_working_memory(
-            message_history=message_history, chat_id=chat_id
+            message_history=message_history,
+            session_id=session_id,
+            llm_connection=llm_connection,
         )
         # check if the agent is in a valid state to run
         if self.state not in [
@@ -580,7 +816,11 @@ class BaseReactAgent:
         # set the agent state to running
         async with self.agent_state_context(AgentState.RUNNING):
             current_steps = 0
-            while self.state != AgentState.FINISHED and current_steps < self.max_steps:
+            last_valid_response = None  # Track last valid response
+            while (
+                self.state not in [AgentState.FINISHED, AgentState.STUCK]
+                and current_steps < self.max_steps
+            ):
                 if debug:
                     logger.info(
                         f"Sending {len(self.messages[self.agent_name])} messages to LLM"
@@ -593,6 +833,16 @@ class BaseReactAgent:
                         self.messages[self.agent_name]
                     )
                     if response:
+                        # handle agent response event
+                        event = Event(
+                            type=EventType.AGENT_MESSAGE,
+                            payload=AgentMessagePayload(
+                                message=str(response),
+                            ),
+                            agent_name=self.agent_name,
+                        )
+                        if event_router:
+                            await event_router(session_id=session_id, event=event)
                         # check if it has usage
                         if hasattr(response, "usage"):
                             request_usage = Usage(
@@ -651,41 +901,50 @@ class BaseReactAgent:
                     logger.info(f"current steps: {current_steps}")
                 # check for final answer
                 if parsed_response.answer is not None:
+                    last_valid_response = (
+                        parsed_response.answer
+                    )  # Store last valid response
                     self.messages[self.agent_name].append(
                         Message(
                             role="assistant",
                             content=parsed_response.answer,
                         )
                     )
-                    await add_message_to_history(
+                    # handle final answer event
+                    event = Event(
+                        type=EventType.FINAL_ANSWER,
+                        payload=FinalAnswerPayload(
+                            message=str(parsed_response.answer),
+                        ),
                         agent_name=self.agent_name,
+                    )
+                    if event_router:
+                        await event_router(session_id=session_id, event=event)
+                    await add_message_to_history(
                         role="assistant",
                         content=parsed_response.answer,
-                        chat_id=chat_id,
+                        session_id=session_id,
+                        metadata={"agent_name": self.agent_name},
                     )
-                    # check if the system prompt has changed
-                    if system_prompt != self.messages[self.agent_name][0].content:
-                        # Reset system prompt and keep all messages
-                        self.messages[self.agent_name] = await self.reset_system_prompt(
-                            self.messages[self.agent_name], system_prompt
-                        )
-                    if debug:
-                        logger.info(
-                            f"Agent state changed from {self.state} to {AgentState.FINISHED}"
-                        )
                     self.state = AgentState.FINISHED
-                    # reset the steps
-                    current_steps = 0
                     return parsed_response.answer
-
-                elif parsed_response.action is not None:
-                    # set the state to tool calling
-                    if debug:
-                        logger.info(
-                            f"Agent state changed from {self.state} to {AgentState.TOOL_CALLING}"
+                # check for action
+                if parsed_response.action is not None:
+                    # Add the action to the message history
+                    self.messages[self.agent_name].append(
+                        Message(
+                            role="assistant",
+                            content=parsed_response.data,
                         )
-                    self.state = AgentState.TOOL_CALLING
+                    )
+                    await add_message_to_history(
+                        role="assistant",
+                        content=parsed_response.data,
+                        session_id=session_id,
+                        metadata={"agent_name": self.agent_name},
+                    )
 
+                    # Execute the action
                     await self.act(
                         parsed_response=parsed_response,
                         response=response,
@@ -693,52 +952,28 @@ class BaseReactAgent:
                         system_prompt=system_prompt,
                         debug=debug,
                         sessions=sessions,
-                        available_tools=available_tools,
-                        tools_registry=tools_registry,
-                        chat_id=chat_id,
-                    )
-                    continue
-                # append the invalid response to the messages and the message history
-                elif parsed_response.error is not None:
-                    error_message = parsed_response.error
-                else:
-                    error_message = "Invalid response format. Please use the correct required format"
-
-                self.messages[self.agent_name].append(
-                    Message(role="user", content=error_message)
-                )
-                await add_message_to_history(
-                    agent_name=self.agent_name,
-                    role="user",
-                    content=error_message,
-                    chat_id=chat_id,
-                )
-                self.loop_detector.record_message(error_message, response)
-                if self.loop_detector.is_looping():
-                    logger.warning("Loop detected")
-                    new_system_prompt = handle_stuck_state(
-                        system_prompt, message_stuck_prompt=True
-                    )
-                    self.messages[self.agent_name] = await self.reset_system_prompt(
-                        messages=self.messages[self.agent_name],
-                        system_prompt=new_system_prompt,
-                    )
-                    loop_message = (
-                        f"Observation:\n"
-                        f"⚠️ Message loop detected: {self.loop_detector.get_loop_type()}\n"
-                        f"The message stuck is: {error_message}\n"
-                        f"Current approach is not working. Please:\n"
-                        f"1. Analyze why the previous attempts failed\n"
-                        f"2. Try a completely different tool or approach\n"
-                        f"3. If the issue persists, please provide a detailed description of the problem and the current state of the conversation. and don't try again.\n"
+                        mcp_tools=mcp_tools,
+                        local_tools=local_tools,
+                        session_id=session_id,
+                        event_router=event_router,  # Pass event_router callable
                     )
 
-                    self.messages[self.agent_name].append(
-                        Message(role="user", content=loop_message)
-                    )
-                    self.loop_detector.reset()
-                    if debug:
-                        logger.info(
-                            f"Agent state changed from {self.state} to {AgentState.STUCK}"
-                        )
+                # check for stuck state
+                if current_steps >= self.max_steps:
                     self.state = AgentState.STUCK
+                    if last_valid_response:
+                        # Prepend max steps context for judge evaluation
+                        max_steps_context = f"[SYSTEM_CONTEXT: MAX_STEPS_REACHED - Agent hit {self.max_steps} step limit]\n\n"
+                        return max_steps_context + last_valid_response
+                    else:
+                        return f"[SYSTEM_CONTEXT: MAX_STEPS_REACHED - Agent hit {self.max_steps} step limit without valid response]"
+
+        # If we exit the loop due to STUCK state, return last valid response with context
+        if self.state == AgentState.STUCK and last_valid_response:
+            # Prepend loop detection context for judge evaluation
+            loop_context = (
+                f"[SYSTEM_CONTEXT: LOOP_DETECTED - Agent stuck in tool call loop]\n\n"
+            )
+            return loop_context + last_valid_response
+
+        return None

@@ -126,11 +126,11 @@ class TestLLMIntegration:
             "temperature": 0.7,
             "max_tokens": 1000
         }
-    
+
     @pytest.fixture
     def llm_integration(self, llm_config):
         return LLMIntegration(llm_config)
-    
+
     @patch('mcpomni_connect.llm.litellm.completion')
     def test_generate_response(self, mock_completion, llm_integration):
         # Arrange
@@ -138,27 +138,27 @@ class TestLLMIntegration:
         mock_response.choices = [Mock()]
         mock_response.choices[0].message.content = "Test response"
         mock_completion.return_value = mock_response
-        
+
         messages = [{"role": "user", "content": "Hello"}]
-        
+
         # Act
         response = llm_integration.generate_response(messages)
-        
+
         # Assert
         assert response == "Test response"
         mock_completion.assert_called_once()
-    
+
     def test_message_conversion(self, llm_integration):
         # Test Message object to dict conversion
         from pydantic import BaseModel
-        
+
         class Message(BaseModel):
             role: str
             content: str
-        
+
         message = Message(role="user", content="test")
         result = llm_integration._convert_message(message)
-        
+
         assert result == {"role": "user", "content": "test"}
 ```
 
@@ -177,19 +177,19 @@ class TestStdioTransport:
             "command": "echo",
             "args": ["hello"]
         }
-    
+
     @pytest.mark.asyncio
     async def test_stdio_connection(self, stdio_config):
         transport = StdioTransport(stdio_config)
-        
+
         # Test connection
         await transport.connect()
         assert transport.is_connected()
-        
+
         # Test message sending
         response = await transport.send_message({"test": "message"})
         assert response is not None
-        
+
         # Cleanup
         await transport.disconnect()
 
@@ -200,15 +200,15 @@ class TestSSETransport:
             "url": "http://localhost:3000/sse",
             "headers": {"Authorization": "Bearer test-token"}
         }
-    
+
     @pytest.mark.asyncio
     async def test_sse_connection(self, sse_config):
         with patch('httpx.AsyncClient') as mock_client:
             transport = SSETransport(sse_config)
-            
+
             # Mock successful connection
             mock_client.return_value.stream.return_value.__aenter__.return_value = Mock()
-            
+
             await transport.connect()
             assert transport.is_connected()
 ```
@@ -218,45 +218,105 @@ class TestSSETransport:
 ```python title="tests/unit/test_memory.py"
 import pytest
 from unittest.mock import Mock, patch
-from mcpomni_connect.memory import MemoryManager, RedisMemory
+from mcpomni_connect.memory import InMemoryStore, RedisShortTermMemory
 
-class TestMemoryManager:
+class TestInMemoryStore:
     @pytest.fixture
-    def memory_config(self):
-        return {
-            "redis_host": "localhost",
-            "redis_port": 6379,
-            "redis_db": 15
-        }
-    
-    def test_session_memory(self, memory_config):
-        memory = MemoryManager(memory_config)
-        
-        # Test adding messages
-        message = {"role": "user", "content": "test"}
-        memory.add_message(message)
-        
-        # Test retrieving context
-        context = memory.get_context()
-        assert len(context) == 1
-        assert context[0] == message
-    
-    @pytest.mark.requires_redis
-    def test_redis_memory(self, memory_config):
-        memory = MemoryManager(memory_config)
-        memory.enable_persistence()
-        
-        # Test persistence
-        message = {"role": "user", "content": "persistent test"}
-        memory.add_message(message)
-        
-        # Create new instance and check persistence
-        new_memory = MemoryManager(memory_config)
-        new_memory.enable_persistence()
-        context = new_memory.get_context()
-        
-        assert len(context) >= 1
-        assert any(msg["content"] == "persistent test" for msg in context)
+    def memory(self):
+        return InMemoryStore(max_context_tokens=100, debug=True)
+
+    @pytest.mark.asyncio
+    async def test_store_and_get_messages(self, memory):
+        # Test storing messages
+        await memory.store_message(
+            role="user",
+            content="test message",
+            metadata={"agent_name": "test_agent"},
+            session_id="test_session"
+        )
+
+        # Test retrieving messages
+        messages = await memory.get_messages(
+            session_id="test_session",
+            agent_name="test_agent"
+        )
+
+        assert len(messages) == 1
+        assert messages[0]["content"] == "test message"
+        assert messages[0]["role"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_session_isolation(self, memory):
+        # Store messages in different sessions
+        await memory.store_message(
+            role="user",
+            content="session1 message",
+            session_id="session1"
+        )
+
+        await memory.store_message(
+            role="user",
+            content="session2 message",
+            session_id="session2"
+        )
+
+        # Verify sessions are isolated
+        session1_messages = await memory.get_messages(session_id="session1")
+        session2_messages = await memory.get_messages(session_id="session2")
+
+        assert len(session1_messages) == 1
+        assert len(session2_messages) == 1
+        assert session1_messages[0]["content"] == "session1 message"
+        assert session2_messages[0]["content"] == "session2 message"
+
+    @pytest.mark.asyncio
+    async def test_agent_filtering(self, memory):
+        # Store messages for different agents
+        await memory.store_message(
+            role="user",
+            content="agent1 message",
+            metadata={"agent_name": "agent1"},
+            session_id="test_session"
+        )
+
+        await memory.store_message(
+            role="user",
+            content="agent2 message",
+            metadata={"agent_name": "agent2"},
+            session_id="test_session"
+        )
+
+        # Test filtering by agent
+        agent1_messages = await memory.get_messages(
+            session_id="test_session",
+            agent_name="agent1"
+        )
+
+        agent2_messages = await memory.get_messages(
+            session_id="test_session",
+            agent_name="agent2"
+        )
+
+        assert len(agent1_messages) == 1
+        assert len(agent2_messages) == 1
+        assert agent1_messages[0]["content"] == "agent1 message"
+        assert agent2_messages[0]["content"] == "agent2 message"
+
+    @pytest.mark.asyncio
+    async def test_clear_memory(self, memory):
+        # Store some messages
+        await memory.store_message(
+            role="user",
+            content="test message",
+            session_id="test_session"
+        )
+
+        # Clear memory
+        await memory.clear_memory(session_id="test_session")
+
+        # Verify memory is cleared
+        messages = await memory.get_messages(session_id="test_session")
+        assert len(messages) == 0
 ```
 
 ## Integration Tests
@@ -284,41 +344,41 @@ class TestMCPServerIntegration:
                 }
             }
         }
-    
+
     @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_server_connection(self, test_config):
         client = MCPOmniConnect(test_config)
-        
+
         try:
             # Test connection
             await client.connect_servers()
-            
+
             # Test tool discovery
             tools = await client.list_tools()
             assert len(tools) > 0
-            
+
             # Test tool execution
             result = await client.execute_tool(
                 "list_directory",
                 {"path": "/tmp"}
             )
             assert result is not None
-            
+
         finally:
             await client.disconnect()
-    
+
     @pytest.mark.integration
     @pytest.mark.slow
     def test_workflow_execution(self, test_config):
         client = MCPOmniConnect(test_config)
-        
+
         # Test complete workflow
         result = client.execute_workflow([
             {"tool": "list_directory", "params": {"path": "/tmp"}},
             {"tool": "read_file", "params": {"path": "/tmp/test.txt"}}
         ])
-        
+
         assert result["success"] == True
         assert len(result["steps"]) == 2
 ```
@@ -336,15 +396,15 @@ class TestOAuthFlow:
     @patch('http.server.HTTPServer')
     def test_oauth_callback_server(self, mock_server, mock_browser):
         oauth_manager = OAuthManager()
-        
+
         # Mock OAuth callback
         mock_request = Mock()
         mock_request.path = "/callback?code=test-auth-code"
-        
+
         # Test callback handling
         result = oauth_manager.handle_callback(mock_request)
         assert result["code"] == "test-auth-code"
-        
+
         # Verify browser was opened
         mock_browser.assert_called_once()
 
@@ -352,7 +412,7 @@ class TestBearerTokenAuth:
     def test_bearer_token_headers(self):
         auth = BearerTokenAuth("test-token-123")
         headers = auth.get_headers()
-        
+
         assert headers["Authorization"] == "Bearer test-token-123"
         assert "Content-Type" in headers
 ```
@@ -373,43 +433,43 @@ class TestPerformance:
     def test_concurrent_requests(self):
         """Test handling multiple concurrent requests."""
         client = MCPOmniConnect(test_config)
-        
+
         def make_request():
             return client.execute_tool("list_directory", {"path": "/tmp"})
-        
+
         # Test 10 concurrent requests
         with ThreadPoolExecutor(max_workers=10) as executor:
             start_time = time.time()
-            
+
             futures = [executor.submit(make_request) for _ in range(10)]
             results = [future.result() for future in futures]
-            
+
             end_time = time.time()
-        
+
         # Assert all requests succeeded
         assert all(result is not None for result in results)
-        
+
         # Assert reasonable performance (< 5 seconds for 10 requests)
         assert end_time - start_time < 5.0
-    
+
     @pytest.mark.performance
     def test_memory_usage(self):
         """Test memory usage doesn't grow excessively."""
         import psutil
         import os
-        
+
         process = psutil.Process(os.getpid())
         initial_memory = process.memory_info().rss
-        
+
         client = MCPOmniConnect(test_config)
-        
+
         # Execute many operations
         for _ in range(100):
             client.execute_tool("list_directory", {"path": "/tmp"})
-        
+
         final_memory = process.memory_info().rss
         memory_growth = final_memory - initial_memory
-        
+
         # Assert memory growth is reasonable (< 50MB)
         assert memory_growth < 50 * 1024 * 1024
 ```
@@ -426,24 +486,24 @@ class TestBenchmarks:
     def test_tool_execution_speed(self):
         """Benchmark tool execution speed."""
         client = MCPOmniConnect(test_config)
-        
+
         # Warm up
         for _ in range(5):
             client.execute_tool("list_directory", {"path": "/tmp"})
-        
+
         # Benchmark
         iterations = 20
         start_time = time.time()
-        
+
         for _ in range(iterations):
             client.execute_tool("list_directory", {"path": "/tmp"})
-        
+
         end_time = time.time()
         avg_time = (end_time - start_time) / iterations
-        
+
         # Assert average execution time is reasonable
         assert avg_time < 0.5  # Less than 500ms per execution
-        
+
         print(f"Average tool execution time: {avg_time:.3f}s")
 ```
 
@@ -507,18 +567,18 @@ from aiohttp import web
 
 class MockMCPServer:
     """Mock MCP server for testing."""
-    
+
     def __init__(self, port=8899):
         self.port = port
         self.app = web.Application()
         self.setup_routes()
-    
+
     def setup_routes(self):
         self.app.router.add_post('/mcp', self.handle_mcp_request)
-    
+
     async def handle_mcp_request(self, request):
         data = await request.json()
-        
+
         # Mock responses based on method
         if data.get('method') == 'tools/list':
             return web.json_response({
@@ -535,9 +595,9 @@ class MockMCPServer:
                     }
                 ]
             })
-        
+
         return web.json_response({"result": "mock response"})
-    
+
     async def start(self):
         runner = web.AppRunner(self.app)
         await runner.setup()
@@ -563,20 +623,20 @@ class MockMCPServer:
 ```python
 class TestFeatureName:
     """Test class for specific feature."""
-    
+
     @pytest.fixture
     def feature_setup(self):
         """Setup specific to this feature."""
         pass
-    
+
     def test_normal_case(self, feature_setup):
         """Test the normal/happy path."""
         pass
-    
+
     def test_edge_case(self, feature_setup):
         """Test edge cases."""
         pass
-    
+
     def test_error_handling(self, feature_setup):
         """Test error conditions."""
         pass
@@ -611,25 +671,25 @@ jobs:
     strategy:
       matrix:
         python-version: [3.10, 3.11, 3.12]
-    
+
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install UV
       run: pip install uv
-    
+
     - name: Install dependencies
       run: uv sync
-    
+
     - name: Run tests
       run: |
         uv run pytest tests/ -v --cov=src --cov-report=xml
-    
+
     - name: Upload coverage
       uses: codecov/codecov-action@v3
       with:
@@ -670,7 +730,7 @@ def test_database():
     """Create temporary test database."""
     with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
         db_path = f.name
-    
+
     # Create test schema
     conn = sqlite3.connect(db_path)
     conn.execute('''
@@ -681,15 +741,15 @@ def test_database():
         )
     ''')
     conn.execute('''
-        INSERT INTO users (name, email) VALUES 
+        INSERT INTO users (name, email) VALUES
         ('Test User', 'test@example.com'),
         ('Another User', 'another@example.com')
     ''')
     conn.commit()
     conn.close()
-    
+
     yield db_path
-    
+
     # Cleanup
     Path(db_path).unlink()
 ```
@@ -698,4 +758,4 @@ def test_database():
 
 This comprehensive testing guide ensures MCPOmni Connect maintains high quality and reliability across all its components and features.
 
-**Next**: [Contributing →](contributing.md) 
+**Next**: [Contributing →](contributing.md)

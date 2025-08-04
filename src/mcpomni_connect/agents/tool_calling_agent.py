@@ -10,6 +10,15 @@ from mcpomni_connect.agents.token_usage import (
     usage,
 )
 from mcpomni_connect.agents.types import AgentConfig
+from mcpomni_connect.events.base import (
+    Event,
+    EventType,
+    ToolCallStartedPayload,
+    ToolCallResultPayload,
+    AgentMessagePayload,
+    UserMessagePayload,
+    ToolCallErrorPayload,
+)
 from mcpomni_connect.utils import logger
 
 
@@ -21,8 +30,7 @@ class ToolCallingAgent:
     ):
         self.request_limit = config.request_limit
         self.total_tokens_limit = config.total_tokens_limit
-        self.agent_name = config.agent_name
-        self.mcp_enabled = config.mcp_enabled
+        self.agent_name = config.agent_name or "tool_calling_agent"
 
         self.debug = debug
         self.assistant_with_tool_calls = None
@@ -33,12 +41,12 @@ class ToolCallingAgent:
         )
 
     async def update_llm_working_memory(
-        self, message_history: Callable[[], Any], chat_id: str
+        self, message_history: Callable[[], Any], session_id: str
     ):
         """Process message history and update working memory for LLM."""
         # Get message history from Redis or other storage
         short_term_memory_message_history = await message_history(
-            agent_name=self.agent_name, chat_id=chat_id
+            agent_name=self.agent_name, session_id=session_id
         )
 
         # Process message history in order
@@ -106,14 +114,12 @@ class ToolCallingAgent:
             self.messages.append(self.assistant_with_tool_calls)
             self.messages.extend(self.pending_tool_responses)
 
-    async def list_available_tools(
-        self, available_tools: dict = None, tools_registry: dict = None
-    ):
+    async def list_available_tools(self, available_tools: dict = None):
         """List available tools from all servers."""
         # List available tools
         available_tools_list = []
         all_available_tools = None
-        if available_tools and self.mcp_enabled:
+        if available_tools:
             for _, tools in available_tools.items():
                 available_tools_list.extend(tools)
 
@@ -129,40 +135,20 @@ class ToolCallingAgent:
                 for tool in available_tools_list
             ]
 
-        elif tools_registry and not self.mcp_enabled:
-            for name, tool_data in tools_registry.items():
-                available_tools_list.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": name,
-                            "description": tool_data["description"],
-                            "parameters": tool_data["inputSchema"],
-                        },
-                    }
-                )
-            all_available_tools = available_tools_list
-
         return all_available_tools
 
     async def execute_tool_call(
         self,
-        chat_id: str,
+        session_id: str,
         tool_name: str,
         tool_args: str | dict,
         tool_call: Any,
         add_message_to_history: Callable[..., Any],
         available_tools: dict[str, Any] = None,
-        tools_registry: dict[str, Any] = None,
         sessions: dict[str, Any] = None,
+        event_router: Callable[[str, Event], Any] = None,
     ) -> dict:
         """Unified executor for MCP and local tool calls based on config"""
-        if available_tools and tools_registry:
-            raise ValueError(
-                "Only one of available_tools or tools_registry should be set, not both."
-            )
-        if not available_tools and not tools_registry:
-            raise ValueError("One of available_tools or tools_registry must be set.")
 
         if isinstance(tool_args, str):
             try:
@@ -170,6 +156,19 @@ class ToolCallingAgent:
             except Exception:
                 logger.error(f"Failed to parse tool_args for {tool_name}: {tool_args}")
                 tool_args = {}
+
+        # Emit tool call started event
+        if event_router:
+            event = Event(
+                type=EventType.TOOL_CALL_STARTED,
+                payload=ToolCallStartedPayload(
+                    tool_name=tool_name,
+                    tool_args=tool_args,
+                    tool_call_id=tool_call.id,
+                ),
+                agent_name=self.agent_name,
+            )
+            await event_router(session_id=session_id, event=event)
 
         try:
             if available_tools:
@@ -193,10 +192,7 @@ class ToolCallingAgent:
                 else:
                     raise Exception(f"Tool {tool_name} not found in any server")
             else:
-                if tool_name not in tools_registry:
-                    raise Exception(f"Tool '{tool_name}' not found in registry")
-                run_tool = tools_registry[tool_name]["function"]
-                tool_content = await run_tool(tool_args)
+                raise Exception("No available tools provided")
 
             # Normalize structured result if needed
             if (
@@ -215,16 +211,30 @@ class ToolCallingAgent:
             )
 
             await add_message_to_history(
-                agent_name=self.agent_name,
                 role="tool",
                 content=str(tool_content),
                 metadata={
                     "tool_call_id": tool_call.id,
                     "tool": tool_name,
                     "args": tool_args,
+                    "agent_name": self.agent_name,
                 },
-                chat_id=chat_id,
+                session_id=session_id,
             )
+
+            # Emit tool call result event
+            if event_router:
+                event = Event(
+                    type=EventType.TOOL_CALL_RESULT,
+                    payload=ToolCallResultPayload(
+                        tool_name=tool_name,
+                        tool_args=tool_args,
+                        tool_call_id=tool_call.id,
+                        result=str(tool_content),
+                    ),
+                    agent_name=self.agent_name,
+                )
+                await event_router(session_id=session_id, event=event)
 
             return {"result": str(tool_content)}
 
@@ -241,7 +251,6 @@ class ToolCallingAgent:
             )
 
             await add_message_to_history(
-                agent_name=self.agent_name,
                 role="tool",
                 content=error_message,
                 metadata={
@@ -249,16 +258,29 @@ class ToolCallingAgent:
                     "tool": tool_name,
                     "args": tool_args,
                     "error": True,
+                    "agent_name": self.agent_name,
                 },
-                chat_id=chat_id,
+                session_id=session_id,
             )
+
+            # Emit tool call error event
+            if event_router:
+                event = Event(
+                    type=EventType.TOOL_CALL_ERROR,
+                    payload=ToolCallErrorPayload(
+                        tool_name=tool_name,
+                        error_message=error_message,
+                    ),
+                    agent_name=self.agent_name,
+                )
+                await event_router(session_id=session_id, event=event)
 
             return {"error": error_message}
 
     async def run(
         self,
         query: str,
-        chat_id: str,
+        session_id: str,
         system_prompt: str,
         llm_connection: Callable[[], Any],
         sessions: dict[str, Any],
@@ -267,29 +289,41 @@ class ToolCallingAgent:
         add_message_to_history: Callable[..., Any],
         message_history: Callable[[], Any],
         available_tools: dict[str, Any] = None,
-        tools_registry: dict[str, Any] = None,
+        event_router: Callable[[str, Event], Any] = None,
     ):
         """Run the agent with the given query and return the response."""
         final_text = []
-        available_tools = available_tools if self.mcp_enabled else None
-        tools_registry = tools_registry if not self.mcp_enabled else None
+        available_tools = available_tools
+
         current_steps = 0
         # Initialize messages with system prompt
         self.messages = [{"role": "system", "content": system_prompt}]
 
         # Add user query to history
         await add_message_to_history(
-            agent_name=self.agent_name, role="user", content=query, chat_id=chat_id
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
+
+        # Emit user message event
+        if event_router:
+            event = Event(
+                type=EventType.USER_MESSAGE,
+                payload=UserMessagePayload(message=query),
+                agent_name=self.agent_name,
+            )
+            await event_router(session_id=session_id, event=event)
 
         # Update working memory with message history
         await self.update_llm_working_memory(
-            message_history=message_history, chat_id=chat_id
+            message_history=message_history, session_id=session_id
         )
 
         # Get available tools
         all_available_tools = await self.list_available_tools(
-            available_tools=available_tools, tools_registry=tools_registry
+            available_tools=available_tools,
         )
 
         try:
@@ -361,6 +395,7 @@ class ToolCallingAgent:
             tool_calls_metadata = {
                 "has_tool_calls": True,
                 "tool_calls": assistant_message.tool_calls,
+                "agent_name": self.agent_name,
             }
 
             if self.debug:
@@ -388,11 +423,10 @@ class ToolCallingAgent:
 
             # Add the assistant message to history with tool calls metadata
             await add_message_to_history(
-                agent_name=self.agent_name,
                 role="assistant",
                 content=initial_response,
                 metadata=tool_calls_metadata,
-                chat_id=chat_id,
+                session_id=session_id,
             )
 
             final_text.append(initial_response)
@@ -402,14 +436,14 @@ class ToolCallingAgent:
                 tool_name = tool_call.function.name
                 tool_args = tool_call.function.arguments
                 execute_tool_result = await self.execute_tool_call(
-                    chat_id=chat_id,
+                    session_id=session_id,
                     tool_name=tool_name,
                     tool_args=tool_args,
                     tool_call=tool_call,
                     add_message_to_history=add_message_to_history,
                     available_tools=available_tools,
-                    tools_registry=tools_registry,
                     sessions=sessions,
+                    event_router=event_router,
                 )
 
                 if "error" in execute_tool_result:
@@ -469,11 +503,20 @@ class ToolCallingAgent:
                 response_content = final_assistant_message.content or ""
 
                 await add_message_to_history(
-                    agent_name=self.agent_name,
                     role="assistant",
                     content=response_content,
-                    chat_id=chat_id,
+                    session_id=session_id,
+                    metadata={"agent_name": self.agent_name},
                 )
+
+                # Emit agent message event
+                if event_router:
+                    event = Event(
+                        type=EventType.AGENT_MESSAGE,
+                        payload=AgentMessagePayload(message=response_content),
+                        agent_name=self.agent_name,
+                    )
+                    await event_router(session_id=session_id, event=event)
 
                 final_text.append(response_content)
             except UsageLimitExceeded as e:
@@ -485,22 +528,30 @@ class ToolCallingAgent:
                 logger.error(error_message)
 
                 await add_message_to_history(
-                    agent_name=self.agent_name,
                     role="assistant",
                     content=error_message,
-                    metadata={"error": True},
-                    chat_id=chat_id,
+                    metadata={"error": True, "agent_name": self.agent_name},
+                    session_id=session_id,
                 )
 
                 final_text.append(f"\n[Error getting final response from LLM: {e}]")
         else:
             # If no tool calls, add the assistant response directly
             await add_message_to_history(
-                agent_name=self.agent_name,
                 role="assistant",
                 content=initial_response,
-                chat_id=chat_id,
+                session_id=session_id,
+                metadata={"agent_name": self.agent_name},
             )
+
+            # Emit agent message event
+            if event_router:
+                event = Event(
+                    type=EventType.AGENT_MESSAGE,
+                    payload=AgentMessagePayload(message=initial_response),
+                    agent_name=self.agent_name,
+                )
+                await event_router(session_id=session_id, event=event)
 
             final_text.append(initial_response)
         current_steps = 0

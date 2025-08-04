@@ -17,6 +17,7 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.text import Text
+from datetime import datetime
 
 console = Console()
 # Configure logging
@@ -440,15 +441,24 @@ def handle_stuck_state(original_system_prompt: str, message_stuck_prompt: bool =
     return modified_system_prompt
 
 
-def embed_text(text: str) -> list[float]:
-    """Embed text using OpenAI's embedding API."""
-    client = OpenAI(api_key=config("OPENAI_API_KEY"))
-    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
-    return response.data[0].embedding
+def normalize_metadata(obj):
+    if isinstance(obj, dict):
+        return {k: normalize_metadata(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [normalize_metadata(i) for i in obj]
+    elif isinstance(obj, uuid.UUID):
+        return str(obj)
+    return obj
 
 
 def dict_to_namespace(d):
     return json.loads(json.dumps(d), object_hook=lambda x: SimpleNamespace(**x))
+
+
+def format_timestamp(ts) -> str:
+    if not isinstance(ts, datetime):
+        ts = datetime.fromisoformat(ts)
+    return ts.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def strip_json_comments(text: str) -> str:
@@ -479,21 +489,6 @@ def show_tool_response(agent_name, tool_name, tool_args, observation):
 
     panel = Panel.fit(content, title="🔧 TOOL CALL LOG", border_style="bright_black")
     console.print(panel)
-
-
-# # Initialize the model once at module level
-# EMBEDDING_MODEL = SentenceTransformer('BAAI/bge-large-en-v1.5')
-
-
-# def embed_text(text: str) -> List[float]:
-#     """Embed text using Sentence Transformers."""
-#     try:
-#         # Get the embedding
-#         embedding = EMBEDDING_MODEL.encode(text)
-#         return embedding.tolist()
-#     except Exception as e:
-#         logger.error(f"Error generating embedding: {e}")
-#         return []
 
 
 def get_mac_address() -> str:

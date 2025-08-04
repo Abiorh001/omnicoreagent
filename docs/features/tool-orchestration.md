@@ -73,13 +73,13 @@ The AI automatically selects appropriate tools based on the task:
 
 Step 1: 🔧 get_schema (database server)
   └─ Purpose: Analyze database structure
-  
+
 Step 2: 🔧 query_database (database server)
   └─ Purpose: Check database health
-  
+
 Step 3: 🔧 backup_database (database server)
   └─ Purpose: Create backup
-  
+
 Step 4: 🔧 send_slack (notifications server)
   └─ Purpose: Notify team of completion
 ```
@@ -134,7 +134,7 @@ Independent tools can run simultaneously:
 
 🔧 Parallel Execution Group 1:
 ├─ get_schema (database server) ⏱️  2.1s ✅
-├─ list_directory (filesystem server) ⏱️  0.8s ✅  
+├─ list_directory (filesystem server) ⏱️  0.8s ✅
 └─ http_request (api server) ⏱️  1.5s ✅
 
 All health checks completed in 2.1s (fastest possible)
@@ -187,7 +187,7 @@ Advanced workflows with branching and merging:
 > Analyze all log files, identify errors, and create both a summary report and individual notifications
 
 # Complex composition
-list_log_files → 
+list_log_files →
 ├─ analyze_errors → summarize_errors → create_report
 ├─ extract_critical → send_alerts
 └─ archive_logs → update_inventory
@@ -208,7 +208,7 @@ Tools can execute based on conditions:
   ├─ 🔧 send_alert → ✅ Team notified
   └─ 🔧 schedule_maintenance → ✅ Maintenance scheduled
 
-🔧 check_database_health → Status: HEALTHY  
+🔧 check_database_health → Status: HEALTHY
   └─ Condition: health < 90% → FALSE (no backup needed)
 ```
 
@@ -220,7 +220,7 @@ Failed tools are automatically retried with backoff:
 
 ```bash
 🔧 http_request (api server) → ❌ Connection timeout
-  ├─ Retry 1/3 (wait 2s) → ❌ Connection timeout  
+  ├─ Retry 1/3 (wait 2s) → ❌ Connection timeout
   ├─ Retry 2/3 (wait 4s) → ❌ Connection timeout
   ├─ Retry 3/3 (wait 8s) → ✅ Success
   └─ Total time: 14.2s (with retries)
@@ -278,7 +278,7 @@ Reuse server connections for better performance:
 ```bash
 Connection Pool Status:
 ├─ filesystem server: 2 active connections
-├─ database server: 1 active connection  
+├─ database server: 1 active connection
 ├─ notifications server: 1 idle connection
 └─ api server: 3 active connections
 
@@ -295,7 +295,7 @@ Group similar operations for efficiency:
 ```bash
 # Instead of individual file reads
 🔧 read_file("file1.txt") → 45ms
-🔧 read_file("file2.txt") → 43ms  
+🔧 read_file("file2.txt") → 43ms
 🔧 read_file("file3.txt") → 44ms
 Total: 132ms
 
@@ -315,7 +315,7 @@ Track tool performance during execution:
 
 🔧 Tool Execution Monitor:
 ├─ query_database: 2.3s (normal)
-├─ send_email: 1.1s (fast)  
+├─ send_email: 1.1s (fast)
 ├─ http_request: 8.7s (slow) ⚠️
 └─ backup_database: 45.2s (normal for size)
 
@@ -363,7 +363,7 @@ Save common workflow patterns:
 
 # Template includes:
 ├─ backup_database
-├─ analyze_performance  
+├─ analyze_performance
 ├─ optimize_indexes
 ├─ update_statistics
 └─ send_completion_report
@@ -393,22 +393,22 @@ Override automatic tool selection:
 
 !!! failure "Tool Not Found"
     **Error**: `Tool 'unknown_tool' not found`
-    
+
     **Solutions**:
     ```bash
     # Check available tools
     /tools
-    
+
     # Refresh server capabilities
     /refresh
-    
+
     # Check server connections
     /connections
     ```
 
 !!! failure "Tool Execution Timeout"
     **Error**: `Tool execution timeout after 30s`
-    
+
     **Solutions**:
     ```bash
     # Increase timeout in configuration
@@ -417,10 +417,10 @@ Override automatic tool selection:
             "tool_call_timeout": 60
         }
     }
-    
+
     # Check server performance
     /debug
-    
+
     # Try manual tool execution
     /prompt:tool_name/params=values
     ```
@@ -429,15 +429,15 @@ Override automatic tool selection:
 
 !!! warning "Slow Tool Execution"
     **Issue**: Tools taking longer than expected
-    
+
     **Diagnosis**:
     ```bash
     # Enable performance monitoring
     /debug
-    
+
     # Check server status
     /connections
-    
+
     # View tool statistics
     /tool_stats
     ```
@@ -453,4 +453,4 @@ Override automatic tool selection:
 
 ---
 
-**Next**: [Resource Management →](resource-management.md) 
+**Next**: [Resource Management →](resource-management.md)
