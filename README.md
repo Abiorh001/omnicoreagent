@@ -1,4 +1,4 @@
-# 🚀 MCPOmni Connect - Universal Gateway to MCP Servers
+# 🚀 MCPOmni Connect - Complete AI Platform: OmniAgent + Universal MCP Client
 
 [![PyPI Downloads](https://static.pepy.tech/badge/mcpomni-connect)](https://pepy.tech/projects/mcpomni-connect)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -9,7 +9,47 @@
 [![Open Issues](https://img.shields.io/github/issues/Abiorh001/mcp_omni_connect)](https://github.com/Abiorh001/mcp_omni_connect/issues)
 [![Pull Requests](https://img.shields.io/github/issues-pr/Abiorh001/mcp_omni_connect)](https://github.com/Abiorh001/mcp_omni_connect/pulls)
 
-MCPOmni Connect is a powerful, intelligent AI agent system and universal command-line interface (CLI) that goes beyond being just a gateway to the Model Context Protocol (MCP) ecosystem. It acts as an autonomous agent through its **ReAct Agent Mode** and **Orchestrator Mode**, capable of independent reasoning, decision-making, and complex task execution. It seamlessly integrates multiple MCP servers, AI models, and various transport protocols into a unified, intelligent interface that can operate autonomously or interactively.
+**MCPOmni Connect** is the complete AI platform that evolved from a world-class MCP client into a revolutionary ecosystem. It now includes **OmniAgent** - the ultimate AI agent builder born from MCPOmni Connect's powerful foundation. Build production-ready AI agents, use the advanced MCP CLI, or combine both for maximum power.
+
+## 🌟 **Complete AI Platform - Two Powerful Systems:**
+
+### 1. 🤖 **OmniAgent System** *(Revolutionary AI Agent Builder)*
+Born from MCPOmni Connect's foundation - create intelligent, autonomous agents with:
+- **🛠️ Local Tools System** - Register your Python functions as AI tools
+- **🚁 Self-Flying Background Agents** - Autonomous task execution
+- **🧠 Multi-Tier Memory** - Vector databases, Redis, PostgreSQL, MySQL, SQLite
+- **📡 Real-Time Events** - Live monitoring and streaming
+- **🔧 MCP + Local Tool Orchestration** - Seamlessly combine both tool types
+
+### 2. 🔌 **Universal MCP Client** *(World-Class CLI)*
+Advanced command-line interface for connecting to any Model Context Protocol server with:
+- **🌐 Multi-Protocol Support** - stdio, SSE, HTTP, Docker, NPX transports
+- **🔐 Authentication** - OAuth 2.0, Bearer tokens, custom headers
+- **🧠 Advanced Memory** - Redis, Database, Vector storage with intelligent retrieval
+- **📡 Event Streaming** - Real-time monitoring and debugging
+- **🤖 Agentic Modes** - ReAct, Orchestrator, and Interactive chat modes
+
+**🎯 Perfect for:** Developers who want the complete AI ecosystem - build custom agents AND have world-class MCP connectivity.
+
+## 🚀 NEW: OmniAgent - Build Your Own AI Agents! 
+
+**🌟 Introducing OmniAgent** - A revolutionary AI agent system that brings plug-and-play intelligence to your applications!
+
+### ✅ OmniAgent Revolutionary Capabilities:
+- **🧠 Multi-tier memory management** with vector search and semantic retrieval
+- **🛠️ XML-based reasoning** with strict tool formatting for reliable execution  
+- **🔧 Advanced tool orchestration** - Seamlessly combine MCP server tools + local tools
+- **🚁 Self-flying background agents** with autonomous task execution
+- **📡 Real-time event streaming** for monitoring and debugging
+- **🏗️ Production-ready infrastructure** with error handling and retry logic
+- **⚡ Plug-and-play intelligence** - No complex setup required!
+
+### 🔥 **LOCAL TOOLS SYSTEM** *(MAJOR FEATURE!)*
+- **🎯 Easy Tool Registration**: `@tool_registry.register_tool("tool_name")`
+- **🔌 Custom Tool Creation**: Register your own Python functions as AI tools
+- **🔄 Runtime Tool Management**: Add/remove tools dynamically
+- **⚙️ Type-Safe Interface**: Automatic parameter validation and documentation
+- **📖 Rich Examples**: Study `run_omni_agent.py` for 12+ EXAMPLE tool registration patterns
 
 > 🚀 **New User?** Start with the [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide) to understand the difference between config files, transport types, and OAuth behavior. Then check out the [🧪 Testing](#-testing) section to get started quickly.
 
@@ -94,24 +134,28 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
   - Secure API key management
   - Environment variable protection
 
-### 💾 Memory Management
+### 💾 Advanced Memory Management *(UPDATED!)*
 
-- **Redis-Powered Persistence**
-  - Long-term conversation memory storage
-  - Session persistence across restarts
-  - Configurable memory retention
-  - Easy memory toggle with commands
-- **Chat History File Storage**
-  - Save complete chat conversations to files
-  - Load previous conversations from saved files
-  - Continue conversations from where you left off
-  - Persistent chat history across sessions
-  - File-based backup and restoration of conversations
-- **Intelligent Context Management**
-  - Automatic context pruning
-  - Relevant information retrieval
-  - Memory-aware responses
-  - Cross-session context maintenance
+- **Multi-Backend Memory Storage**
+  - **In-Memory**: Fast development storage
+  - **Redis**: Persistent memory with real-time access
+  - **Database**: PostgreSQL, MySQL, SQLite support 
+  - **File Storage**: Save/load conversation history
+  - Runtime switching: `/memory_store:redis`, `/memory_store:database:postgresql://user:pass@host/db`
+- **Multi-Tier Memory Strategy**
+  - **Short-term Memory**: Sliding window or token budget strategies
+  - **Long-term Memory**: Vector database storage for semantic retrieval
+  - **Episodic Memory**: Context-aware conversation history
+  - Runtime configuration: `/memory_mode:sliding_window:5`, `/memory_mode:token_budget:3000`
+- **Vector Database Integration *(NEW!)*
+  - **Qdrant**: Production-grade vector search (set `QDRANT_HOST` and `QDRANT_PORT`)
+  - **ChromaDB**: Local fallback vector storage (automatic installation)
+  - **Semantic Search**: Intelligent context retrieval across conversations
+  - **Enable**: Set `ENABLE_VECTOR_DB=true` for long-term and episodic memory
+- **Real-Time Event Streaming *(NEW!)*
+  - **In-Memory Events**: Fast development event processing
+  - **Redis Streams**: Persistent event storage and streaming
+  - Runtime switching: `/event_store:redis_stream`, `/event_store:in_memory`
 
 ### 💬 Prompt Management
 
@@ -161,21 +205,35 @@ MCPOmni Connect is a powerful, intelligent AI agent system and universal command
 ### Core Components
 
 ```
-MCPOmni Connect
-├── Transport Layer
-│   ├── Stdio Transport
-│   ├── SSE Transport
-│   └── Docker Integration
-├── Session Management
+MCPOmni Connect Platform
+├── 🤖 OmniAgent System (Revolutionary Agent Builder)
+│   ├── Local Tools Registry
+│   ├── Background Agent Manager  
+│   ├── Custom Agent Creation
+│   └── Agent Orchestration Engine
+├── 🔌 Universal MCP Client (World-Class CLI)
+│   ├── Transport Layer (stdio, SSE, HTTP, Docker, NPX)
 │   ├── Multi-Server Orchestration
+│   ├── Authentication & Security
 │   └── Connection Lifecycle Management
-├── Tool Management
+├── 🧠 Shared Memory System (Both Systems)
+│   ├── Multi-Backend Storage (Redis, DB, In-Memory)
+│   ├── Vector Database Integration (Qdrant, ChromaDB)
+│   ├── Memory Strategies (Sliding Window, Token Budget)
+│   └── Session Management
+├── 📡 Event System (Both Systems)
+│   ├── In-Memory Event Processing
+│   ├── Redis Streams for Persistence
+│   └── Real-Time Event Monitoring
+├── 🛠️ Tool Management (Both Systems)
 │   ├── Dynamic Tool Discovery
 │   ├── Cross-Server Tool Routing
+│   ├── Local Python Tool Registration
 │   └── Tool Execution Engine
-└── AI Integration
-    ├── LLM Processing
+└── 🤖 AI Integration (Both Systems)
+    ├── LiteLLM (100+ Models)
     ├── Context Management
+    ├── ReAct Agent Processing
     └── Response Generation
 ```
 
@@ -184,9 +242,11 @@ MCPOmni Connect
 ### Prerequisites
 
 - Python 3.10+
-- LLM API key
-- UV package manager (recommended)
-- Redis server (optional, for persistent memory)
+- LLM API key (OpenAI, Anthropic, etc.)
+- UV package manager (recommended)  
+- Redis server (optional, for persistent memory & events)
+- Database (optional, PostgreSQL/MySQL/SQLite for persistent memory)
+- Qdrant or ChromaDB (optional, for vector search & long-term memory)
 
 ### Install using package manager
 
@@ -206,11 +266,11 @@ pip install mcpomni-connect
 
 ```bash
 # Set up environment variables
-echo "LLM_API_KEY=your_key_here" > .env
+echo "LLM_API_KEY=your_api_key_here" > .env
 # Optional: Configure Redis connection
-echo "REDIS_HOST=localhost" >> .env
-echo "REDIS_PORT=6379" >> .env
-echo "REDIS_DB=0" >> .env
+echo "REDIS_URL=redis://localhost:6379/0" >> .env
+# Optional: Configure database connection  
+echo "DATABASE_URL=sqlite:///mcpomni_memory.db" >> .env
 # Configure your servers in servers_config.json
 ```
 
@@ -228,10 +288,9 @@ Contains sensitive information like API keys and optional settings:
 # Required: Your LLM provider API key
 LLM_API_KEY=your_api_key_here
 
-# Optional: Redis configuration (for persistent memory)
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
+# Optional: Memory Storage Configuration  
+DATABASE_URL=sqlite:///mcpomni_memory.db
+REDIS_URL=redis://localhost:6379/0
 ```
 
 #### 2. `servers_config.json` - Server & Agent Configuration
@@ -249,7 +308,7 @@ Contains application settings, LLM configuration, and MCP server connections:
   "LLM": {
     "provider": "openai",
     "model": "gpt-4o-mini",
-    "temperature": 0.5,
+    "temperature": 0.7,
     "max_tokens": 5000,
     "top_p": 0.7
   },
@@ -519,7 +578,7 @@ tests/
 
    ```bash
    # Set up environment variables
-   echo "LLM_API_KEY=your_key_here" > .env
+   echo "LLM_API_KEY=your_api_key_here" > .env
 
    # Configure your servers in servers_config.json
    ```
@@ -556,111 +615,543 @@ python examples/basic.py
 
 ---
 
-### FastAPI Server Example
+### 🤖 OmniAgent - Create Your Own AI Agents
 
-You can also run MCPOmni Connect as a FastAPI server for web or API-based interaction.
+Build intelligent agents that combine MCP tools with local tools for powerful automation.
 
-**Using [uv](https://github.com/astral-sh/uv):**
+#### Basic OmniAgent Creation
 
-```bash
-uv run examples/fast_api_iml.py
+```python
+from mcpomni_connect.omni_agent import OmniAgent
+from mcpomni_connect.memory_store.memory_router import MemoryRouter
+from mcpomni_connect.events.event_router import EventRouter
+from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
+
+# Create local tools registry
+tool_registry = ToolRegistry()
+
+# Register your custom tools directly with the agent
+@tool_registry.register_tool("calculate_area")
+def calculate_area(length: float, width: float) -> str:
+    """Calculate the area of a rectangle."""
+    area = length * width
+    return f"Area of rectangle ({length} x {width}): {area} square units"
+
+@tool_registry.register_tool("analyze_text")
+def analyze_text(text: str) -> str:
+    """Analyze text and return word count and character count."""
+    words = len(text.split())
+    chars = len(text)
+    return f"Analysis: {words} words, {chars} characters"
+
+# Initialize memory store
+memory_store = MemoryRouter(memory_store_type="redis")  # or "postgresql", "sqlite", "mysql"
+event_router = EventRouter(event_store_type="in_memory")
+
+# Create OmniAgent with LOCAL TOOLS + MCP TOOLS
+agent = OmniAgent(
+    name="my_agent",
+    system_instruction="You are a helpful assistant with access to custom tools and file operations.",
+    model_config={
+        "provider": "openai",
+        "model": "gpt-4o",
+        "max_context_length": 50000,
+    },
+    # Your custom local tools
+    local_tools=tool_registry,
+    # MCP server tools  
+    mcp_tools=[
+        {
+            "name": "filesystem",
+            "transport_type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"],
+        }
+    ],
+    memory_store=memory_store,
+    event_router=event_router
+)
+
+# Now the agent can use BOTH your custom tools AND MCP tools!
+result = await agent.run("Calculate the area of a 10x5 rectangle, then analyze this text: 'Hello world'")
+print(f"Response: {result['response']}")
+print(f"Session ID: {result['session_id']}")
 ```
 
-**Or using Python directly:**
+#### 🚁 Self-Flying Background Agents *(NEW!)*
 
-```bash
-python examples/fast_api_iml.py
+Create autonomous agents that run in the background and execute tasks automatically:
+
+```python
+from mcpomni_connect.omni_agent.background_agent.background_agent_manager import BackgroundAgentManager
+from mcpomni_connect.memory_store.memory_router import MemoryRouter
+from mcpomni_connect.events.event_router import EventRouter
+
+# Initialize components
+memory_store = MemoryRouter(memory_store_type="in_memory")
+event_router = EventRouter(event_store_type="in_memory")
+
+# Create background agent manager
+manager = BackgroundAgentManager(
+    memory_store=memory_store,
+    event_router=event_router
+)
+
+# Create a self-flying background agent
+agent_config = {
+    "agent_id": "system_monitor",
+    "system_instruction": "You are a system monitoring agent that checks system health.",
+    "model_config": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.7,
+    },
+    "local_tools": tool_registry,  # Your tool registry
+    "agent_config": {
+        "max_steps": 10,
+        "tool_call_timeout": 30,
+    },
+    "interval": 60,  # Run every 60 seconds
+    "max_retries": 3,
+    "retry_delay": 30,
+    "task_config": {
+        "query": "Check system status and report any critical issues.",
+        "description": "System health monitoring task"
+    }
+}
+
+# Create and start the background agent
+result = manager.create_agent(agent_config)
+manager.start()  # Start all background agents
+
+# Monitor events in real-time
+async for event in manager.get_agent("system_monitor").stream_events(result["session_id"]):
+    print(f"Background Agent Event: {event.type} - {event.payload}")
+
+# Runtime task updates
+manager.update_task_config("system_monitor", {
+    "query": "Perform emergency system check and report critical issues immediately.",
+    "description": "Emergency system check task",
+    "priority": "high"
+})
 ```
 
-### Web Client
+#### 📝 Session Management
 
-A simple web client is provided in `examples/index.html`.
+Maintain conversation continuity across multiple interactions:
 
-- Open it in your browser after starting the FastAPI server.
-- It connects to `http://localhost:8000` and provides a chat interface.
-- The FastAPI server will start on `http://localhost:8000` by default.
-- You can interact with the API (see `examples/index.html` for a simple web client).
+```python
+# Use session ID for conversation continuity
+session_id = "user_123_conversation"
+result1 = await agent.run("Hello! My name is Alice.", session_id)
+result2 = await agent.run("What did I tell you my name was?", session_id)
 
-### FastAPI API Endpoints
+# Get conversation history
+history = await agent.get_session_history(session_id)
 
-#### `/chat/agent_chat` (POST)
+# Stream events in real-time
+async for event in agent.stream_events(session_id):
+    print(f"Event: {event.type} - {event.payload}")
+```
 
-- **Description:** Send a chat query to the agent and receive a streamed response.
-- **Request:**
-  ```json
-  {
-    "query": "Your question here",
-    "chat_id": "unique-chat-id"
-  }
-  ```
-- **Response:** Streamed JSON lines, each like:
-  ```json
-  {
-    "message_id": "...",
-    "usid": "...",
-    "role": "assistant",
-    "content": "Response text",
-    "meta": [],
-    "likeordislike": null,
-    "time": "2024-06-10 12:34:56"
-  }
+#### 📚 Learn from Examples
+
+Study these comprehensive examples to see OmniAgent in action:
+
+- **`examples/omni_agent_example.py`** - ⭐ **COMPLETE DEMO** showing all OmniAgent features
+- **`examples/background_agent_example.py`** - Self-flying background agents 
+- **`run_omni_agent.py`** - Advanced EXAMPLE patterns (study only, not for end-user use)
+- **`examples/basic.py`** - Simple agent setup patterns
+- **`examples/web_server.py`** - FastAPI web interface
+- **`examples/vector_db_examples.py`** - Advanced vector memory
+- **Provider Examples**: `anthropic.py`, `groq.py`, `azure.py`, `ollama.py`
+
+💡 **Pro Tip**: Run `python examples/omni_agent_example.py` to see the full capabilities in action!
+
+### 🎯 **Getting Started - Choose Your Path**
+
+#### **Path 1: 🤖 Build Custom AI Agents (OmniAgent)**
+```bash
+# Study the examples to learn patterns:
+python examples/basic.py                    # Simple setup
+python examples/omni_agent_example.py       # Complete demo
+python examples/background_agent_example.py # Self-flying agents
+python examples/web_server.py              # Web interface
+
+# Then build your own using the patterns!
+```
+
+#### **Path 2: 🔌 Advanced MCP Client (CLI)**
+```bash
+# World-class MCP client with advanced features
+python run.py
+# OR: mcpomni-connect --config servers_config.json
+
+# Features: Connect to MCP servers, agentic modes, advanced memory
+```
+
+#### **Path 3: 🧪 Study Tool Patterns (Learning)**
+```bash
+# Comprehensive testing interface - Study 12+ EXAMPLE tools
+python run_omni_agent.py --mode cli
+
+# Study this file to see tool registration patterns and CLI features
+# Contains many examples of how to create custom tools
+```
+
+**💡 Pro Tip:** Most developers use **both paths** - the MCP CLI for daily workflow and OmniAgent for building custom solutions!
+
+---
+
+## 🔥 Local Tools System - Create Custom AI Tools!
+
+One of OmniAgent's most powerful features is the ability to **register your own Python functions as AI tools**. The agent can then intelligently use these tools to complete tasks.
+
+### 🎯 Quick Tool Registration Example
+
+```python
+from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
+
+# Create tool registry
+tool_registry = ToolRegistry()
+
+# Register your custom tools with simple decorator
+@tool_registry.register_tool("calculate_area")
+def calculate_area(length: float, width: float) -> str:
+    """Calculate the area of a rectangle."""
+    area = length * width
+    return f"Area of rectangle ({length} x {width}): {area} square units"
+
+@tool_registry.register_tool("analyze_text")
+def analyze_text(text: str) -> str:
+    """Analyze text and return word count and character count."""
+    words = len(text.split())
+    chars = len(text)
+    return f"Analysis: {words} words, {chars} characters"
+
+@tool_registry.register_tool("system_status")
+def get_system_status() -> str:
+    """Get current system status information."""
+    import platform
+    import time
+    return f"System: {platform.system()}, Time: {time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+# Use tools with OmniAgent
+agent = OmniAgent(
+    name="my_agent",
+    local_tools=tool_registry,  # Your custom tools!
+    # ... other config
+)
+
+# Now the AI can use your tools!
+result = await agent.run("Calculate the area of a 10x5 rectangle and tell me the current system time")
+```
+
+### 📖 Tool Registration Patterns (Create Your Own!)
+
+**No built-in tools** - You create exactly what you need! Study these EXAMPLE patterns from `run_omni_agent.py`:
+
+**Mathematical Tools Examples:**
+```python
+@tool_registry.register_tool("calculate_area")
+def calculate_area(length: float, width: float) -> str:
+    area = length * width
+    return f"Area: {area} square units"
+
+@tool_registry.register_tool("analyze_numbers") 
+def analyze_numbers(numbers: str) -> str:
+    num_list = [float(x.strip()) for x in numbers.split(",")]
+    return f"Count: {len(num_list)}, Average: {sum(num_list)/len(num_list):.2f}"
+```
+
+**System Tools Examples:**
+```python
+@tool_registry.register_tool("system_info")
+def get_system_info() -> str:
+    import platform
+    return f"OS: {platform.system()}, Python: {platform.python_version()}"
+```
+
+**File Tools Examples:**
+```python
+@tool_registry.register_tool("list_files")
+def list_directory(path: str = ".") -> str:
+    import os
+    files = os.listdir(path)
+    return f"Found {len(files)} items in {path}"
+```
+
+### 🎨 Tool Registration Patterns
+
+**1. Simple Function Tools:**
+```python
+@tool_registry.register_tool("weather_check")
+def check_weather(city: str) -> str:
+    """Get weather information for a city."""
+    # Your weather API logic here
+    return f"Weather in {city}: Sunny, 25°C"
+```
+
+**2. Complex Analysis Tools:**
+```python
+@tool_registry.register_tool("data_analysis")
+def analyze_data(data: str, analysis_type: str = "summary") -> str:
+    """Analyze data with different analysis types."""
+    import json
+    try:
+        data_obj = json.loads(data)
+        if analysis_type == "summary":
+            return f"Data contains {len(data_obj)} items"
+        elif analysis_type == "detailed":
+            # Complex analysis logic
+            return "Detailed analysis results..."
+    except:
+        return "Invalid data format"
+```
+
+**3. File Processing Tools:**
+```python
+@tool_registry.register_tool("process_file")
+def process_file(file_path: str, operation: str) -> str:
+    """Process files with different operations."""
+    try:
+        if operation == "read":
+            with open(file_path, 'r') as f:
+                content = f.read()
+            return f"File content (first 100 chars): {content[:100]}..."
+        elif operation == "count_lines":
+            with open(file_path, 'r') as f:
+                lines = len(f.readlines())
+            return f"File has {lines} lines"
+    except Exception as e:
+        return f"Error processing file: {e}"
+```
+
+---
+
+## ⚙️ Configuration Guide *(UPDATED!)*
+
+### Environment Variables
+
+Create a `.env` file with your configuration:
+
+```bash
+# ===============================================
+# Required: AI Model API Key
+# ===============================================
+LLM_API_KEY=your_api_key_here
+
+# ===============================================
+# Memory Storage Configuration (NEW!)
+# ===============================================
+# Database backend (PostgreSQL, MySQL, SQLite)
+DATABASE_URL=sqlite:///mcpomni_memory.db
+# DATABASE_URL=postgresql://user:password@localhost:5432/mcpomni
+# DATABASE_URL=mysql://user:password@localhost:3306/mcpomni
+
+# Redis for memory and event storage (single URL)
+REDIS_URL=redis://localhost:6379/0
+# REDIS_URL=redis://:password@localhost:6379/0  # With password
+
+# ===============================================
+# Vector Database Configuration (NEW!)
+# ===============================================
+# Enable vector databases for long-term & episodic memory
+ENABLE_VECTOR_DB=true
+
+# Qdrant (Production-grade vector search)
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+
+# ChromaDB uses local storage automatically if Qdrant not available
+```
+
+### 🧠 Vector Database Setup *(NEW!)*
+
+**For Long-term & Episodic Memory:**
+
+1. **Enable Vector Databases:**
+   ```bash
+   ENABLE_VECTOR_DB=true
+   ```
+
+2. **Option A: Use Qdrant (Recommended for Production):**
+   ```bash
+   # Install and run Qdrant
+   docker run -p 6333:6333 qdrant/qdrant
+   
+   # Set environment variables
+   QDRANT_HOST=localhost
+   QDRANT_PORT=6333
+   ```
+
+3. **Option B: Use ChromaDB (Automatic Local Fallback):**
+   ```bash
+   # Install ChromaDB (usually auto-installed)
+   pip install chromadb
+   
+   # No additional configuration needed - uses local .chroma_db directory
+   ```
+
+### 🖥️ Updated CLI Commands *(NEW!)*
+
+**Memory Store Management:**
+```bash
+# Switch between memory backends
+/memory_store:in_memory                    # Fast in-memory storage (default)
+/memory_store:redis                        # Redis persistent storage  
+/memory_store:database                     # SQLite database storage
+/memory_store:database:postgresql://user:pass@host/db  # PostgreSQL
+/memory_store:database:mysql://user:pass@host/db       # MySQL
+
+# Memory strategy configuration
+/memory_mode:sliding_window:10             # Keep last 10 messages
+/memory_mode:token_budget:5000             # Keep under 5000 tokens
+```
+
+**Event Store Management:**
+```bash
+# Switch between event backends
+/event_store:in_memory                     # Fast in-memory events (default)
+/event_store:redis_stream                  # Redis Streams for persistence
+```
+
+**Enhanced Commands:**
+```bash
+# Memory operations
+/history                                   # Show conversation history
+/clear_history                            # Clear conversation history
+/save_history <file>                      # Save history to file
+/load_history <file>                      # Load history from file
+
+# Server management
+/add_servers:<config.json>                # Add servers from config
+/remove_server:<server_name>              # Remove specific server
+/refresh                                  # Refresh server capabilities
+
+# Debugging and monitoring
+/debug                                    # Toggle debug mode
+/api_stats                               # Show API usage statistics
+```
+
+---
+
+### 🚀 MCPOmni Connect CLI - World-Class MCP Client
+
+The MCPOmni Connect CLI is the most advanced MCP client available, providing professional-grade MCP functionality with enhanced memory, event management, and agentic modes:
+
+```bash
+# Launch the advanced MCP CLI
+python run.py
+# OR: mcpomni-connect --config servers_config.json
+
+# Core MCP client commands:
+/tools                                    # List all available tools
+/prompts                                  # List all available prompts  
+/resources                               # List all available resources
+/prompt:<name>                           # Execute a specific prompt
+/resource:<uri>                          # Read a specific resource
+/subscribe:<uri>                         # Subscribe to resource updates
+/query <your_question>                   # Ask questions using tools
+
+# Advanced platform features:
+/memory_store:redis                      # Switch to Redis memory
+/event_store:redis_stream               # Switch to Redis events
+/add_servers:<config.json>              # Add MCP servers dynamically
+/remove_server:<name>                   # Remove MCP server
+/mode:auto                              # Switch to autonomous agentic mode
+/mode:orchestrator                      # Switch to multi-server orchestration
   ```
 
 ## 🛠️ Developer Integration
 
-MCPOmni Connect is not just a CLI tool—it's also a powerful Python library that you can use to build your own backend services, custom clients, or API servers.
+MCPOmni Connect is not just a CLI tool—it's also a powerful Python library. **OmniAgent consolidates everything** - you no longer need to manually manage MCP clients, configurations, and agents separately!
 
-### Build Your Own MCP Client
+### Build Apps with OmniAgent *(Recommended)*
 
-You can import MCPOmni Connect in your Python project to:
-
-- Connect to one or more MCP servers
-- Choose between **ReAct Agent** mode (autonomous tool use) or **Orchestrator Agent** mode (multi-step, multi-server planning)
-- Manage memory, context, and tool orchestration
-- Expose your own API endpoints (e.g., with FastAPI, Flask, etc.)
-
-#### Example: Custom Backend with FastAPI
-
-See [`examples/fast_api_iml.py`](examples/fast_api_iml.py) for a full-featured example.
-
-**Minimal Example:**
+**OmniAgent automatically includes MCP client functionality** - just specify your MCP servers and you're ready to go:
 
 ```python
-from mcpomni_connect.client import Configuration, MCPClient
-from mcpomni_connect.llm import LLMConnection
-from mcpomni_connect.agents.react_agent import ReactAgent
-from mcpomni_connect.agents.orchestrator import OrchestratorAgent
+from mcpomni_connect.omni_agent import OmniAgent
+from mcpomni_connect.memory_store.memory_router import MemoryRouter
+from mcpomni_connect.events.event_router import EventRouter
+from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
 
-config = Configuration()
-client = MCPClient(config)
-llm_connection = LLMConnection(config)
+# Create tool registry for custom tools
+tool_registry = ToolRegistry()
 
-# Choose agent mode
-agent = ReactAgent(...)  # or OrchestratorAgent(...)
+@tool_registry.register_tool("analyze_data")
+def analyze_data(data: str) -> str:
+    """Analyze data and return insights."""
+    return f"Analysis complete: {len(data)} characters processed"
 
-# Use in your API endpoint
-response = await agent.run(
-    query="Your user query",
-    sessions=client.sessions,
-    llm_connection=llm_connection,
-    # ...other arguments...
+# OmniAgent automatically handles MCP connections + your tools
+agent = OmniAgent(
+    name="my_app_agent",
+    system_instruction="You are a helpful assistant with access to MCP servers and custom tools.",
+    model_config={
+        "provider": "openai", 
+        "model": "gpt-4o",
+        "temperature": 0.7
+    },
+    # Your custom local tools
+    local_tools=tool_registry,
+    # MCP servers - automatically connected!
+    mcp_tools=[
+        {
+            "name": "filesystem",
+            "transport_type": "stdio", 
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
+        },
+        {
+            "name": "github",
+            "transport_type": "streamable_http",
+            "url": "http://localhost:8080/mcp",
+            "headers": {"Authorization": "Bearer your-token"}
+        }
+    ],
+    memory_store=MemoryRouter(memory_store_type="redis"),
+    event_router=EventRouter(event_store_type="in_memory")
 )
+
+# Use in your app - gets both MCP tools AND your custom tools!
+result = await agent.run("List files in the current directory and analyze the filenames")
 ```
 
-#### FastAPI Integration
+### Legacy Manual Approach *(Not Recommended)*
 
-You can easily expose your MCP client as an API using FastAPI.
-See the [FastAPI example](examples/fast_api_iml.py) for:
+If you need the old manual approach for some reason:
 
-- Async server startup and shutdown
-- Handling chat requests with different agent modes
-- Streaming responses to clients
+### FastAPI Integration with OmniAgent
 
-**Key Features for Developers:**
+OmniAgent makes building APIs incredibly simple. See [`examples/web_server.py`](examples/web_server.py) for a complete FastAPI example:
 
-- Full control over agent configuration and limits
-- Support for both chat and autonomous agentic modes
-- Easy integration with any Python web framework
+```python
+from fastapi import FastAPI
+from mcpomni_connect.omni_agent import OmniAgent
+
+app = FastAPI()
+agent = OmniAgent(...)  # Your agent setup from above
+
+@app.post("/chat")
+async def chat(message: str, session_id: str = None):
+    result = await agent.run(message, session_id)
+    return {"response": result['response'], "session_id": result['session_id']}
+
+@app.get("/tools") 
+async def get_tools():
+    # Returns both MCP tools AND your custom tools automatically
+    return agent.get_available_tools()
+```
+
+**Key Benefits:**
+
+- **One OmniAgent = MCP + Custom Tools + Memory + Events**
+- **Automatic tool discovery** from all connected MCP servers
+- **Built-in session management** and conversation history
+- **Real-time event streaming** for monitoring
+- **Easy integration** with any Python web framework
 
 ---
 
