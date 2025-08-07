@@ -79,7 +79,7 @@ class MemoryManager:
                     self.collection_name,
                     session_id=session_id,
                     memory_type=memory_type,
-                    client_type=provider.split("-")[1].lower(),
+                    client_type=provider.split("-")[1].lower() if "-" in provider else "local",
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using ChromaDB (remote) for {memory_type} memory")
