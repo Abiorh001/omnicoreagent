@@ -25,6 +25,23 @@ REDIS_PASSWORD=your_redis_password  # if password protected
 # Optional: Custom settings
 DEBUG=false
 LOG_LEVEL=INFO
+
+# Optional: Vector DB selection
+# Default is chroma-local. Options: chroma-local | chroma-remote | chroma-cloud | qdrant-remote
+OMNI_MEMORY_PROVIDER=chroma-local
+
+# If using chroma-remote
+# CHROMA_HOST=localhost
+# CHROMA_PORT=8000
+
+# If using chroma-cloud
+# CHROMA_CLOUD_TENANT=your_tenant_id
+# CHROMA_CLOUD_DATABASE=your_database_name  
+# CHROMA_CLOUD_API_KEY=your_api_key
+
+# If using qdrant-remote
+# QDRANT_HOST=localhost
+# QDRANT_PORT=6333
 ```
 
 !!! warning "Security"
