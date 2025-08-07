@@ -35,9 +35,9 @@ OMNI_MEMORY_PROVIDER=chroma-local
 # CHROMA_PORT=8000
 
 # If using chroma-cloud
-# CHROMA_CLOUD_TENANT=your_tenant_id
-# CHROMA_CLOUD_DATABASE=your_database_name  
-# CHROMA_CLOUD_API_KEY=your_api_key
+# CHROMA_TENANT=your_tenant_id
+# CHROMA_DATABASE=your_database_name  
+# CHROMA_API_KEY=your_api_key
 
 # If using qdrant-remote
 # QDRANT_HOST=localhost
