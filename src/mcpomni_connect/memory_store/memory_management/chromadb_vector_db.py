@@ -147,7 +147,7 @@ class ChromaDBVectorDB(VectorDBBase):
                 cloud_api_key = config("CHROMA_API_KEY", default=None)
                 
                 if not all([cloud_tenant, cloud_database, cloud_api_key]):
-                    logger.error("ChromaDB Cloud requires CHROMA_CLOUD_TENANT, CHROMA_CLOUD_DATABASE, and CHROMA_CLOUD_API_KEY")
+                    logger.error("ChromaDB Cloud requires CHROMA_TENANT, CHROMA_DATABASE, and CHROMA_API_KEY")
                     self.enabled = False
                     return
                 

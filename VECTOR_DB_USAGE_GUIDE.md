@@ -308,7 +308,7 @@ print("Similar questions:", similar)
 **Provider selection**: Set `OMNI_MEMORY_PROVIDER` to one of `chroma-local` (default), `chroma-remote`, `chroma-cloud` or `qdrant-remote`.
 
 - **Qdrant**: Set `QDRANT_HOST` and `QDRANT_PORT` environment variables.
-- **ChromaDB (cloud)**: Set `CHROMA_CLOUD_TENANT`, `CHROMA_CLOUD_DATABASE`, and `CHROMA_CLOUD_API_KEY`.
+- **ChromaDB (cloud)**: Set `CHROMA_TENANT`, `CHROMA_DATABASE`, and `CHROMA_API_KEY`.
 - **ChromaDB (remote)**: Set `CHROMA_HOST` and `CHROMA_PORT`.
 - **ChromaDB (local)**: Automatically uses local storage in `.chroma_db` directory.
 - Enable features by setting `ENABLE_VECTOR_DB=true` in your environment.
