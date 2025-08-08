@@ -162,7 +162,7 @@ class ChromaDBVectorDB(VectorDBBase):
                 # Remote HTTP client
                 chroma_host = config("CHROMA_HOST", default="localhost")
                 chroma_port = config("CHROMA_PORT", default=8000, cast=int)
-                
+                logger.debug(f"ChromaDB Remote client initialized for host: {chroma_host} and port: {chroma_port}")
                 self.chroma_client = chromadb.HttpClient(
                     host=chroma_host,
                     port=chroma_port,

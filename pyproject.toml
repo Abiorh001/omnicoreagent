@@ -37,9 +37,8 @@ dependencies = [
     "websockets>=15.0.1",
     "httpx>=0.26.0",
     "httpx-sse>=0.4.0",
-    "pydantic>=2.6.0",
+    "pydantic[email]>=2.6.0",
     "anyio>=4.2.0",
-    "litellm>=1.72.1",
     "redis>=5.2.1",
     "python-decouple>=3.8",
     "fastapi>=0.115.12",
@@ -57,6 +56,8 @@ dependencies = [
     "apscheduler>=3.11.0",
     "psutil>=7.0.0",
     "pymupdf>=1.26.3",
+    "litellm>=1.75.2",
+    "fastapi-sso>=0.18.0",
 ]
 
 [project.scripts]

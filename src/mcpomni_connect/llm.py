@@ -14,6 +14,8 @@ warnings.filterwarnings(
 load_dotenv()
 
 
+
+
 class LLMConnection:
     def __init__(self, config: dict[str, Any], config_filename: str):
         self.config = config
@@ -145,6 +147,9 @@ class LLMConnection:
                     params["stop"] = ["\n\nObservation:"]
 
             # Call LiteLLM
+            # Configure LiteLLM to drop unsupported parameters
+            litellm.drop_params = True
+    
             response = await litellm.acompletion(**params)
             return response
 
@@ -176,6 +181,9 @@ class LLMConnection:
             if self.llm_config["provider"].lower() == "openrouter":
                 if not tools:
                     params["stop"] = ["\n\nObservation:"]
+
+            # Configure LiteLLM to drop unsupported parameters
+            litellm.drop_params = True
 
             response = litellm.completion(**params)
             return response
