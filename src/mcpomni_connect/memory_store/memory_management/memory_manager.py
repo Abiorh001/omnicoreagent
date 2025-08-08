@@ -20,6 +20,7 @@ from mcpomni_connect.memory_store.memory_management.qdrant_vector_db import (
     QdrantVectorDB,
 )
 from mcpomni_connect.memory_store.memory_management.chromadb_vector_db import (
+    ChromaClientType,
     ChromaDBVectorDB,
 )
 
@@ -55,12 +56,11 @@ class MemoryManager:
         # Load embedding model once (shared across all instances)
         load_embed_model()
 
-        # Check Qdrant availability
-        qdrant_host = config("QDRANT_HOST", default=None)
-        qdrant_port = config("QDRANT_PORT", default=None)
+        # Determine provider from config
+        provider = config("OMNI_MEMORY_PROVIDER", default="chroma-local").lower()
 
-        # Try Qdrant first
-        if qdrant_host and qdrant_port:
+        # Try provider-specific initialization with sensible fallbacks
+        if provider == "qdrant-remote":
             try:
                 self.vector_db = QdrantVectorDB(
                     self.collection_name, session_id=session_id, memory_type=memory_type
@@ -68,23 +68,43 @@ class MemoryManager:
                 if self.vector_db.enabled:
                     logger.debug(f"Using Qdrant for {memory_type} memory")
                     return
+                else:
+                    logger.warning("Qdrant not enabled; falling back to ChromaDB (local)")
             except Exception as e:
-                logger.warning(f"Failed to initialize Qdrant: {e}")
+                logger.warning(f"Failed to initialize Qdrant (remote): {e}")
 
-        # Fallback to ChromaDB
+        elif provider.startswith("chroma"):
+            try:
+                self.vector_db = ChromaDBVectorDB(
+                    self.collection_name,
+                    session_id=session_id,
+                    memory_type=memory_type,
+                    client_type=provider.split("-")[1].lower() if "-" in provider else "local",
+                )
+                if self.vector_db.enabled:
+                    logger.debug(f"Using ChromaDB (remote) for {memory_type} memory")
+                    return
+                else:
+                    logger.warning("ChromaDB (remote) not enabled; falling back to ChromaDB (local)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ChromaDB (remote): {e}")
+
+        # Fallback to Chroma local
         try:
             self.vector_db = ChromaDBVectorDB(
-                self.collection_name, session_id=session_id, memory_type=memory_type
+                self.collection_name,
+                session_id=session_id,
+                memory_type=memory_type,
+                client_type=ChromaClientType.LOCAL,
             )
-
             if self.vector_db.enabled:
-                logger.debug(f"Using ChromaDB for {memory_type} memory")
+                logger.debug(f"Using ChromaDB (local) for {memory_type} memory")
             else:
                 logger.warning(
-                    f"Both Qdrant and ChromaDB are disabled for {memory_type} memory"
+                    f"Vector DB disabled for {memory_type} memory (Chroma local not enabled)"
                 )
         except Exception as e:
-            logger.error(f"Failed to initialize ChromaDB: {e}")
+            logger.error(f"Failed to initialize ChromaDB (local): {e}")
             self.vector_db = None
             logger.warning(
                 f"Vector database completely disabled for {memory_type} memory"

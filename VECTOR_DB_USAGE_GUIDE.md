@@ -6,7 +6,7 @@ This guide shows you how to use the vector database abstraction directly for you
 
 ## Architecture
 
-```
+```text
 VectorDBBase (Abstract Base Class)
 ├── QdrantVectorDB (Concrete Implementation)
 └── ChromaDBVectorDB (Concrete Implementation)
@@ -24,6 +24,7 @@ MemoryManager (High-level wrapper for memory operations)
 All vector database implementations provide these core methods:
 
 #### 1. **Document Operations**
+
 ```python
 # Upsert a document (insert if new, update if exists)
 vector_db.upsert_document(document="Your text", doc_id="unique_id", metadata={"key": "value"})
@@ -34,6 +35,7 @@ vector_db.delete_from_collection(where={"key": "value"})
 ```
 
 #### 2. **Query Operations**
+
 ```python
 # Query for similar documents
 results = vector_db.query_collection(query="Your search query", n_results=5, distance_threshold=0.4)
@@ -43,6 +45,7 @@ results = await vector_db.query_collection_async(query="Your search query", n_re
 ```
 
 #### 3. **Async Operations**
+
 ```python
 # Add document asynchronously
 await vector_db.add_to_collection_async(doc_id="unique_id", document="Your text", metadata={"key": "value"})
@@ -302,10 +305,13 @@ print("Similar questions:", similar)
 
 ## Configuration
 
-The system automatically detects your vector database configuration:
+**Provider selection**: Set `OMNI_MEMORY_PROVIDER` to one of `chroma-local` (default), `chroma-remote`, `chroma-cloud` or `qdrant-remote`.
 
-- **Qdrant**: Set `QDRANT_HOST` and `QDRANT_PORT` environment variables
-- **ChromaDB**: Automatically uses local storage in `.chroma_db` directory
+- **Qdrant**: Set `QDRANT_HOST` and `QDRANT_PORT` environment variables.
+- **ChromaDB (cloud)**: Set `CHROMA_TENANT`, `CHROMA_DATABASE`, and `CHROMA_API_KEY`.
+- **ChromaDB (remote)**: Set `CHROMA_HOST` and `CHROMA_PORT`.
+- **ChromaDB (local)**: Automatically uses local storage in `.chroma_db` directory.
+- Enable features by setting `ENABLE_VECTOR_DB=true` in your environment.
 
 ## Error Handling
 
@@ -341,4 +347,4 @@ except Exception as e:
 - **Use Direct Vector DB** (QdrantVectorDB/ChromaDBVectorDB): For tools, document search, knowledge bases, custom features
 - **Use MemoryManager**: For memory-specific operations, conversation history, episodic/long-term memory
 
-This abstraction makes it easy to build your own vector database-powered tools while maintaining clean, reusable code! 
+This abstraction makes it easy to build your own vector database-powered tools while maintaining clean, reusable code!

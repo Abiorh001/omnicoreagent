@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from mcpomni_connect.utils import logger
 
 # Try to import ChromaDB with proper error handling
@@ -16,6 +17,7 @@ except ImportError as e:
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
+from decouple import config
 
 # ==== 🔥 Warm up ChromaDB client at module import ====
 _chroma_client = None
@@ -68,19 +70,21 @@ def _initialize_chromadb():
         _chroma_enabled = False
 
 
-# Only initialize ChromaDB if Qdrant is not available
 def _should_warmup_chromadb():
-    """Check if we should warm up ChromaDB (only if Qdrant is not available)."""
+    """Check if we should warm up ChromaDB."""
     from decouple import config
 
-    qdrant_host = config("QDRANT_HOST", default=None)
-    qdrant_port = config("QDRANT_PORT", default=None)
+    memory_provider = config("OMNI_MEMORY_PROVIDER", default=None)
 
-    # If Qdrant is configured, don't warm up ChromaDB
-    if qdrant_host and qdrant_port:
+    if not memory_provider or memory_provider == "chroma-local":
+        return True
+    elif memory_provider == "qdrant-remote":
         try:
             # Quick test if Qdrant is actually reachable
             from qdrant_client import QdrantClient
+
+            qdrant_host = config("QDRANT_HOST", default=None)
+            qdrant_port = config("QDRANT_PORT", default=None)
 
             test_client = QdrantClient(host=qdrant_host, port=qdrant_port)
             test_client.get_collections()  # Quick health check
@@ -105,10 +109,16 @@ else:
     )
 
 
+class ChromaClientType(Enum):
+    """Enumeration for ChromaDB client types."""
+    LOCAL = "local"
+    REMOTE = "remote"
+    CLOUD = "cloud"
+
 class ChromaDBVectorDB(VectorDBBase):
     """ChromaDB vector database implementation."""
 
-    def __init__(self, collection_name: str, **kwargs):
+    def __init__(self, collection_name: str, client_type: ChromaClientType = ChromaClientType.LOCAL, **kwargs):
         """Initialize ChromaDB vector database."""
         super().__init__(collection_name, **kwargs)
 
@@ -119,37 +129,72 @@ class ChromaDBVectorDB(VectorDBBase):
             self.enabled = False
             return
 
-        # Initialize ChromaDB client with local persistence
+        if isinstance(client_type, str):
+            try:
+                client_type = ChromaClientType(client_type.lower())
+            except ValueError:
+                logger.warning(f"Invalid client_type '{client_type}', defaulting to LOCAL")
+                client_type = ChromaClientType.LOCAL
+
+        # Initialize ChromaDB client based on type
         try:
-            logger.debug(f"Initializing ChromaDB for {collection_name}")
+            logger.debug(f"Initializing ChromaDB for {collection_name} with client_type: {client_type.value}")
 
-            # Create a local directory for ChromaDB data
-            chroma_data_dir = os.path.join(os.getcwd(), ".chroma_db")
-            os.makedirs(chroma_data_dir, exist_ok=True)
-
-            # Check if we should do lazy warmup (if not done at startup)
-            global _chroma_enabled, _chroma_client
-            if not _chroma_enabled and CHROMADB_AVAILABLE:
-                logger.debug("Doing lazy ChromaDB warmup (not done at startup)")
-                try:
-                    _initialize_chromadb()
-                except Exception as e:
-                    logger.warning(f"Lazy ChromaDB warmup failed: {e}")
-
-            # Use warmed-up client patterns for maximum speed
-            if _chroma_enabled and _chroma_client:
-                # Create client with minimal overhead (ChromaDB is already warmed up)
-                self.chroma_client = chromadb.PersistentClient(
-                    path=chroma_data_dir,
-                    settings=Settings(
-                        anonymized_telemetry=False,
-                        allow_reset=True,
-                    ),
+            if client_type == ChromaClientType.CLOUD:
+                # Cloud client
+                cloud_tenant = config("CHROMA_TENANT", default=None)
+                cloud_database = config("CHROMA_DATABASE", default=None)
+                cloud_api_key = config("CHROMA_API_KEY", default=None)
+                
+                if not all([cloud_tenant, cloud_database, cloud_api_key]):
+                    logger.error("ChromaDB Cloud requires CHROMA_TENANT, CHROMA_DATABASE, and CHROMA_API_KEY")
+                    self.enabled = False
+                    return
+                
+                self.chroma_client = chromadb.CloudClient(
+                    tenant=cloud_tenant,
+                    database=cloud_database,
+                    api_key=cloud_api_key,
                 )
+                logger.debug(f"ChromaDB Cloud client initialized for tenant: {cloud_tenant}")
+                
+            elif client_type == ChromaClientType.REMOTE:
+                # Remote HTTP client
+                chroma_host = config("CHROMA_HOST", default="localhost")
+                chroma_port = config("CHROMA_PORT", default=8000, cast=int)
+                
+                self.chroma_client = chromadb.HttpClient(
+                    host=chroma_host,
+                    port=chroma_port,
+                    ssl=False,
+                )
+            elif client_type == ChromaClientType.LOCAL:
+                # Local persistent client
+                chroma_data_dir = os.path.join(os.getcwd(), ".chroma_db")
+                os.makedirs(chroma_data_dir, exist_ok=True)
 
-            else:
-                # Standard client creation
-                self.chroma_client = chromadb.PersistentClient(path=chroma_data_dir)
+                # Check if we should do lazy warmup (if not done at startup)
+                global _chroma_enabled, _chroma_client
+                if not _chroma_enabled and CHROMADB_AVAILABLE:
+                    logger.debug("Doing lazy ChromaDB warmup (not done at startup)")
+                    try:
+                        _initialize_chromadb()
+                    except Exception as e:
+                        logger.warning(f"Lazy ChromaDB warmup failed: {e}")
+
+                # Use warmed-up client patterns for maximum speed
+                if _chroma_enabled and _chroma_client:
+                    # Create client with minimal overhead (ChromaDB is already warmed up)
+                    self.chroma_client = chromadb.PersistentClient(
+                        path=chroma_data_dir,
+                        settings=Settings(
+                            anonymized_telemetry=False,
+                            allow_reset=True,
+                        ),
+                    )
+                else:
+                    # Standard client creation
+                    self.chroma_client = chromadb.PersistentClient(path=chroma_data_dir)
 
             # Get or create collection
 
