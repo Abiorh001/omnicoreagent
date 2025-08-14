@@ -58,6 +58,7 @@ dependencies = [
     "pymupdf>=1.26.3",
     "litellm>=1.75.2",
     "fastapi-sso>=0.18.0",
+    "opik>=1.8.19",
 ]
 
 [project.scripts]

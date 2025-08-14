@@ -20,6 +20,14 @@ class MemoryRouter:
         else:
             raise ValueError(f"Invalid memory store type: {memory_store_type}")
 
+    def __str__(self):
+        """Return a readable string representation of the MemoryRouter."""
+        return f"MemoryRouter(type={self.memory_store_type}, store={type(self.memory_store).__name__})"
+
+    def __repr__(self):
+        """Return a detailed representation of the MemoryRouter."""
+        return self.__str__()
+
     def set_memory_config(self, mode: str, value: int = None) -> None:
         self.memory_store.set_memory_config(mode, value)
 

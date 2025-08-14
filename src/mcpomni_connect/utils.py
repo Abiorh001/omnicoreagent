@@ -10,7 +10,6 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
-import colorlog
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -27,7 +26,7 @@ for handler in logger.handlers[:]:
     logger.removeHandler(handler)
 
 # Create console handler with immediate flush
-console_handler = colorlog.StreamHandler(sys.stdout)
+console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
 
 # Create file handler with immediate flush
@@ -36,16 +35,9 @@ file_handler = logging.FileHandler(log_file, mode="a")
 file_handler.setLevel(logging.INFO)
 
 # Create formatters
-console_formatter = colorlog.ColoredFormatter(
-    "%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+console_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    log_colors={
-        "DEBUG": "cyan",
-        "INFO": "green",
-        "WARNING": "yellow",
-        "ERROR": "red",
-        "CRITICAL": "red,bg_white",
-    },
 )
 
 file_formatter = logging.Formatter(
@@ -536,3 +528,49 @@ def get_mac_address() -> str:
 
 # Create a global instance of the MAC address
 CLIENT_MAC_ADDRESS = get_mac_address()
+
+# Opik integration for tracing, logging, and observability
+OPIK_AVAILABLE = False
+track = None
+
+try:
+    from opik import track as opik_track
+
+    # Check if we have valid credentials before enabling Opik
+    from decouple import config
+
+    api_key = config("OPIK_API_KEY", default=None)
+    workspace = config("OPIK_WORKSPACE", default=None)
+
+    if api_key and workspace:
+        OPIK_AVAILABLE = True
+        track = opik_track
+        logger.debug("Opik imported successfully with valid credentials")
+    else:
+        logger.debug("Opik available but no valid credentials - using fake decorator")
+
+        # Create fake decorator when no credentials - must handle both @track and @track("name")
+        def track(name_or_func=None):
+            if callable(name_or_func):
+                # Called as @track (function passed directly)
+                return name_or_func
+            else:
+                # Called as @track("name") - return decorator function
+                def decorator(func):
+                    return func
+
+                return decorator
+except ImportError:
+    # No-op decorator if Opik is not available
+    def track(name_or_func=None):
+        if callable(name_or_func):
+            # Called as @track (function passed directly)
+            return name_or_func
+        else:
+            # Called as @track("name") - return decorator function
+            def decorator(func):
+                return func
+
+            return decorator
+
+    logger.debug("Opik not available, using no-op decorator")

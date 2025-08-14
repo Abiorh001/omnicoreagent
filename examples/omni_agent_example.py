@@ -429,9 +429,9 @@ async def main():
             system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
                 "provider": "openai",  # Change to your preferred provider
-                "model": "gpt-4",  # Use valid model name
+                "model": "gpt-4.1",  # Use valid model name
                 "temperature": 0.7,
-                "max_context_length": 50000,
+                "max_context_length": 3000,
             },
             mcp_tools=[
                 {

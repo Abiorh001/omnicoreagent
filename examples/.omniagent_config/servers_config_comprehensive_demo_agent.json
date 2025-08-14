@@ -1,0 +1,35 @@
+{
+  "AgentConfig": {
+    "agent_name": "comprehensive_demo_agent",
+    "mcp_enabled": false,
+    "tool_call_timeout": 60,
+    "max_steps": 15,
+    "request_limit": 1000,
+    "total_tokens_limit": 40000000,
+    "memory_config": {
+      "mode": "token_budget",
+      "value": 10000
+    }
+  },
+  "LLM": {
+    "provider": "openai",
+    "model": "gpt-4.1",
+    "temperature": 0.7,
+    "max_tokens": 5000,
+    "max_context_length": 3000,
+    "top_p": 0.7,
+    "top_k": "N/A"
+  },
+  "mcpServers": {
+    "mcp_tool": {
+      "transport_type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/abiorh",
+        "/home/abiorh/ai/mcp_omni_connect/examples"
+      ]
+    }
+  }
+}

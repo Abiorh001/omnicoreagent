@@ -13,14 +13,31 @@
 
 ## 📋 Table of Contents
 
+### 🚀 **Getting Started**
 - [🚀 Quick Start (2 minutes)](#-quick-start-2-minutes)
-- [🌟 Two Powerful Systems](#-complete-ai-platform---two-powerful-systems)
+- [🌟 What is MCPOmni Connect?](#-complete-ai-platform---two-powerful-systems)
+- [💡 What Can You Build? (Examples)](#-what-can-you-build-see-real-examples)
+- [🎯 Choose Your Path](#-getting-started---choose-your-path)
+
+### 📖 **Core Information**  
 - [✨ Key Features](#-key-features)
 - [🏗️ Architecture](#️-architecture)
+- [🔥 Local Tools System](#-local-tools-system---create-custom-ai-tools)
+
+### ⚙️ **Setup & Configuration**
+- [⚙️ Configuration Guide](#️-configuration-guide-updated)
+- [🧠 Vector Database Setup](#-vector-database--smart-memory-setup-complete-guide)
+- [📊 Tracing & Observability](#-opik-tracing--observability-setup-latest-feature)
+
+### 🛠️ **Development & Integration**
 - [🧑‍💻 Examples & Usage](#-examples)
-- [⚙️ Configuration Guide](#️-configuration-guide)
 - [🛠️ Developer Integration](#️-developer-integration)
+- [🧪 Testing](#-testing)
+
+### 📚 **Reference & Support**
 - [🔍 Troubleshooting](#-troubleshooting)
+- [🤝 Contributing](#-contributing)
+- [📖 Documentation](#-documentation)
 
 ---
 
@@ -45,14 +62,14 @@ echo "LLM_API_KEY=your_openai_api_key_here" > .env
 
 ### Step 3: Run Examples
 ```bash
-# Try the basic CLI example
+# Try the basic MCP client
 python examples/basic.py
 
 # Or try OmniAgent with custom tools
 python examples/omni_agent_example.py
 
 # Or use the advanced MCP CLI
-python run.py
+python examples/run.py
 ```
 
 ### What Can You Build?
@@ -60,8 +77,9 @@ python run.py
 - **MCP Integration**: Connect to any Model Context Protocol server
 - **Smart Memory**: Vector databases for long-term AI memory
 - **Background Agents**: Self-flying autonomous task execution
+- **Production Monitoring**: Opik tracing for performance optimization
 
-➡️ **Next**: Check out [Examples](#-examples) or jump to [Configuration Guide](#️-configuration-guide)
+➡️ **Next**: Check out [Examples](#-what-can-you-build-see-real-examples) or jump to [Configuration Guide](#️-configuration-guide-updated)
 
 ---
 
@@ -109,58 +127,57 @@ Advanced command-line interface for connecting to any Model Context Protocol ser
 
 ## 💡 **What Can You Build? (See Real Examples)**
 
-### 🤖 **Custom AI Agents**
+### 🔌 **MCP Client Usage** *(Connect to MCP Servers)*
 ```bash
-# Complete OmniAgent demo with custom tools
-python examples/omni_agent_example.py
-
-# Agent with existing memory integration
-python examples/agent_with_existing_memory.py
-```
-
-### 🚁 **Background Automation**
-```bash
-# Self-flying background agents
-python examples/background_agent_example.py
-```
-
-### 🔌 **MCP Server Integration**
-```bash
-# Basic MCP client usage
+# Basic MCP client usage - Simple connection patterns
 python examples/basic.py
 
-# Advanced MCP tool patterns
+# Advanced MCP CLI - Full-featured client interface  
+python examples/run.py
+```
+
+### 🤖 **OmniAgent System** *(Build Custom AI Agents)*
+```bash
+# Complete OmniAgent demo - All features showcase
+python examples/omni_agent_example.py
+
+# Advanced OmniAgent patterns - Study 12+ tool examples
 python examples/run_omni_agent.py
 ```
 
-### 🌐 **Web Applications**
+### 🚁 **Background Agent Automation** *(Self-Flying Agents)*
 ```bash
-# FastAPI web server with OmniAgent
-python examples/web_server.py
-# Open http://localhost:8000
+# Self-flying background agents - Autonomous task execution
+python examples/background_agent_example.py
+```
 
-# Or FastAPI implementation example
+### 🌐 **Web Applications** *(User Interfaces)*
+```bash
+# FastAPI implementation - Clean API endpoints
 python examples/fast_api_iml.py
+
+# Web server with UI - Interactive interface for OmniAgent
+python examples/web_server.py
+# Open http://localhost:8000 for web interface
 ```
 
-### 🧠 **Vector Database Memory**
+### 🔧 **LLM Provider Configuration** *(Multiple Providers)*
+All LLM provider examples consolidated in:
 ```bash
-# Advanced vector database examples
-python examples/vector_db_examples.py
-```
-
-### 🔧 **LLM Provider Examples**
-```bash
-# Different LLM providers
-python examples/anthropic.py      # Anthropic Claude
-python examples/groq.py           # Groq models
-python examples/azure.py          # Azure OpenAI
-python examples/ollama.py         # Local Ollama models
+# See examples/llm_usage-config.json for:
+# - Anthropic Claude models
+# - Groq ultra-fast inference  
+# - Azure OpenAI enterprise
+# - Ollama local models
+# - OpenRouter 200+ models
+# - And more providers...
 ```
 
 ---
 
 ## ✨ Key Features
+
+> **🚀 Want to start building right away?** Jump to [Quick Start](#-quick-start-2-minutes) | [Examples](#-what-can-you-build-see-real-examples) | [Configuration](#️-configuration-guide-updated)
 
 ### 🤖 Intelligent Agent System
 
@@ -255,21 +272,24 @@ python examples/ollama.py         # Local Ollama models
   - **Episodic Memory**: Context-aware conversation history
   - Runtime configuration: `/memory_mode:sliding_window:5`, `/memory_mode:token_budget:3000`
 - **Vector Database Integration *(NEW!)*
-  - **Multiple Provider Support**: Choose your preferred vector database
-    - **ChromaDB**: Full support for local, remote, and cloud modes
-    - **Qdrant**: Production-grade remote vector search
-  - **Smart Provider Selection** via `OMNI_MEMORY_PROVIDER`:
-    - `chroma-local`: Local storage (default, automatic fallback)
-    - `chroma-remote`: Remote ChromaDB server
-    - `chroma-cloud`: ChromaDB Cloud service
-    - `qdrant-remote`: Remote Qdrant server
-  - **Automatic Failover**: If remote connections fail, safely falls back to ChromaDB local
-  - **Semantic Search**: Intelligent context retrieval across conversations
-  - **Enable**: Set `ENABLE_VECTOR_DB=true` for long-term and episodic memory
+  - **Multiple Provider Support**: ChromaDB (local/remote/cloud) + Qdrant (remote)
+  - **Smart Fallback**: Automatic failover to local storage if remote fails
+  - **Semantic Search**: Intelligent context retrieval across conversations  
+  - **Long-term & Episodic Memory**: Enable with `ENABLE_VECTOR_DB=true`
+  - **⚠️ Startup Impact**: 30-60s initial load (sentence transformer), then fast
 - **Real-Time Event Streaming *(NEW!)*
   - **In-Memory Events**: Fast development event processing
   - **Redis Streams**: Persistent event storage and streaming
   - Runtime switching: `/event_store:redis_stream`, `/event_store:in_memory`
+- **Advanced Tracing & Observability *(LATEST!)*
+  - **Opik Integration**: Production-grade tracing and monitoring
+    - **Real-time Performance Tracking**: Monitor LLM calls, tool executions, and agent performance
+    - **Detailed Call Traces**: See exactly where time is spent in your AI workflows
+    - **System Observability**: Understand bottlenecks and optimize performance
+    - **Open Source**: Built on Opik, the open-source observability platform
+  - **Easy Setup**: Just add your Opik credentials to start monitoring
+  - **Zero Code Changes**: Automatic tracing with `@track` decorators
+  - **Performance Insights**: Identify slow operations and optimization opportunities
 
 ### 💬 Prompt Management
 
@@ -316,6 +336,8 @@ python examples/ollama.py         # Local Ollama models
 
 ## 🏗️ Architecture
 
+> **📚 Prefer hands-on learning?** Skip to [Examples](#-what-can-you-build-see-real-examples) or [Configuration](#️-configuration-guide-updated)
+
 ### Core Components
 
 ```
@@ -332,7 +354,7 @@ MCPOmni Connect Platform
 │   └── Connection Lifecycle Management
 ├── 🧠 Shared Memory System (Both Systems)
 │   ├── Multi-Backend Storage (Redis, DB, In-Memory)
-│   ├── Vector Database Integration (Qdrant, ChromaDB)
+│   ├── Vector Database Integration (ChromaDB, Qdrant)
 │   ├── Memory Strategies (Sliding Window, Token Budget)
 │   └── Session Management
 ├── 📡 Event System (Both Systems)
@@ -363,6 +385,7 @@ MCPOmni Connect Platform
 - Redis (persistent memory)
 - Vector DB (ChromaDB auto-installed, Qdrant for production)
 - Database (PostgreSQL/MySQL/SQLite)
+- ⚠️ **Vector DB startup**: 30-60s initial load time
 
 ### 📦 **Installation**
 
@@ -385,6 +408,7 @@ echo "LLM_API_KEY=your_api_key_here" > .env
 **Advanced setup** (optional features):
 ```bash
 # Enable vector memory (ChromaDB local - auto-configured)
+# ⚠️ Warning: 30-60s startup time for sentence transformer loading
 echo "ENABLE_VECTOR_DB=true" >> .env
 
 # Or connect to Redis for persistent memory
@@ -899,12 +923,13 @@ async for event in agent.stream_events(session_id):
 Study these comprehensive examples to see OmniAgent in action:
 
 - **`examples/omni_agent_example.py`** - ⭐ **COMPLETE DEMO** showing all OmniAgent features
+- **`examples/run_omni_agent.py`** - Advanced EXAMPLE patterns (study 12+ tool examples)
 - **`examples/background_agent_example.py`** - Self-flying background agents 
-- **`run_omni_agent.py`** - Advanced EXAMPLE patterns (study only, not for end-user use)
-- **`examples/basic.py`** - Simple agent setup patterns
-- **`examples/web_server.py`** - FastAPI web interface
-- **`examples/vector_db_examples.py`** - Advanced vector memory
-- **Provider Examples**: `anthropic.py`, `groq.py`, `azure.py`, `ollama.py`
+- **`examples/basic.py`** - Simple MCP client patterns
+- **`examples/run.py`** - Advanced MCP CLI interface
+- **`examples/web_server.py`** - FastAPI web interface for OmniAgent
+- **`examples/fast_api_iml.py`** - Clean FastAPI implementation
+- **`examples/llm_usage-config.json`** - All LLM provider configurations
 
 💡 **Pro Tip**: Run `python examples/omni_agent_example.py` to see the full capabilities in action!
 
@@ -923,8 +948,8 @@ Study these comprehensive examples to see OmniAgent in action:
 Perfect for: Custom applications, automation, web apps
 ```bash
 # Study the examples to learn patterns:
-python examples/basic.py                    # Simple setup
-python examples/omni_agent_example.py       # Complete demo
+python examples/basic.py                    # Simple MCP client
+python examples/omni_agent_example.py       # Complete OmniAgent demo
 python examples/background_agent_example.py # Self-flying agents
 python examples/web_server.py              # Web interface
 
@@ -934,8 +959,11 @@ python examples/web_server.py              # Web interface
 ### **Path 2: 🔌 Advanced MCP Client (CLI)**
 Perfect for: Daily workflow, server management, debugging
 ```bash
+# Basic MCP client - Simple connection patterns
+python examples/basic.py
+
 # World-class MCP client with advanced features
-python run.py
+python examples/run.py
 # OR: mcpomni-connect --config servers_config.json
 
 # Features: Connect to MCP servers, agentic modes, advanced memory
@@ -945,7 +973,7 @@ python run.py
 Perfect for: Learning, understanding patterns, experimentation
 ```bash
 # Comprehensive testing interface - Study 12+ EXAMPLE tools
-python run_omni_agent.py --mode cli
+python examples/run_omni_agent.py --mode cli
 
 # Study this file to see tool registration patterns and CLI features
 # Contains many examples of how to create custom tools
@@ -1083,106 +1111,187 @@ def process_file(file_path: str, operation: str) -> str:
 
 ## ⚙️ Configuration Guide *(UPDATED!)*
 
+> **⚡ Quick Setup**: Only need `LLM_API_KEY` to get started! | **🔍 Detailed Setup**: [Vector DB](#-vector-database--smart-memory-setup-complete-guide) | [Tracing](#-opik-tracing--observability-setup-latest-feature)
+
 ### Environment Variables
 
-Create a `.env` file with your configuration:
+Create a `.env` file with your configuration. **Only the LLM API key is required** - everything else is optional for advanced features.
 
+#### **🔥 REQUIRED (Start Here)**
 ```bash
 # ===============================================
-# Required: AI Model API Key
+# REQUIRED: AI Model API Key (Choose one provider)
 # ===============================================
-LLM_API_KEY=your_api_key_here
+LLM_API_KEY=your_openai_api_key_here
+# OR for other providers:
+# LLM_API_KEY=your_anthropic_api_key_here
+# LLM_API_KEY=your_groq_api_key_here
+# LLM_API_KEY=your_azure_openai_api_key_here
+# See examples/llm_usage-config.json for all provider configs
+```
+
+#### **⚡ OPTIONAL: Advanced Features**
+```bash
+# ===============================================
+# Tracing & Observability (OPTIONAL) - NEW!
+# ===============================================
+# For advanced monitoring and performance optimization
+# 🔗 Sign up: https://www.comet.com/signup?from=llm
+OPIK_API_KEY=your_opik_api_key_here
+OPIK_WORKSPACE=your_opik_workspace_name
 
 # ===============================================
-# Memory Storage Configuration (NEW!)
+# Vector Database (OPTIONAL) - Smart Memory
 # ===============================================
-# Database backend (PostgreSQL, MySQL, SQLite)
-DATABASE_URL=sqlite:///mcpomni_memory.db
-# DATABASE_URL=postgresql://user:password@localhost:5432/mcpomni
-# DATABASE_URL=mysql://user:password@localhost:3306/mcpomni
-
-# Redis for memory and event storage (single URL)
-REDIS_URL=redis://localhost:6379/0
-# REDIS_URL=redis://:password@localhost:6379/0  # With password
-
-# ===============================================
-# Vector Database Configuration (NEW!)
-# ===============================================
-# Enable vector databases for long-term & episodic memory
+# ⚠️ Warning: 30-60s startup time for sentence transformer
 ENABLE_VECTOR_DB=true
+OMNI_MEMORY_PROVIDER=chroma-local  # Default: chroma-local
 
-# Vector DB Provider (optional – defaults to chroma-local)
-# Options: chroma-local (default), chroma-remote, chroma-cloud, qdrant-remote
-OMNI_MEMORY_PROVIDER=chroma-local
-
-# ChromaDB Remote Configuration
-# Set these only when using OMNI_MEMORY_PROVIDER=chroma-remote
+# For remote ChromaDB (only if using chroma-remote)
 # CHROMA_HOST=localhost
 # CHROMA_PORT=8000
 
-# ChromaDB Cloud Configuration  
-# Set these only when using OMNI_MEMORY_PROVIDER=chroma-cloud
+# For ChromaDB Cloud (only if using chroma-cloud)  
 # CHROMA_TENANT=your_tenant
 # CHROMA_DATABASE=your_database
 # CHROMA_API_KEY=your_api_key
 
-# Qdrant Remote Configuration
-# Set these only when using OMNI_MEMORY_PROVIDER=qdrant-remote
+# For Qdrant Remote (only if using qdrant-remote)
 # QDRANT_HOST=localhost
 # QDRANT_PORT=6333
+
+# ===============================================
+# Persistent Memory Storage (OPTIONAL)
+# ===============================================
+# Database backend for conversation history
+DATABASE_URL=sqlite:///mcpomni_memory.db
+# DATABASE_URL=postgresql://user:password@localhost:5432/mcpomni
+# DATABASE_URL=mysql://user:password@localhost:3306/mcpomni
+
+# Redis for memory and event storage
+REDIS_URL=redis://localhost:6379/0
+# REDIS_URL=redis://:password@localhost:6379/0  # With password
 ```
 
-### 🧠 Vector Database Setup *(NEW!)*
+> **💡 Quick Start**: Just set `LLM_API_KEY` and you're ready to go! Add other variables only when you need advanced features.
 
-**For Long-term & Episodic Memory:**
+### 🧠 **Vector Database & Smart Memory Setup** *(COMPLETE GUIDE)*
 
-1. **Enable Vector Databases:**
+MCPOmni Connect provides advanced memory capabilities through vector databases for intelligent, semantic search and long-term memory.
+
+#### **⚡ Quick Start (Fastest)**
+```bash
+# Enable vector memory with ChromaDB (automatic local setup)
+ENABLE_VECTOR_DB=true
+# That's it! ChromaDB local will be used automatically
+```
+
+#### **⚠️ Important: Startup Time Impact**
+- **Vector DB disabled**: ~1-2 seconds startup
+- **Vector DB enabled**: ~30-60 seconds startup (sentence transformer model loading)
+- **Memory usage**: ~2-4GB (includes sentence transformer model)
+- **Recommendation**: Enable during development setup, then it's fast for all subsequent usage
+
+#### **🔧 Vector Database Providers**
+
+**1. ChromaDB Local (Default & Fallback)**
+```bash
+ENABLE_VECTOR_DB=true
+# Automatically uses local .chroma_db directory
+# No additional setup required
+```
+
+**2. Qdrant Remote (Production)**
+```bash
+# Install and run Qdrant
+docker run -p 6333:6333 qdrant/qdrant
+
+# Configure
+ENABLE_VECTOR_DB=true
+OMNI_MEMORY_PROVIDER=qdrant-remote
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+```
+
+**3. ChromaDB Remote**
+```bash
+ENABLE_VECTOR_DB=true
+OMNI_MEMORY_PROVIDER=chroma-remote
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+```
+
+**4. ChromaDB Cloud**
+```bash
+ENABLE_VECTOR_DB=true
+OMNI_MEMORY_PROVIDER=chroma-cloud
+CHROMA_TENANT=your_tenant
+CHROMA_DATABASE=your_database
+CHROMA_API_KEY=your_api_key
+```
+
+#### **🛡️ Smart Fallback System**
+- If any remote provider fails → automatically falls back to ChromaDB local
+- Ensures uninterrupted operation even with network issues
+- No data loss during fallback transitions
+
+#### **✨ What You Get**
+- **Long-term Memory**: Persistent storage across sessions
+- **Episodic Memory**: Context-aware conversation history
+- **Semantic Search**: Find relevant information by meaning, not exact text
+- **Multi-session Context**: Remember information across different conversations
+- **Automatic Summarization**: Intelligent memory compression for efficiency
+
+
+
+### 📊 **Opik Tracing & Observability Setup** *(LATEST FEATURE!)*
+
+**Monitor and optimize your AI agents with production-grade observability:**
+
+#### **🚀 Quick Setup (2 steps)**
+
+1. **Sign up for Opik** (Free & Open Source):
+   - Visit: **[https://www.comet.com/signup?from=llm](https://www.comet.com/signup?from=llm)**
+   - Create your account and get your API key and workspace name
+
+2. **Add to your `.env` file**:
    ```bash
-   ENABLE_VECTOR_DB=true
+   # Opik Tracing (Optional - for advanced monitoring)
+   OPIK_API_KEY=your_opik_api_key_here
+   OPIK_WORKSPACE=your_opik_workspace_name
    ```
 
-2. **Option A: Use Qdrant (Recommended for Production):**
-   ```bash
-   # Install and run Qdrant
-   docker run -p 6333:6333 qdrant/qdrant
-   
-   # Set environment variables
-   QDRANT_HOST=localhost
-   QDRANT_PORT=6333
-   OMNI_MEMORY_PROVIDER=qdrant-remote
-   ```
+#### **✨ What You Get Automatically**
 
-3. **Option B: Use ChromaDB (Automatic Local Fallback):**
-   ```bash
-   # No config needed for local fallback
-   # When ENABLE_VECTOR_DB=true and no provider is set → uses local .chroma_db directory
-   # Explicitly use remote:
-   export OMNI_MEMORY_PROVIDER=chroma-remote
-   export CHROMA_HOST=localhost
-   export CHROMA_PORT=8000
-   # Or cloud:
-   export OMNI_MEMORY_PROVIDER=chroma-cloud
-   export CHROMA_TENANT=your_tenant
-   export CHROMA_DATABASE=your_database
-   export CHROMA_API_KEY=your_api_key
-   ```
+Once configured, MCPOmni Connect automatically tracks:
 
-### 🧩 Vector DB Provider Selection & Fallback (How it works)
+- **🔥 LLM Call Performance**: Execution time, token usage, response quality
+- **🛠️ Tool Execution Traces**: Which tools were used and how long they took
+- **🧠 Memory Operations**: Vector DB queries, memory retrieval performance
+- **🤖 Agent Workflow**: Complete trace of multi-step agent reasoning
+- **📊 System Bottlenecks**: Identify exactly where time is spent
 
-- **Disable**: If `ENABLE_VECTOR_DB` is not `true`, vector memory features are off.
-- **Default**: If `ENABLE_VECTOR_DB=true` and `OMNI_MEMORY_PROVIDER` is not set, the system uses **`chroma-local`** by default.
-- **Explicit provider**: Set `OMNI_MEMORY_PROVIDER` to one of:
-  - `chroma-local`: Local persistent storage under `.chroma_db/` (default)
-  - `chroma-remote`: Remote ChromaDB server - requires `CHROMA_HOST` and `CHROMA_PORT`
-  - `chroma-cloud`: ChromaDB Cloud service - requires `CHROMA_TENANT`, `CHROMA_DATABASE`, `CHROMA_API_KEY`
-  - `qdrant-remote`: Remote Qdrant server - requires `QDRANT_HOST` and `QDRANT_PORT`
-- **Smart fallback behavior** (built-in safety):
-  - If `qdrant-remote` fails to initialize/connect → automatically falls back to **`chroma-local`**
-  - If `chroma-remote` fails to initialize/connect → automatically falls back to **`chroma-local`**
-  - If `chroma-cloud` is misconfigured/missing credentials → automatically falls back to **`chroma-local`**
-  - **All ChromaDB modes** (local, remote, cloud) are supported - fallback only happens on connection failure
+#### **📈 Benefits**
 
-**Key Point**: You can use any ChromaDB client type (local, remote, or cloud). The fallback to `chroma-local` only occurs when remote connections fail, ensuring uninterrupted operation.
+- **Performance Optimization**: See which LLM calls or tools are slow
+- **Cost Monitoring**: Track token usage and API costs
+- **Debugging**: Understand agent decision-making processes
+- **Production Monitoring**: Real-time observability for deployed agents
+- **Zero Code Changes**: Works automatically with existing agents
+
+#### **🔍 Example: What You'll See**
+
+```
+Agent Execution Trace:
+├── agent_execution: 4.6s
+│   ├── tools_registry_retrieval: 0.02s ✅
+│   ├── memory_retrieval_step: 0.08s ✅
+│   ├── llm_call: 4.5s ⚠️ (bottleneck identified!)
+│   ├── response_parsing: 0.01s ✅
+│   └── action_execution: 0.03s ✅
+```
+
+**💡 Pro Tip**: Opik is completely optional. If you don't set the credentials, MCPOmni Connect works normally without tracing.
 
 ### 🖥️ Updated CLI Commands *(NEW!)*
 
@@ -1347,6 +1456,8 @@ async def get_tools():
 ---
 
 ### Server Configuration Examples
+
+> **💡 Quick Reference**: See `examples/llm_usage-config.json` for all LLM provider configurations (Anthropic, Groq, Azure, Ollama, OpenRouter, etc.)
 
 #### Basic OpenAI Configuration
 
@@ -1799,14 +1910,22 @@ User: "Analyze the contents of /path/to/document.pdf"
 
 ## 🔍 Troubleshooting
 
-> 📖 **For comprehensive configuration help**, see the [⚙️ Configuration Guide](#%EF%B8%8F-configuration-guide) section above, which covers:
->
-> - Config file differences (`.env` vs `servers_config.json`)
-> - Transport type selection and authentication
-> - OAuth server behavior explanation
-> - Common connection issues and solutions
+> **🚨 Most Common Issues**: Check [Quick Fixes](#-quick-fixes-common-issues) below first!
+> 
+> **📖 For comprehensive setup help**: See [⚙️ Configuration Guide](#️-configuration-guide-updated) | [🧠 Vector DB Setup](#-vector-database--smart-memory-setup-complete-guide)
 
-### Common Issues and Solutions
+### 🚨 **Quick Fixes (Common Issues)**
+
+| **Error** | **Quick Fix** |
+|-----------|---------------|
+| `Error: Invalid API key` | Check your `.env` file: `LLM_API_KEY=your_actual_key` |
+| `ModuleNotFoundError: mcpomni_connect` | Run: `uv add mcpomni-connect` or `pip install mcpomni-connect` |
+| `Connection refused` | Ensure MCP server is running before connecting |
+| `ChromaDB not available` | Install: `pip install chromadb` - [See Vector DB Setup](#-vector-database--smart-memory-setup-complete-guide) |
+| `Redis connection failed` | Install Redis or use in-memory mode (default) |
+| `Tool execution failed` | Check tool permissions and arguments |
+
+### Detailed Issues and Solutions
 
 1. **Connection Issues**
 
@@ -1848,17 +1967,6 @@ User: "Analyze the contents of /path/to/document.pdf"
    - Check tool availability on connected servers
    - Verify tool permissions
    - Review tool arguments for correctness
-
-### 🚨 **Quick Fixes (Common Issues)**
-
-| **Error** | **Quick Fix** |
-|-----------|---------------|
-| `Error: Invalid API key` | Check your `.env` file: `LLM_API_KEY=your_actual_key` |
-| `ModuleNotFoundError: mcpomni_connect` | Run: `uv add mcpomni-connect` or `pip install mcpomni-connect` |
-| `Connection refused` | Ensure MCP server is running before connecting |
-| `ChromaDB not available` | Install: `pip install chromadb` (usually auto-installed) |
-| `Redis connection failed` | Install Redis or use in-memory mode (default) |
-| `Tool execution failed` | Check tool permissions and arguments |
 
 ### Debug Mode
 

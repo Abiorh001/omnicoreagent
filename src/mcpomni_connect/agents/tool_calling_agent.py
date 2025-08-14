@@ -19,7 +19,7 @@ from mcpomni_connect.events.base import (
     UserMessagePayload,
     ToolCallErrorPayload,
 )
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, track, OPIK_AVAILABLE
 
 
 class ToolCallingAgent:
@@ -40,6 +40,7 @@ class ToolCallingAgent:
             request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
         )
 
+    @track("update_llm_working_memory")
     async def update_llm_working_memory(
         self, message_history: Callable[[], Any], session_id: str
     ):
@@ -114,6 +115,7 @@ class ToolCallingAgent:
             self.messages.append(self.assistant_with_tool_calls)
             self.messages.extend(self.pending_tool_responses)
 
+    @track("list_available_tools")
     async def list_available_tools(self, available_tools: dict = None):
         """List available tools from all servers."""
         # List available tools

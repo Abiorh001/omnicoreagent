@@ -3,16 +3,10 @@ Shared embedding model for vector database operations.
 This module loads the embedding model only when enabled via config.
 """
 
+import os
 import re
-from mcpomni_connect.utils import logger
 from decouple import config
-
-# Conditional import to avoid loading sentence_transformers when not needed
-SentenceTransformer = None
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    pass
+from mcpomni_connect.utils import logger
 
 # Vector database feature flag
 ENABLE_VECTOR_DB = config("ENABLE_VECTOR_DB", default=False, cast=bool)
@@ -23,24 +17,72 @@ NOMIC_VECTOR_SIZE = 768
 # Internal shared model instance
 _EMBED_MODEL = None
 
-# Load immediately if enabled (like before)
-if ENABLE_VECTOR_DB:
+
+def _initialize_embedding_system():
+    """Initialize the embedding system only when vector DB is enabled."""
+    global _EMBED_MODEL, NOMIC_VECTOR_SIZE
+
+    if not ENABLE_VECTOR_DB:
+        logger.debug(
+            "Vector database disabled - skipping embedding system initialization"
+        )
+        return
+
     try:
-        if SentenceTransformer is not None:
-            _EMBED_MODEL = SentenceTransformer(
-                "nomic-ai/nomic-embed-text-v1", trust_remote_code=True
+        # Force import and load the sentence transformer
+        logger.debug("[Warmup] Loading sentence transformer model...")
+
+        # Import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            logger.error(
+                "sentence_transformers not available - cannot initialize embedding system"
             )
-            # Dynamically get actual vector size
-            test_embedding = _EMBED_MODEL.encode("test")
-            NOMIC_VECTOR_SIZE = len(test_embedding)
-            logger.debug(
-                f"[Warmup] Shared embedding model loaded. Vector size: {NOMIC_VECTOR_SIZE}"
-            )
-        else:
-            logger.warning("sentence_transformers not available")
+            return
+
+        if SentenceTransformer is None:
+            logger.error("Failed to import SentenceTransformer")
+            return
+
+        # Load the model
+        logger.debug("[Warmup] Initializing nomic-ai/nomic-embed-text-v1 model...")
+        _EMBED_MODEL = SentenceTransformer(
+            "nomic-ai/nomic-embed-text-v1", trust_remote_code=True
+        )
+
+        # Warm up the model with test embeddings
+        logger.debug("[Warmup] Warming up embedding model...")
+        test_embedding = _EMBED_MODEL.encode("test")
+        NOMIC_VECTOR_SIZE = len(test_embedding)
+
+        # Additional warm-up calls to eliminate first-call delay
+        warmup_texts = [
+            "short",
+            "medium length text for testing",
+            "this is a longer text that should help warm up the model completely",
+        ]
+
+        for text in warmup_texts:
+            warmup_embedding = _EMBED_MODEL.encode(text)
+            if len(warmup_embedding) != NOMIC_VECTOR_SIZE:
+                raise ValueError(
+                    f"Warm-up failed: expected {NOMIC_VECTOR_SIZE}, got {len(warmup_embedding)}"
+                )
+
+        logger.debug(
+            f"[Warmup] Embedding model ready. Vector size: {NOMIC_VECTOR_SIZE}"
+        )
+
     except Exception as e:
-        logger.error(f"[Warmup] Failed to load shared embedding model: {e}")
+        logger.error(f"[Warmup] ❌ Failed to load embedding model: {e}")
         _EMBED_MODEL = None
+        raise RuntimeError(f"Failed to initialize embedding system: {e}")
+
+
+# Only initialize if vector DB is enabled
+if ENABLE_VECTOR_DB:
+    _initialize_embedding_system()
 
 
 def load_embed_model():

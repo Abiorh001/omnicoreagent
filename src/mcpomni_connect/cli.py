@@ -44,7 +44,7 @@ from mcpomni_connect.system_prompts import (
 from mcpomni_connect.tools import list_tools
 from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
 
-CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "abiorh")
+CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "_")
 
 
 class CommandType(Enum):

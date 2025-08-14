@@ -12,7 +12,7 @@ from mcpomni_connect.agents.token_usage import (
 from mcpomni_connect.agents.types import AgentConfig, ParsedResponse
 from mcpomni_connect.constants import AGENTS_REGISTRY
 from mcpomni_connect.system_prompts import generate_react_agent_prompt_template
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, track, OPIK_AVAILABLE
 import json
 import re
 from mcpomni_connect.events.base import (
@@ -48,6 +48,7 @@ class OrchestratorAgent(BaseReactAgent):
         self.max_steps = 20
         self.debug = debug
 
+    @track("extract_action_or_answer")
     async def extract_action_or_answer(
         self,
         response: str,
@@ -57,6 +58,7 @@ class OrchestratorAgent(BaseReactAgent):
         # Orchestrator should only parse agent calls and final answers, not tool calls
         return await self.extract_agent_action_or_answer(response, debug)
 
+    @track("extract_agent_action_or_answer")
     async def extract_agent_action_or_answer(
         self,
         response: str,
@@ -124,6 +126,7 @@ class OrchestratorAgent(BaseReactAgent):
             logger.error("Error parsing model response: %s", str(e))
             return ParsedResponse(error=str(e))
 
+    @track("create_agent_system_prompt")
     async def create_agent_system_prompt(
         self,
         agent_name: str,
@@ -137,6 +140,7 @@ class OrchestratorAgent(BaseReactAgent):
         )
         return agent_system_prompt
 
+    @track("update_llm_working_memory")
     async def update_llm_working_memory(
         self, message_history: Callable[[], Any], session_id: str
     ):
@@ -165,6 +169,7 @@ class OrchestratorAgent(BaseReactAgent):
                     {"role": "system", "content": message["content"]}
                 )
 
+    @track("act")
     async def act(
         self,
         sessions: dict,
@@ -183,62 +188,88 @@ class OrchestratorAgent(BaseReactAgent):
     ) -> str:
         """Execute agent and return JSON-formatted observation"""
         try:
-            agent_system_prompt = await self.create_agent_system_prompt(
-                agent_name=agent_name,
-                mcp_tools=mcp_tools,
-            )
+
+            @track("agent_system_prompt_creation")
+            async def create_prompt():
+                return await self.create_agent_system_prompt(
+                    agent_name=agent_name,
+                    mcp_tools=mcp_tools,
+                )
+
+            agent_system_prompt = await create_prompt()
+
             # tool call start event
-            event = Event(
-                type=EventType.TOOL_CALL_STARTED,
-                payload=ToolCallStartedPayload(
-                    tool_name=agent_name,
-                    tool_args={"task": task},
-                    tool_call_id=None,
-                ),
-                agent_name="orchestrator",
-            )
-            if event_router:
-                await event_router(session_id=session_id, event=event)
-            agent_config = AgentConfig(
-                agent_name=agent_name,
-                tool_call_timeout=tool_call_timeout,
-                max_steps=max_steps,
-                request_limit=request_limit,
-                total_tokens_limit=total_tokens_limit,
-            )
+            @track("tool_call_event_creation")
+            async def create_tool_call_event():
+                event = Event(
+                    type=EventType.TOOL_CALL_STARTED,
+                    payload=ToolCallStartedPayload(
+                        tool_name=agent_name,
+                        tool_args={"task": task},
+                        tool_call_id=None,
+                    ),
+                    agent_name="orchestrator",
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
+
+            await create_tool_call_event()
+
+            @track("agent_config_creation")
+            def create_agent_config():
+                return AgentConfig(
+                    agent_name=agent_name,
+                    tool_call_timeout=tool_call_timeout,
+                    max_steps=max_steps,
+                    request_limit=request_limit,
+                    total_tokens_limit=total_tokens_limit,
+                )
+
+            agent_config = create_agent_config()
+
             extra_kwargs = {
                 "sessions": sessions,
                 "mcp_tools": mcp_tools,
                 "session_id": session_id,
             }
             react_agent = ReactAgent(config=agent_config)
-            observation = await react_agent._run(
-                system_prompt=agent_system_prompt,
-                query=task,
-                llm_connection=llm_connection,
-                add_message_to_history=add_message_to_history,
-                message_history=message_history,
-                debug=self.debug,
-                event_router=event_router,  # Pass event_router callable
-                **extra_kwargs,
-            )
+
+            @track("react_agent_execution")
+            async def execute_react_agent():
+                return await react_agent._run(
+                    system_prompt=agent_system_prompt,
+                    query=task,
+                    llm_connection=llm_connection,
+                    add_message_to_history=add_message_to_history,
+                    message_history=message_history,
+                    debug=self.debug,
+                    event_router=event_router,  # Pass event_router callable
+                    **extra_kwargs,
+                )
+
+            observation = await execute_react_agent()
 
             # if the observation is empty return general error message
             if not observation:
                 observation = "No observation available right now. try again later. or try a different agent."
+
             # add the observation to the orchestrator messages and the message history
-            self.orchestrator_messages.append(
-                {
-                    "role": "user",
-                    "content": f"{agent_name} Agent Observation:\n{observation}",
-                }
-            )
-            await add_message_to_history(
-                role="user",
-                content=f"{agent_name} Agent Observation:\n{observation}",
-                session_id=session_id,
-                metadata={"agent_name": agent_name},
-            )
+            @track("observation_message_update")
+            async def update_observation_messages():
+                self.orchestrator_messages.append(
+                    {
+                        "role": "user",
+                        "content": f"{agent_name} Agent Observation:\n{observation}",
+                    }
+                )
+                await add_message_to_history(
+                    role="user",
+                    content=f"{agent_name} Agent Observation:\n{observation}",
+                    session_id=session_id,
+                    metadata={"agent_name": agent_name},
+                )
+
+            await update_observation_messages()
             return observation
         except Exception as e:
             logger.error("Error executing agent: %s", str(e))
@@ -255,6 +286,7 @@ class OrchestratorAgent(BaseReactAgent):
                 await event_router(session_id=session_id, event=event)
             return str(e)
 
+    @track("agent_registry_tool")
     async def agent_registry_tool(self, mcp_tools: dict[str, Any]) -> str:
         """
         This function is used to create a tool that will return the agent registry
@@ -288,6 +320,7 @@ class OrchestratorAgent(BaseReactAgent):
             logger.info(f"Agent registry error: {e}")
             return e
 
+    @track("run")
     async def run(
         self,
         sessions: dict,

@@ -14,27 +14,39 @@ warnings.filterwarnings(
 load_dotenv()
 
 
-
-
 class LLMConnection:
-    def __init__(self, config: dict[str, Any], config_filename: str):
+    """Manages LLM connections using LiteLLM."""
+
+    def __init__(self, config: dict[str, Any] | Any, config_filename: str):
         self.config = config
         self.config_filename = config_filename
         self.llm_config = None
 
-        # Set LiteLLM API key
-        os.environ["OPENAI_API_KEY"] = self.config.llm_api_key
-        os.environ["ANTHROPIC_API_KEY"] = self.config.llm_api_key
-        os.environ["GROQ_API_KEY"] = self.config.llm_api_key
-        os.environ["GEMINI_API_KEY"] = self.config.llm_api_key
-        os.environ["DEEPSEEK_API_KEY"] = self.config.llm_api_key
-        os.environ["OPENROUTER_API_KEY"] = self.config.llm_api_key
-        os.environ["AZURE_API_KEY"] = self.config.llm_api_key
+        # Set LiteLLM API key if config has llm_api_key attribute
+        if hasattr(self.config, "llm_api_key"):
+            os.environ["OPENAI_API_KEY"] = self.config.llm_api_key
+            os.environ["ANTHROPIC_API_KEY"] = self.config.llm_api_key
+            os.environ["GROQ_API_KEY"] = self.config.llm_api_key
+            os.environ["GEMINI_API_KEY"] = self.config.llm_api_key
+            os.environ["DEEPSEEK_API_KEY"] = self.config.llm_api_key
+            os.environ["OPENROUTER_API_KEY"] = self.config.llm_api_key
+            os.environ["AZURE_API_KEY"] = self.config.llm_api_key
 
-        if not self.llm_config:
-            logger.info("updating llm configuration")
-            self.llm_configuration()
-            logger.info(f"LLM configuration: {self.llm_config}")
+            if not self.llm_config:
+                logger.info("updating llm configuration")
+                self.llm_configuration()
+                logger.info(f"LLM configuration: {self.llm_config}")
+        else:
+            logger.debug("Config object doesn't have llm_api_key, skipping LLM setup")
+
+    def __str__(self):
+        """Return a readable string representation of the LLMConnection."""
+        config_file = self.config_filename or "default"
+        return f"LLMConnection(config={config_file})"
+
+    def __repr__(self):
+        """Return a detailed representation of the LLMConnection."""
+        return self.__str__()
 
     def get_loaded_config(self):
         """Get the already-loaded configuration without reloading it"""
@@ -149,7 +161,7 @@ class LLMConnection:
             # Call LiteLLM
             # Configure LiteLLM to drop unsupported parameters
             litellm.drop_params = True
-    
+
             response = await litellm.acompletion(**params)
             return response
 

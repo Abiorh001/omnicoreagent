@@ -25,6 +25,16 @@ class EventRouter:
         # Initialize the event store
         self._initialize_event_store()
 
+    def __str__(self):
+        """Return a readable string representation of the EventRouter."""
+        store_type = self.event_store_type
+        available = self.is_available()
+        return f"EventRouter(type={store_type}, available={available})"
+
+    def __repr__(self):
+        """Return a detailed representation of the EventRouter."""
+        return self.__str__()
+
     def _initialize_event_store(self):
         """Initialize the event store based on type."""
         try:

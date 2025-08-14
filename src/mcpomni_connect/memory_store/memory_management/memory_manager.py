@@ -15,14 +15,10 @@ from mcpomni_connect.memory_store.memory_management.shared_embedding import (
     load_embed_model,
 )
 
-# Import both vector database implementations
-from mcpomni_connect.memory_store.memory_management.qdrant_vector_db import (
-    QdrantVectorDB,
-)
-from mcpomni_connect.memory_store.memory_management.chromadb_vector_db import (
-    ChromaClientType,
-    ChromaDBVectorDB,
-)
+# Import both vector database implementations - will be imported lazily when needed
+_QDRANT_VECTOR_DB = None
+_CHROMADB_VECTOR_DB = None
+_CHROMA_CLIENT_TYPE = None
 
 # Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
@@ -30,7 +26,60 @@ _CACHE_TTL = 1800  # 30 minutes
 _CACHE_LOCK = threading.RLock()  # Thread-safe cache access
 
 # Thread pool for background processing
-_THREAD_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="MemoryProcessor")
+_THREAD_POOL = None
+
+
+def _initialize_memory_system():
+    """Initialize the memory system only when vector DB is enabled."""
+    global _THREAD_POOL, _QDRANT_VECTOR_DB, _CHROMADB_VECTOR_DB, _CHROMA_CLIENT_TYPE
+
+    if not is_vector_db_enabled():
+        logger.debug("Vector database disabled - skipping memory system initialization")
+        return
+
+    # Create thread pool
+    _THREAD_POOL = ThreadPoolExecutor(
+        max_workers=4, thread_name_prefix="MemoryProcessor"
+    )
+    logger.debug("Memory system initialized with thread pool")
+
+    # Pre-load vector database backends
+    try:
+        logger.debug("[Warmup] Pre-loading vector database backends...")
+
+        # Pre-load QdrantVectorDB
+        try:
+            from mcpomni_connect.memory_store.memory_management.qdrant_vector_db import (
+                QdrantVectorDB,
+            )
+
+            _QDRANT_VECTOR_DB = QdrantVectorDB
+            logger.debug("[Warmup] QdrantVectorDB pre-loaded")
+        except Exception as e:
+            logger.warning(f"[Warmup] Failed to pre-load QdrantVectorDB: {e}")
+
+        # Pre-load ChromaDBVectorDB
+        try:
+            from mcpomni_connect.memory_store.memory_management.chromadb_vector_db import (
+                ChromaDBVectorDB,
+                ChromaClientType,
+            )
+
+            _CHROMADB_VECTOR_DB = ChromaDBVectorDB
+            _CHROMA_CLIENT_TYPE = ChromaClientType
+            logger.debug("[Warmup] ChromaDBVectorDB pre-loaded")
+        except Exception as e:
+            logger.warning(f"[Warmup] Failed to pre-load ChromaDBVectorDB: {e}")
+
+        logger.debug("[Warmup] Vector database backends ready")
+
+    except Exception as e:
+        logger.error(f"[Warmup] Failed to pre-load vector database backends: {e}")
+
+
+# Only initialize if vector DB is enabled
+if is_vector_db_enabled():
+    _initialize_memory_system()
 
 
 class MemoryManager:
@@ -43,6 +92,8 @@ class MemoryManager:
             session_id: Session ID for the collection
             memory_type: Type of memory (episodic, long_term)
         """
+        global _QDRANT_VECTOR_DB, _CHROMADB_VECTOR_DB, _CHROMA_CLIENT_TYPE
+
         self.session_id = session_id
         self.memory_type = memory_type
         self.collection_name = f"{memory_type}_{session_id}"
@@ -62,40 +113,65 @@ class MemoryManager:
         # Try provider-specific initialization with sensible fallbacks
         if provider == "qdrant-remote":
             try:
-                self.vector_db = QdrantVectorDB(
+                # Use pre-loaded QdrantVectorDB
+                if _QDRANT_VECTOR_DB is None:
+                    logger.error(
+                        "QdrantVectorDB not pre-loaded - this should not happen"
+                    )
+                    raise RuntimeError("QdrantVectorDB not available")
+
+                self.vector_db = _QDRANT_VECTOR_DB(
                     self.collection_name, session_id=session_id, memory_type=memory_type
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using Qdrant for {memory_type} memory")
                     return
                 else:
-                    logger.warning("Qdrant not enabled; falling back to ChromaDB (local)")
+                    logger.warning(
+                        "Qdrant not enabled; falling back to ChromaDB (local)"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to initialize Qdrant (remote): {e}")
 
         elif provider.startswith("chroma"):
             try:
-                self.vector_db = ChromaDBVectorDB(
+                # Use pre-loaded ChromaDBVectorDB
+                if _CHROMADB_VECTOR_DB is None:
+                    logger.error(
+                        "ChromaDBVectorDB not pre-loaded - this should not happen"
+                    )
+                    raise RuntimeError("ChromaDBVectorDB not available")
+
+                self.vector_db = _CHROMADB_VECTOR_DB(
                     self.collection_name,
                     session_id=session_id,
                     memory_type=memory_type,
-                    client_type=provider.split("-")[1].lower() if "-" in provider else "local",
+                    client_type=provider.split("-")[1].lower()
+                    if "-" in provider
+                    else "local",
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using ChromaDB (remote) for {memory_type} memory")
                     return
                 else:
-                    logger.warning("ChromaDB (remote) not enabled; falling back to ChromaDB (local)")
+                    logger.warning(
+                        "ChromaDB (remote) not enabled; falling back to ChromaDB (local)"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to initialize ChromaDB (remote): {e}")
 
         # Fallback to Chroma local
         try:
-            self.vector_db = ChromaDBVectorDB(
+            # Use pre-loaded ChromaDBVectorDB
+            if _CHROMADB_VECTOR_DB is None:
+                logger.error("ChromaDBVectorDB not pre-loaded - this should not happen")
+                raise RuntimeError("ChromaDBVectorDB not available")
+
+            self.vector_db = _CHROMADB_VECTOR_DB(
                 self.collection_name,
                 session_id=session_id,
                 memory_type=memory_type,
-                client_type=ChromaClientType.LOCAL,
+                client_type=_CHROMA_CLIENT_TYPE.LOCAL,
             )
             if self.vector_db.enabled:
                 logger.debug(f"Using ChromaDB (local) for {memory_type} memory")
@@ -525,6 +601,11 @@ def fire_and_forget_memory_processing(session_id, validated_messages, llm_connec
     if not is_vector_db_enabled():
         return
 
+    # Check if thread pool is available
+    if _THREAD_POOL is None:
+        logger.debug("Thread pool not initialized - skipping memory processing")
+        return
+
     # Submit to thread pool and return immediately
     future = _THREAD_POOL.submit(
         process_both_memory_types_threaded,
@@ -541,11 +622,21 @@ class MemoryManagerFactory:
     @staticmethod
     def create_episodic_memory_manager(session_id: str) -> MemoryManager:
         """Create episodic memory manager."""
+        if not is_vector_db_enabled():
+            logger.debug(
+                "Vector database disabled - skipping episodic memory manager creation"
+            )
+            return None
         return MemoryManager(session_id, "episodic")
 
     @staticmethod
     def create_long_term_memory_manager(session_id: str) -> MemoryManager:
         """Create long-term memory manager."""
+        if not is_vector_db_enabled():
+            logger.debug(
+                "Vector database disabled - skipping long-term memory manager creation"
+            )
+            return None
         return MemoryManager(session_id, "long_term")
 
     @staticmethod
@@ -553,6 +644,9 @@ class MemoryManagerFactory:
         session_id: str,
     ) -> Tuple[MemoryManager, MemoryManager]:
         """Create both episodic and long-term memory managers."""
+        if not is_vector_db_enabled():
+            logger.debug("Vector database disabled - skipping memory manager creation")
+            return None, None
         episodic = MemoryManager(session_id, "episodic")
         long_term = MemoryManager(session_id, "long_term")
         return episodic, long_term
@@ -563,7 +657,8 @@ def cleanup_memory_system():
     logger.debug("Cleaning up memory management system")
 
     # Shutdown thread pool gracefully
-    _THREAD_POOL.shutdown(wait=True)
+    if _THREAD_POOL:
+        _THREAD_POOL.shutdown(wait=True)
 
     # Clear cache
     with _CACHE_LOCK:

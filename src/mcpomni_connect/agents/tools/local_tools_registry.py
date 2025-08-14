@@ -51,8 +51,22 @@ class Tool:
 
 
 class ToolRegistry:
+    """Registry for local tools that can be executed by agents."""
+
     def __init__(self):
-        self.tools: dict[str, Tool] = {}
+        self.tools = {}
+        self.tool_descriptions = {}
+        self.tool_schemas = {}
+
+    def __str__(self):
+        """Return a readable string representation of the ToolRegistry."""
+        tool_count = len(self.tools)
+        tool_names = list(self.tools.keys())
+        return f"ToolRegistry({tool_count} tools: {', '.join(tool_names[:3])}{'...' if tool_count > 3 else ''})"
+
+    def __repr__(self):
+        """Return a detailed representation of the ToolRegistry."""
+        return self.__str__()
 
     def register_tool(
         self,

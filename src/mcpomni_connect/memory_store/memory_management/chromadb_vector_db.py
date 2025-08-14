@@ -111,14 +111,21 @@ else:
 
 class ChromaClientType(Enum):
     """Enumeration for ChromaDB client types."""
+
     LOCAL = "local"
     REMOTE = "remote"
     CLOUD = "cloud"
 
+
 class ChromaDBVectorDB(VectorDBBase):
     """ChromaDB vector database implementation."""
 
-    def __init__(self, collection_name: str, client_type: ChromaClientType = ChromaClientType.LOCAL, **kwargs):
+    def __init__(
+        self,
+        collection_name: str,
+        client_type: ChromaClientType = ChromaClientType.LOCAL,
+        **kwargs,
+    ):
         """Initialize ChromaDB vector database."""
         super().__init__(collection_name, **kwargs)
 
@@ -133,36 +140,46 @@ class ChromaDBVectorDB(VectorDBBase):
             try:
                 client_type = ChromaClientType(client_type.lower())
             except ValueError:
-                logger.warning(f"Invalid client_type '{client_type}', defaulting to LOCAL")
+                logger.warning(
+                    f"Invalid client_type '{client_type}', defaulting to LOCAL"
+                )
                 client_type = ChromaClientType.LOCAL
 
         # Initialize ChromaDB client based on type
         try:
-            logger.debug(f"Initializing ChromaDB for {collection_name} with client_type: {client_type.value}")
+            logger.debug(
+                f"Initializing ChromaDB for {collection_name} with client_type: {client_type.value}"
+            )
 
             if client_type == ChromaClientType.CLOUD:
                 # Cloud client
                 cloud_tenant = config("CHROMA_TENANT", default=None)
                 cloud_database = config("CHROMA_DATABASE", default=None)
                 cloud_api_key = config("CHROMA_API_KEY", default=None)
-                
+
                 if not all([cloud_tenant, cloud_database, cloud_api_key]):
-                    logger.error("ChromaDB Cloud requires CHROMA_TENANT, CHROMA_DATABASE, and CHROMA_API_KEY")
+                    logger.error(
+                        "ChromaDB Cloud requires CHROMA_TENANT, CHROMA_DATABASE, and CHROMA_API_KEY"
+                    )
                     self.enabled = False
                     return
-                
+
                 self.chroma_client = chromadb.CloudClient(
                     tenant=cloud_tenant,
                     database=cloud_database,
                     api_key=cloud_api_key,
                 )
-                logger.debug(f"ChromaDB Cloud client initialized for tenant: {cloud_tenant}")
-                
+                logger.debug(
+                    f"ChromaDB Cloud client initialized for tenant: {cloud_tenant}"
+                )
+
             elif client_type == ChromaClientType.REMOTE:
                 # Remote HTTP client
                 chroma_host = config("CHROMA_HOST", default="localhost")
                 chroma_port = config("CHROMA_PORT", default=8000, cast=int)
-                logger.debug(f"ChromaDB Remote client initialized for host: {chroma_host} and port: {chroma_port}")
+                logger.debug(
+                    f"ChromaDB Remote client initialized for host: {chroma_host} and port: {chroma_port}"
+                )
                 self.chroma_client = chromadb.HttpClient(
                     host=chroma_host,
                     port=chroma_port,

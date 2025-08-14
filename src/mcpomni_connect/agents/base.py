@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 import uuid
+import os
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -32,6 +33,8 @@ from mcpomni_connect.utils import (
     handle_stuck_state,
     logger,
     show_tool_response,
+    track,
+    OPIK_AVAILABLE,
 )
 from mcpomni_connect.events.base import (
     Event,
@@ -43,14 +46,36 @@ from mcpomni_connect.events.base import (
     AgentMessagePayload,
     UserMessagePayload,
 )
-from mcpomni_connect.memory_store.memory_management.memory_manager import (
-    fire_and_forget_memory_processing,
-    MemoryManagerFactory,
-)
 import traceback
-from mcpomni_connect.memory_store.memory_management.shared_embedding import (
-    is_vector_db_enabled,
-)
+from decouple import config
+
+# Opik integration is now imported from utils
+
+ENABLE_VECTOR_DB = config("ENABLE_VECTOR_DB", default=False, cast=bool)
+
+
+# Simple environment variable check - no imports, no loading
+def _is_vector_db_enabled():
+    """Check if vector database is enabled without importing anything."""
+    return ENABLE_VECTOR_DB
+
+
+# Import memory system first to ensure initialization
+if _is_vector_db_enabled():
+    logger.debug("Vector database is enabled")
+    try:
+        # Import memory system to trigger initialization
+        from mcpomni_connect.memory_store.memory_management import shared_embedding
+        from mcpomni_connect.memory_store.memory_management import memory_manager
+        from mcpomni_connect.memory_store.memory_management.memory_manager import (
+            MemoryManagerFactory,
+            fire_and_forget_memory_processing,
+        )
+    except Exception:
+        # Continue without memory system - it will be handled gracefully later
+        pass
+else:
+    logger.debug("Vector database is disabled")
 
 
 class BaseReactAgent:
@@ -85,29 +110,42 @@ class BaseReactAgent:
             request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
         )
 
+    @track("memory_retrieval")
     async def get_long_episodic_memory(self, query: str, session_id: str):
         """Get long-term and episodic memory for a given query and session ID using optimized single query"""
         try:
             # Check if vector database is enabled
-
-            if not is_vector_db_enabled():
+            if not _is_vector_db_enabled():
+                logger.debug("Vector database disabled - skipping memory retrieval")
                 return [], []
 
-            # Create both memory managers
-            episodic_manager, long_term_manager = (
-                MemoryManagerFactory.create_both_memory_managers(session_id=session_id)
-            )
+            # Vector DB is enabled - load memory functions and use them
+            try:
+                # Create both memory managers
+                episodic_manager, long_term_manager = (
+                    MemoryManagerFactory.create_both_memory_managers(
+                        session_id=session_id
+                    )
+                )
 
-            # Query both memory types
-            episodic_results = await episodic_manager.query_memory(
-                query, n_results=3, distance_threshold=0.4
-            )
+                # Query both memory types
+                episodic_results = await episodic_manager.query_memory(
+                    query, n_results=3, distance_threshold=0.4
+                )
 
-            long_term_results = await long_term_manager.query_memory(
-                query, n_results=3, distance_threshold=0.4
-            )
+                long_term_results = await long_term_manager.query_memory(
+                    query, n_results=3, distance_threshold=0.4
+                )
 
-            return long_term_results, episodic_results
+                return long_term_results, episodic_results
+
+            except ImportError as e:
+                logger.warning(f"Memory management modules not available: {e}")
+                return [], []
+            except Exception as e:
+                logger.error(f"Error in memory retrieval: {e}")
+                return [], []
+
         except Exception as e:
             logger.error(f"❌ Failed to retrieve memory for session {session_id}: {e}")
             logger.error(f"📋 Full traceback: {traceback.format_exc()}")
@@ -116,6 +154,7 @@ class BaseReactAgent:
                 "No relevant episodic memory found",
             )
 
+    @track("response_parsing")
     async def extract_action_or_answer(
         self,
         response: str,
@@ -223,6 +262,7 @@ class BaseReactAgent:
             logger.error("Error parsing model response: %s", str(e))
             return ParsedResponse(error=str(e))
 
+    @track("memory_processing")
     async def update_llm_working_memory(
         self,
         message_history: Callable[[], Any],
@@ -243,12 +283,19 @@ class BaseReactAgent:
         ]
 
         try:
-            # Create long-term and episodic memory processor (background task)
-            fire_and_forget_memory_processing(
-                session_id, validated_messages, llm_connection
-            )
-        except ImportError as e:
-            logger.warning(f"⚠️ Memory processing not available: {e}")
+            # Memory processing when vector DB is enabled
+            if _is_vector_db_enabled():
+                try:
+                    fire_and_forget_memory_processing(
+                        session_id, validated_messages, llm_connection
+                    )
+                    logger.debug("Memory processing initiated")
+                except ImportError as e:
+                    logger.warning(f"Memory processing modules not available: {e}")
+                except Exception as e:
+                    logger.error(f"Error in memory processing: {e}")
+            else:
+                logger.debug("Vector DB disabled - skipping memory processing")
         except Exception as e:
             logger.error(f"❌ Error in memory processing: {e}")
             logger.error(f"📋 Full traceback: {traceback.format_exc()}")
@@ -305,6 +352,7 @@ class BaseReactAgent:
             else:
                 logger.warning(f"⚠️ Unknown message role encountered: {role}")
 
+    @track("message_flushing")
     def _try_flush_pending(self):
         if self.assistant_with_tool_calls:
             expected_tool_calls = {
@@ -320,6 +368,7 @@ class BaseReactAgent:
                 self.assistant_with_tool_calls = None
                 self.pending_tool_responses = []
 
+    @track("tool_resolution")
     async def resolve_tool_call_request(
         self,
         parsed_response: ParsedResponse,
@@ -408,6 +457,7 @@ class BaseReactAgent:
                 tool_args={},
             )
 
+    @track("tool_execution")
     async def act(
         self,
         parsed_response: ParsedResponse,
@@ -654,6 +704,7 @@ class BaseReactAgent:
         messages.extend(old_messages)
         return messages
 
+    @track("state_management")
     @asynccontextmanager
     async def agent_state_context(self, new_state: AgentState):
         """Context manager to change the agent state"""
@@ -670,6 +721,7 @@ class BaseReactAgent:
         finally:
             self.state = previous_state
 
+    @track("get_tools_registry")
     async def get_tools_registry(
         self, mcp_tools: dict = None, local_tools: Any = None
     ) -> str:
@@ -746,6 +798,7 @@ class BaseReactAgent:
 
         return "\n\n".join(tools_section)
 
+    @track("agent_execution")
     async def run(
         self,
         system_prompt: str,
@@ -775,36 +828,65 @@ class BaseReactAgent:
             await event_router(session_id=session_id, event=event)
 
         # Initialize messages with system prompt
-        tools_section = await self.get_tools_registry(
-            mcp_tools=mcp_tools, local_tools=local_tools
-        )
-        long_term_memory, episodic_memory = await self.get_long_episodic_memory(
-            query=query, session_id=session_id
-        )
+        @track("tools_registry_retrieval")
+        async def get_tools():
+            return await self.get_tools_registry(
+                mcp_tools=mcp_tools, local_tools=local_tools
+            )
+
+        tools_section = await get_tools()
+
+        # Only get memory if vector DB is enabled
+        if _is_vector_db_enabled():
+
+            @track("memory_retrieval_step")
+            async def get_memory():
+                return await self.get_long_episodic_memory(
+                    query=query, session_id=session_id
+                )
+
+            long_term_memory, episodic_memory = await get_memory()
+
+            # now update the system prompt with the long term and episodic memory using the XML-based template
+            system_updated_prompt = (
+                system_prompt
+                + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
+            )
+        else:
+            # Vector DB disabled - no memory sections
+            system_updated_prompt = system_prompt
+            long_term_memory, episodic_memory = [], []
+
         #  append the tools section if needed
-        system_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
-        # now update the system prompt with the long term and episodic memory using the XML-based template
-        system_updated_prompt = (
-            system_prompt
-            + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
-        )
+        system_updated_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
 
         self.messages[self.agent_name] = [
             Message(role="system", content=system_updated_prompt)
         ]
+
         # Add initial user message to message history
-        await add_message_to_history(
-            role="user",
-            content=query,
-            session_id=session_id,
-            metadata={"agent_name": self.agent_name},
-        )
+        @track("message_history_update")
+        async def update_history():
+            await add_message_to_history(
+                role="user",
+                content=query,
+                session_id=session_id,
+                metadata={"agent_name": self.agent_name},
+            )
+
+        await update_history()
+
         # Initialize messages with current message history (only once at start)
-        await self.update_llm_working_memory(
-            message_history=message_history,
-            session_id=session_id,
-            llm_connection=llm_connection,
-        )
+        @track("working_memory_update")
+        async def update_working_memory():
+            await self.update_llm_working_memory(
+                message_history=message_history,
+                session_id=session_id,
+                llm_connection=llm_connection,
+            )
+
+        await update_working_memory()
+
         # check if the agent is in a valid state to run
         if self.state not in [
             AgentState.IDLE,
@@ -829,57 +911,75 @@ class BaseReactAgent:
                 self.usage_limits.check_before_request(usage=usage)
 
                 try:
-                    response = await llm_connection.llm_call(
-                        self.messages[self.agent_name]
-                    )
+
+                    @track("llm_call")
+                    async def make_llm_call():
+                        return await llm_connection.llm_call(
+                            self.messages[self.agent_name]
+                        )
+
+                    response = await make_llm_call()
+
                     if response:
                         # handle agent response event
-                        event = Event(
-                            type=EventType.AGENT_MESSAGE,
-                            payload=AgentMessagePayload(
-                                message=str(response),
-                            ),
-                            agent_name=self.agent_name,
-                        )
-                        if event_router:
-                            await event_router(session_id=session_id, event=event)
+                        @track("event_handling")
+                        async def handle_agent_event():
+                            event = Event(
+                                type=EventType.AGENT_MESSAGE,
+                                payload=AgentMessagePayload(
+                                    message=str(response),
+                                ),
+                                agent_name=self.agent_name,
+                            )
+                            if event_router:
+                                await event_router(session_id=session_id, event=event)
+
+                        await handle_agent_event()
+
                         # check if it has usage
                         if hasattr(response, "usage"):
-                            request_usage = Usage(
-                                requests=current_steps,
-                                request_tokens=response.usage.prompt_tokens,
-                                response_tokens=response.usage.completion_tokens,
-                                total_tokens=response.usage.total_tokens,
-                            )
-                            usage.incr(request_usage)
-                            # Check if we've exceeded token limits
-                            self.usage_limits.check_tokens(usage)
-                            # Show remaining resources
-                            remaining_tokens = self.usage_limits.remaining_tokens(usage)
-                            used_tokens = usage.total_tokens
-                            used_requests = usage.requests
-                            remaining_requests = self.request_limit - used_requests
-                            session_stats.update(
-                                {
-                                    "used_requests": used_requests,
-                                    "used_tokens": used_tokens,
-                                    "remaining_requests": remaining_requests,
-                                    "remaining_tokens": remaining_tokens,
-                                    "request_tokens": request_usage.request_tokens,
-                                    "response_tokens": request_usage.response_tokens,
-                                    "total_tokens": request_usage.total_tokens,
-                                }
-                            )
-                            if debug:
-                                logger.info(
-                                    f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
-                                    f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
-                                    f"Request Tokens: {request_usage.request_tokens}, "
-                                    f"Response Tokens: {request_usage.response_tokens}, "
-                                    f"Total Tokens: {request_usage.total_tokens}, "
-                                    f"Remaining Requests: {remaining_requests}, "
-                                    f"Remaining Tokens: {remaining_tokens}"
+
+                            @track("usage_tracking")
+                            def track_usage():
+                                request_usage = Usage(
+                                    requests=current_steps,
+                                    request_tokens=response.usage.prompt_tokens,
+                                    response_tokens=response.usage.completion_tokens,
+                                    total_tokens=response.usage.total_tokens,
                                 )
+                                usage.incr(request_usage)
+                                # Check if we've exceeded token limits
+                                self.usage_limits.check_tokens(usage)
+                                # Show remaining resources
+                                remaining_tokens = self.usage_limits.remaining_tokens(
+                                    usage
+                                )
+                                used_tokens = usage.total_tokens
+                                used_requests = usage.requests
+                                remaining_requests = self.request_limit - used_requests
+                                session_stats.update(
+                                    {
+                                        "used_requests": used_requests,
+                                        "used_tokens": used_tokens,
+                                        "remaining_requests": remaining_requests,
+                                        "remaining_tokens": remaining_tokens,
+                                        "request_tokens": request_usage.request_tokens,
+                                        "response_tokens": request_usage.response_tokens,
+                                        "total_tokens": request_usage.total_tokens,
+                                    }
+                                )
+                                if debug:
+                                    logger.info(
+                                        f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
+                                        f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
+                                        f"Request Tokens: {request_usage.request_tokens}, "
+                                        f"Response Tokens: {request_usage.response_tokens}, "
+                                        f"Total Tokens: {request_usage.total_tokens}, "
+                                        f"Remaining Requests: {remaining_requests}, "
+                                        f"Remaining Tokens: {remaining_tokens}"
+                                    )
+
+                            track_usage()
 
                         if hasattr(response, "choices"):
                             response = response.choices[0].message.content.strip()
@@ -894,9 +994,13 @@ class BaseReactAgent:
                     logger.error(error_message)
                     return error_message
 
-                parsed_response = await self.extract_action_or_answer(
-                    response=response, debug=debug
-                )
+                @track("response_parsing_step")
+                async def parse_response():
+                    return await self.extract_action_or_answer(
+                        response=response, debug=debug
+                    )
+
+                parsed_response = await parse_response()
                 if debug:
                     logger.info(f"current steps: {current_steps}")
                 # check for final answer
@@ -910,53 +1014,61 @@ class BaseReactAgent:
                             content=parsed_response.answer,
                         )
                     )
+
                     # handle final answer event
-                    event = Event(
-                        type=EventType.FINAL_ANSWER,
-                        payload=FinalAnswerPayload(
-                            message=str(parsed_response.answer),
-                        ),
-                        agent_name=self.agent_name,
-                    )
-                    if event_router:
-                        await event_router(session_id=session_id, event=event)
-                    await add_message_to_history(
-                        role="assistant",
-                        content=parsed_response.answer,
-                        session_id=session_id,
-                        metadata={"agent_name": self.agent_name},
-                    )
+                    @track("final_answer_handling")
+                    async def handle_final_answer():
+                        event = Event(
+                            type=EventType.FINAL_ANSWER,
+                            payload=FinalAnswerPayload(
+                                message=str(parsed_response.answer),
+                            ),
+                            agent_name=self.agent_name,
+                        )
+                        if event_router:
+                            await event_router(session_id=session_id, event=event)
+                        await add_message_to_history(
+                            role="assistant",
+                            content=parsed_response.answer,
+                            session_id=session_id,
+                            metadata={"agent_name": self.agent_name},
+                        )
+
+                    await handle_final_answer()
                     self.state = AgentState.FINISHED
                     return parsed_response.answer
+
                 # check for action
                 if parsed_response.action is not None:
                     # Add the action to the message history
-                    self.messages[self.agent_name].append(
-                        Message(
+                    @track("action_message_update")
+                    async def update_action_message():
+                        await add_message_to_history(
                             role="assistant",
                             content=parsed_response.data,
+                            session_id=session_id,
+                            metadata={"agent_name": self.agent_name},
                         )
-                    )
-                    await add_message_to_history(
-                        role="assistant",
-                        content=parsed_response.data,
-                        session_id=session_id,
-                        metadata={"agent_name": self.agent_name},
-                    )
+
+                    await update_action_message()
 
                     # Execute the action
-                    await self.act(
-                        parsed_response=parsed_response,
-                        response=response,
-                        add_message_to_history=add_message_to_history,
-                        system_prompt=system_prompt,
-                        debug=debug,
-                        sessions=sessions,
-                        mcp_tools=mcp_tools,
-                        local_tools=local_tools,
-                        session_id=session_id,
-                        event_router=event_router,  # Pass event_router callable
-                    )
+                    @track("action_execution")
+                    async def execute_action():
+                        await self.act(
+                            parsed_response=parsed_response,
+                            response=response,
+                            add_message_to_history=add_message_to_history,
+                            system_prompt=system_prompt,
+                            debug=debug,
+                            sessions=sessions,
+                            mcp_tools=mcp_tools,
+                            local_tools=local_tools,
+                            session_id=session_id,
+                            event_router=event_router,  # Pass event_router callable
+                        )
+
+                    await execute_action()
 
                 # check for stuck state
                 if current_steps >= self.max_steps:
