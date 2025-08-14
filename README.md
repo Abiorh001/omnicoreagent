@@ -25,7 +25,7 @@
 - [🔥 Local Tools System](#-local-tools-system---create-custom-ai-tools)
 
 ### ⚙️ **Setup & Configuration**
-- [⚙️ Configuration Guide](#️-configuration-guide-updated)
+- [⚙️ Configuration Guide](#️-configuration-guide)
 - [🧠 Vector Database Setup](#-vector-database--smart-memory-setup-complete-guide)
 - [📊 Tracing & Observability](#-opik-tracing--observability-setup-latest-feature)
 
@@ -79,7 +79,7 @@ python examples/run.py
 - **Background Agents**: Self-flying autonomous task execution
 - **Production Monitoring**: Opik tracing for performance optimization
 
-➡️ **Next**: Check out [Examples](#-what-can-you-build-see-real-examples) or jump to [Configuration Guide](#️-configuration-guide-updated)
+➡️ **Next**: Check out [Examples](#-what-can-you-build-see-real-examples) or jump to [Configuration Guide](#️-configuration-guide)
 
 ---
 
@@ -177,7 +177,7 @@ All LLM provider examples consolidated in:
 
 ## ✨ Key Features
 
-> **🚀 Want to start building right away?** Jump to [Quick Start](#-quick-start-2-minutes) | [Examples](#-what-can-you-build-see-real-examples) | [Configuration](#️-configuration-guide-updated)
+> **🚀 Want to start building right away?** Jump to [Quick Start](#-quick-start-2-minutes) | [Examples](#-what-can-you-build-see-real-examples) | [Configuration](#️-configuration-guide)
 
 ### 🤖 Intelligent Agent System
 
@@ -336,7 +336,7 @@ All LLM provider examples consolidated in:
 
 ## 🏗️ Architecture
 
-> **📚 Prefer hands-on learning?** Skip to [Examples](#-what-can-you-build-see-real-examples) or [Configuration](#️-configuration-guide-updated)
+> **📚 Prefer hands-on learning?** Skip to [Examples](#-what-can-you-build-see-real-examples) or [Configuration](#️-configuration-guide)
 
 ### Core Components
 
@@ -406,17 +406,7 @@ echo "LLM_API_KEY=your_api_key_here" > .env
 ```
 
 **Advanced setup** (optional features):
-```bash
-# Enable vector memory (ChromaDB local - auto-configured)
-# ⚠️ Warning: 30-60s startup time for sentence transformer loading
-echo "ENABLE_VECTOR_DB=true" >> .env
-
-# Or connect to Redis for persistent memory
-echo "REDIS_URL=redis://localhost:6379/0" >> .env
-
-# Or use database for memory storage
-echo "DATABASE_URL=sqlite:///mcpomni_memory.db" >> .env
-```
+> **📖 Need more options?** See the complete [Configuration Guide](#configuration-guide) below for all environment variables, vector database setup, memory configuration, and advanced features.
 
 ### 🎯 **Choose Your Path**
 
@@ -427,7 +417,7 @@ python examples/omni_agent_example.py
 
 **Path B: Advanced MCP Client (CLI)**
 ```bash
-python run.py
+python examples/run.py
 ```
 
 **Path C: Web Interface**
@@ -438,53 +428,74 @@ python examples/web_server.py
 
 ## ⚙️ Configuration Guide
 
-> **🎯 Quick Setup**: Most users only need the `.env` file with an API key. Advanced features require additional configuration.
+> **⚡ Quick Setup**: Only need `LLM_API_KEY` to get started! | **🔍 Detailed Setup**: [Vector DB](#-vector-database--smart-memory-setup-complete-guide) | [Tracing](#-opik-tracing--observability-setup-latest-feature)
 
-### **Configuration Overview - Two Simple Files**
+### Environment Variables
 
-MCPOmni Connect uses **two separate configuration files** for different purposes:
+Create a `.env` file with your configuration. **Only the LLM API key is required** - everything else is optional for advanced features.
 
-#### 1. `.env` File - Environment Variables
-
-Contains sensitive information like API keys and optional settings:
-
+#### **🔥 REQUIRED (Start Here)**
 ```bash
-# Required: Your LLM provider API key
-LLM_API_KEY=your_api_key_here
-
-# Optional: Memory Storage Configuration  
-DATABASE_URL=sqlite:///mcpomni_memory.db
-REDIS_URL=redis://localhost:6379/0
+# ===============================================
+# REQUIRED: AI Model API Key (Choose one provider)
+# ===============================================
+LLM_API_KEY=your_openai_api_key_here
+# OR for other providers:
+# LLM_API_KEY=your_anthropic_api_key_here
+# LLM_API_KEY=your_groq_api_key_here
+# LLM_API_KEY=your_azure_openai_api_key_here
+# See examples/llm_usage-config.json for all provider configs
 ```
 
-#### 2. `servers_config.json` - Server & Agent Configuration
+#### **⚡ OPTIONAL: Advanced Features**
+```bash
+# ===============================================
+# Tracing & Observability (OPTIONAL) - NEW!
+# ===============================================
+# For advanced monitoring and performance optimization
+# 🔗 Sign up: https://www.comet.com/signup?from=llm
+OPIK_API_KEY=your_opik_api_key_here
+OPIK_WORKSPACE=your_opik_workspace_name
 
-Contains application settings, LLM configuration, and MCP server connections:
+# ===============================================
+# Vector Database (OPTIONAL) - Smart Memory
+# ===============================================
+# ⚠️ Warning: 30-60s startup time for sentence transformer
+ENABLE_VECTOR_DB=true
+OMNI_MEMORY_PROVIDER=chroma-local  # Default: chroma-local
 
-```json
-{
-  "AgentConfig": {
-    "tool_call_timeout": 30,
-    "max_steps": 15,
-    "request_limit": 1000,
-    "total_tokens_limit": 100000
-  },
-  "LLM": {
-    "provider": "openai",
-    "model": "gpt-4o-mini",
-    "temperature": 0.7,
-    "max_tokens": 5000,
-    "top_p": 0.7
-  },
-  "mcpServers": {
-    "your-server-name": {
-      "transport_type": "stdio",
-      "command": "uvx",
-      "args": ["mcp-server-package"]
-    }
-  }
-}
+# For remote ChromaDB (only if using chroma-remote)
+# CHROMA_HOST=localhost
+# CHROMA_PORT=8000
+
+# For ChromaDB Cloud (only if using chroma-cloud)  
+# CHROMA_TENANT=your_tenant
+# CHROMA_DATABASE=your_database
+# CHROMA_API_KEY=your_api_key
+
+# For Qdrant Remote (only if using qdrant-remote)
+# QDRANT_HOST=localhost
+# QDRANT_PORT=6333
+
+# ===============================================
+# Persistent Memory Storage (OPTIONAL)
+# ===============================================
+# These have sensible defaults - only set if you need custom configuration
+
+# Redis - for memory_store_type="redis" (defaults to: redis://localhost:6379/0)
+# REDIS_URL=redis://your-remote-redis:6379/0
+# REDIS_URL=redis://:password@localhost:6379/0  # With password
+
+# Database - for memory_store_type="database" (defaults to: sqlite:///mcpomni_memory.db)
+# DATABASE_URL=postgresql://user:password@localhost:5432/mcpomni
+# DATABASE_URL=mysql://user:password@localhost:3306/mcpomni
 ```
+
+> **💡 Quick Start**: Just set `LLM_API_KEY` and you're ready to go! Add other variables only when you need advanced features.
+
+### **Server Configuration (`servers_config.json`)**
+
+For MCP server connections and agent settings:
 
 ### 🚦 Transport Types & Authentication
 
@@ -696,7 +707,11 @@ MCPOmni Connect supports multiple ways to connect to MCP servers:
 Start the CLI - ensure your API key is exported or create `.env` file:
 
 ```bash
-mcpomni_connect
+# Basic MCP client
+python examples/basic.py
+
+# Or advanced MCP CLI
+python examples/run.py
 ```
 
 ## 🧪 Testing
@@ -750,188 +765,18 @@ tests/
 3. **Start Client**
 
    ```bash
-   uv run run.py
+   uv run examples/run.py
    ```
 
    Or:
 
    ```bash
-   python run.py
+   python examples/run.py
    ```
 
-## 🧑‍💻 Examples
 
-### Basic CLI Example
 
-You can run the basic CLI example to interact with MCPOmni Connect directly from the terminal.
 
-**Using [uv](https://github.com/astral-sh/uv) (recommended):**
-
-```bash
-uv run examples/basic.py
-```
-
-**Or using Python directly:**
-
-```bash
-python examples/basic.py
-```
-
----
-
-### 🤖 OmniAgent - Create Your Own AI Agents
-
-Build intelligent agents that combine MCP tools with local tools for powerful automation.
-
-#### Basic OmniAgent Creation
-
-```python
-from mcpomni_connect.omni_agent import OmniAgent
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.events.event_router import EventRouter
-from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
-
-# Create local tools registry
-tool_registry = ToolRegistry()
-
-# Register your custom tools directly with the agent
-@tool_registry.register_tool("calculate_area")
-def calculate_area(length: float, width: float) -> str:
-    """Calculate the area of a rectangle."""
-    area = length * width
-    return f"Area of rectangle ({length} x {width}): {area} square units"
-
-@tool_registry.register_tool("analyze_text")
-def analyze_text(text: str) -> str:
-    """Analyze text and return word count and character count."""
-    words = len(text.split())
-    chars = len(text)
-    return f"Analysis: {words} words, {chars} characters"
-
-# Initialize memory store
-memory_store = MemoryRouter(memory_store_type="redis")  # or "postgresql", "sqlite", "mysql"
-event_router = EventRouter(event_store_type="in_memory")
-
-# Create OmniAgent with LOCAL TOOLS + MCP TOOLS
-agent = OmniAgent(
-    name="my_agent",
-    system_instruction="You are a helpful assistant with access to custom tools and file operations.",
-    model_config={
-        "provider": "openai",
-        "model": "gpt-4o",
-        "max_context_length": 50000,
-    },
-    # Your custom local tools
-    local_tools=tool_registry,
-    # MCP server tools  
-    mcp_tools=[
-        {
-            "name": "filesystem",
-            "transport_type": "stdio",
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"],
-        }
-    ],
-    memory_store=memory_store,
-    event_router=event_router
-)
-
-# Now the agent can use BOTH your custom tools AND MCP tools!
-result = await agent.run("Calculate the area of a 10x5 rectangle, then analyze this text: 'Hello world'")
-print(f"Response: {result['response']}")
-print(f"Session ID: {result['session_id']}")
-```
-
-#### 🚁 Self-Flying Background Agents *(NEW!)*
-
-Create autonomous agents that run in the background and execute tasks automatically:
-
-```python
-from mcpomni_connect.omni_agent.background_agent.background_agent_manager import BackgroundAgentManager
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.events.event_router import EventRouter
-
-# Initialize components
-memory_store = MemoryRouter(memory_store_type="in_memory")
-event_router = EventRouter(event_store_type="in_memory")
-
-# Create background agent manager
-manager = BackgroundAgentManager(
-    memory_store=memory_store,
-    event_router=event_router
-)
-
-# Create a self-flying background agent
-agent_config = {
-    "agent_id": "system_monitor",
-    "system_instruction": "You are a system monitoring agent that checks system health.",
-    "model_config": {
-        "provider": "openai",
-        "model": "gpt-4o",
-        "temperature": 0.7,
-    },
-    "local_tools": tool_registry,  # Your tool registry
-    "agent_config": {
-        "max_steps": 10,
-        "tool_call_timeout": 30,
-    },
-    "interval": 60,  # Run every 60 seconds
-    "max_retries": 3,
-    "retry_delay": 30,
-    "task_config": {
-        "query": "Check system status and report any critical issues.",
-        "description": "System health monitoring task"
-    }
-}
-
-# Create and start the background agent
-result = manager.create_agent(agent_config)
-manager.start()  # Start all background agents
-
-# Monitor events in real-time
-async for event in manager.get_agent("system_monitor").stream_events(result["session_id"]):
-    print(f"Background Agent Event: {event.type} - {event.payload}")
-
-# Runtime task updates
-manager.update_task_config("system_monitor", {
-    "query": "Perform emergency system check and report critical issues immediately.",
-    "description": "Emergency system check task",
-    "priority": "high"
-})
-```
-
-#### 📝 Session Management
-
-Maintain conversation continuity across multiple interactions:
-
-```python
-# Use session ID for conversation continuity
-session_id = "user_123_conversation"
-result1 = await agent.run("Hello! My name is Alice.", session_id)
-result2 = await agent.run("What did I tell you my name was?", session_id)
-
-# Get conversation history
-history = await agent.get_session_history(session_id)
-
-# Stream events in real-time
-async for event in agent.stream_events(session_id):
-    print(f"Event: {event.type} - {event.payload}")
-```
-
-#### 📚 Learn from Examples
-
-Study these comprehensive examples to see OmniAgent in action:
-
-- **`examples/omni_agent_example.py`** - ⭐ **COMPLETE DEMO** showing all OmniAgent features
-- **`examples/run_omni_agent.py`** - Advanced EXAMPLE patterns (study 12+ tool examples)
-- **`examples/background_agent_example.py`** - Self-flying background agents 
-- **`examples/basic.py`** - Simple MCP client patterns
-- **`examples/run.py`** - Advanced MCP CLI interface
-- **`examples/web_server.py`** - FastAPI web interface for OmniAgent
-- **`examples/fast_api_iml.py`** - Clean FastAPI implementation
-- **`examples/llm_usage-config.json`** - All LLM provider configurations
-
-💡 **Pro Tip**: Run `python examples/omni_agent_example.py` to see the full capabilities in action!
 
 ## 🎯 **Getting Started - Choose Your Path**
 
@@ -964,7 +809,6 @@ python examples/basic.py
 
 # World-class MCP client with advanced features
 python examples/run.py
-# OR: mcpomni-connect --config servers_config.json
 
 # Features: Connect to MCP servers, agentic modes, advanced memory
 ```
@@ -1109,71 +953,7 @@ def process_file(file_path: str, operation: str) -> str:
 
 ---
 
-## ⚙️ Configuration Guide *(UPDATED!)*
 
-> **⚡ Quick Setup**: Only need `LLM_API_KEY` to get started! | **🔍 Detailed Setup**: [Vector DB](#-vector-database--smart-memory-setup-complete-guide) | [Tracing](#-opik-tracing--observability-setup-latest-feature)
-
-### Environment Variables
-
-Create a `.env` file with your configuration. **Only the LLM API key is required** - everything else is optional for advanced features.
-
-#### **🔥 REQUIRED (Start Here)**
-```bash
-# ===============================================
-# REQUIRED: AI Model API Key (Choose one provider)
-# ===============================================
-LLM_API_KEY=your_openai_api_key_here
-# OR for other providers:
-# LLM_API_KEY=your_anthropic_api_key_here
-# LLM_API_KEY=your_groq_api_key_here
-# LLM_API_KEY=your_azure_openai_api_key_here
-# See examples/llm_usage-config.json for all provider configs
-```
-
-#### **⚡ OPTIONAL: Advanced Features**
-```bash
-# ===============================================
-# Tracing & Observability (OPTIONAL) - NEW!
-# ===============================================
-# For advanced monitoring and performance optimization
-# 🔗 Sign up: https://www.comet.com/signup?from=llm
-OPIK_API_KEY=your_opik_api_key_here
-OPIK_WORKSPACE=your_opik_workspace_name
-
-# ===============================================
-# Vector Database (OPTIONAL) - Smart Memory
-# ===============================================
-# ⚠️ Warning: 30-60s startup time for sentence transformer
-ENABLE_VECTOR_DB=true
-OMNI_MEMORY_PROVIDER=chroma-local  # Default: chroma-local
-
-# For remote ChromaDB (only if using chroma-remote)
-# CHROMA_HOST=localhost
-# CHROMA_PORT=8000
-
-# For ChromaDB Cloud (only if using chroma-cloud)  
-# CHROMA_TENANT=your_tenant
-# CHROMA_DATABASE=your_database
-# CHROMA_API_KEY=your_api_key
-
-# For Qdrant Remote (only if using qdrant-remote)
-# QDRANT_HOST=localhost
-# QDRANT_PORT=6333
-
-# ===============================================
-# Persistent Memory Storage (OPTIONAL)
-# ===============================================
-# Database backend for conversation history
-DATABASE_URL=sqlite:///mcpomni_memory.db
-# DATABASE_URL=postgresql://user:password@localhost:5432/mcpomni
-# DATABASE_URL=mysql://user:password@localhost:3306/mcpomni
-
-# Redis for memory and event storage
-REDIS_URL=redis://localhost:6379/0
-# REDIS_URL=redis://:password@localhost:6379/0  # With password
-```
-
-> **💡 Quick Start**: Just set `LLM_API_KEY` and you're ready to go! Add other variables only when you need advanced features.
 
 ### 🧠 **Vector Database & Smart Memory Setup** *(COMPLETE GUIDE)*
 
@@ -1248,15 +1028,14 @@ CHROMA_API_KEY=your_api_key
 
 **Monitor and optimize your AI agents with production-grade observability:**
 
-#### **🚀 Quick Setup (2 steps)**
+#### **🚀 Quick Setup**
 
 1. **Sign up for Opik** (Free & Open Source):
    - Visit: **[https://www.comet.com/signup?from=llm](https://www.comet.com/signup?from=llm)**
    - Create your account and get your API key and workspace name
 
-2. **Add to your `.env` file**:
+2. **Add to your `.env` file** (see [Environment Variables](#environment-variables) above):
    ```bash
-   # Opik Tracing (Optional - for advanced monitoring)
    OPIK_API_KEY=your_opik_api_key_here
    OPIK_WORKSPACE=your_opik_workspace_name
    ```
@@ -1342,8 +1121,7 @@ The MCPOmni Connect CLI is the most advanced MCP client available, providing pro
 
 ```bash
 # Launch the advanced MCP CLI
-python run.py
-# OR: mcpomni-connect --config servers_config.json
+python examples/run.py
 
 # Core MCP client commands:
 /tools                                    # List all available tools
@@ -1912,7 +1690,7 @@ User: "Analyze the contents of /path/to/document.pdf"
 
 > **🚨 Most Common Issues**: Check [Quick Fixes](#-quick-fixes-common-issues) below first!
 > 
-> **📖 For comprehensive setup help**: See [⚙️ Configuration Guide](#️-configuration-guide-updated) | [🧠 Vector DB Setup](#-vector-database--smart-memory-setup-complete-guide)
+> **📖 For comprehensive setup help**: See [⚙️ Configuration Guide](#️-configuration-guide) | [🧠 Vector DB Setup](#-vector-database--smart-memory-setup-complete-guide)
 
 ### 🚨 **Quick Fixes (Common Issues)**
 

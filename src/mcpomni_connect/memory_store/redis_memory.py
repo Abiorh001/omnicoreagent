@@ -2,12 +2,12 @@ import json
 import time
 from typing import Any, List
 import redis.asyncio as redis
+from decouple import config
 
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from mcpomni_connect.utils import logger
-import os
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = config("REDIS_URL", default="redis://localhost:6379/0")
 
 
 class RedisMemoryStore(AbstractMemoryStore):

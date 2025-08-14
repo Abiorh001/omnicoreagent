@@ -1,9 +1,9 @@
-import os
 import redis.asyncio as redis
 from typing import AsyncIterator, List
+from decouple import config
 from mcpomni_connect.events.base import BaseEventStore, Event
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = config("REDIS_URL", default="redis://localhost:6379/0")
 
 
 class RedisStreamEventStore(BaseEventStore):

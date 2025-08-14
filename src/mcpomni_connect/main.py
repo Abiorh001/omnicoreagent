@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from decouple import config
 
 from mcpomni_connect.cli import MCPClientCLI
 from mcpomni_connect.client import Configuration, MCPClient
@@ -152,7 +153,7 @@ async def async_main():
     client = None
 
     try:
-        api_key = os.getenv("LLM_API_KEY")
+        api_key = config("LLM_API_KEY", default=None)
         if not api_key:
             raise RuntimeError(
                 "LLM_API_KEY environment variable is missing. Please set it in your environment or .env file."
