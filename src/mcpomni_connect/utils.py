@@ -537,10 +537,10 @@ try:
     from opik import track as opik_track
 
     # Check if we have valid credentials before enabling Opik
-    from decouple import config
+    from decouple import config as decouple_config
 
-    api_key = config("OPIK_API_KEY", default=None)
-    workspace = config("OPIK_WORKSPACE", default=None)
+    api_key = decouple_config("OPIK_API_KEY", default=None)
+    workspace = decouple_config("OPIK_WORKSPACE", default=None)
 
     if api_key and workspace:
         OPIK_AVAILABLE = True

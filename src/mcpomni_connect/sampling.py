@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from decouple import config
+from decouple import config as decouple_config
 import litellm
 from mcp.client.session import ClientSession
 from mcp.shared.context import RequestContext
@@ -20,7 +20,7 @@ from mcpomni_connect.utils import logger
 
 load_dotenv()
 
-api_key = config("LLM_API_KEY", default=None)
+api_key = decouple_config("LLM_API_KEY", default=None)
 
 
 class LLMConnection:

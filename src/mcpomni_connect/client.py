@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 import anyio
 from dotenv import load_dotenv
-from decouple import config
+from decouple import config as decouple_config
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
@@ -162,7 +162,7 @@ class Configuration:
     def __post_init__(self) -> None:
         """Initialize configuration with environment variables."""
         self.load_env()
-        self.llm_api_key = config("LLM_API_KEY", default=None)
+        self.llm_api_key = decouple_config("LLM_API_KEY", default=None)
 
         if not self.llm_api_key:
             raise ValueError("LLM_API_KEY not found in environment variables")

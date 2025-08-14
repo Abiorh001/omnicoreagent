@@ -1,5 +1,5 @@
 from typing import Any
-from decouple import config
+from decouple import config as decouple_config
 from mcpomni_connect.memory_store.in_memory import InMemoryStore
 from mcpomni_connect.memory_store.database_memory import DatabaseMemory
 from mcpomni_connect.memory_store.redis_memory import RedisMemoryStore
@@ -13,7 +13,7 @@ class MemoryRouter:
         if memory_store_type == "in_memory":
             self.memory_store = InMemoryStore()
         elif memory_store_type == "database":
-            db_url = config("DATABASE_URL", default="sqlite:///mcpomni_memory.db")
+            db_url = decouple_config("DATABASE_URL", default="sqlite:///mcpomni_memory.db")
             self.memory_store = DatabaseMemory(db_url=db_url)
         elif memory_store_type == "redis":
             self.memory_store = RedisMemoryStore()
