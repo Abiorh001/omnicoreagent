@@ -1,118 +1,23 @@
 import os
 from enum import Enum
 from mcpomni_connect.utils import logger
+from decouple import config
+import chromadb
+from chromadb.config import Settings
 
-# Try to import ChromaDB with proper error handling
-try:
-    import chromadb
-    from chromadb.config import Settings
 
-    CHROMADB_AVAILABLE = True
-except ImportError as e:
-    logger.error(f"ChromaDB not available: {e}")
-    logger.warning("Install ChromaDB with: pip install chromadb")
-    CHROMADB_AVAILABLE = False
-    chromadb = None
-    Settings = None
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
-from decouple import config
 
-# ==== 🔥 Warm up ChromaDB client at module import ====
+# No more warmup - ChromaDB only loads when explicitly needed
 _chroma_client = None
 _chroma_enabled = False
-_warmed_collections = {}  # Cache for pre-created collections
-
-
-def _initialize_chromadb():
-    """Initialize and warm up ChromaDB client with aggressive pre-loading."""
-    global _chroma_client, _chroma_enabled
-    if not CHROMADB_AVAILABLE:
-        return
-
-    try:
-        logger.debug("[Warmup] Starting ChromaDB warmup")
-
-        # Create warm-up directory
-        chroma_warmup_dir = os.path.join(os.getcwd(), ".chroma_warmup")
-        os.makedirs(chroma_warmup_dir, exist_ok=True)
-
-        # Create a lightweight client for warmup with optimized settings
-        _chroma_client = chromadb.PersistentClient(
-            path=chroma_warmup_dir,
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True,
-            ),
-        )
-
-        # Pre-create a test collection to warm up the entire pipeline
-        try:
-            test_collection = _chroma_client.get_or_create_collection(
-                name="warmup_test_collection",
-                metadata={"description": "Warmup collection"},
-            )
-            # Add a tiny test document to warm up embedding pipeline
-            test_collection.add(
-                documents=["warmup test document"],
-                ids=["warmup_id"],
-                metadatas=[{"type": "warmup"}],
-            )
-            logger.debug("[Warmup] Test collection and embedding pipeline warmed up")
-        except Exception as e:
-            logger.debug(f"[Warmup] Test collection warmup failed (non-critical): {e}")
-
-        _chroma_enabled = True
-        logger.debug("[Warmup] ChromaDB client and pipeline initialized successfully")
-    except Exception as e:
-        logger.warning(f"[Warmup] Failed to initialize ChromaDB client: {e}")
-        _chroma_enabled = False
-
-
-def _should_warmup_chromadb():
-    """Check if we should warm up ChromaDB."""
-    from decouple import config
-
-    memory_provider = config("OMNI_MEMORY_PROVIDER", default=None)
-
-    if not memory_provider or memory_provider == "chroma-local":
-        return True
-    elif memory_provider == "qdrant-remote":
-        try:
-            # Quick test if Qdrant is actually reachable
-            from qdrant_client import QdrantClient
-
-            qdrant_host = config("QDRANT_HOST", default=None)
-            qdrant_port = config("QDRANT_PORT", default=None)
-
-            test_client = QdrantClient(host=qdrant_host, port=qdrant_port)
-            test_client.get_collections()  # Quick health check
-            logger.debug("[Warmup] Qdrant is available, skipping ChromaDB warmup")
-            return False
-        except Exception:
-            logger.debug(
-                "[Warmup] Qdrant not reachable, will warm up ChromaDB as fallback"
-            )
-            return True
-    else:
-        logger.debug("[Warmup] No Qdrant configured, warming up ChromaDB")
-        return True
-
-
-# Smart initialization - only if Qdrant is not available
-if CHROMADB_AVAILABLE and _should_warmup_chromadb():
-    _initialize_chromadb()
-else:
-    logger.debug(
-        "[Warmup] ChromaDB warmup skipped (Qdrant available or ChromaDB unavailable)"
-    )
 
 
 class ChromaClientType(Enum):
-    """Enumeration for ChromaDB client types."""
+    """Enumeration for ChromaDB client types - NO LOCAL SUPPORT."""
 
-    LOCAL = "local"
     REMOTE = "remote"
     CLOUD = "cloud"
 
@@ -123,27 +28,20 @@ class ChromaDBVectorDB(VectorDBBase):
     def __init__(
         self,
         collection_name: str,
-        client_type: ChromaClientType = ChromaClientType.LOCAL,
+        client_type: ChromaClientType = ChromaClientType.REMOTE,
         **kwargs,
     ):
-        """Initialize ChromaDB vector database."""
+        """Initialize ChromaDB vector database - NO LOCAL SUPPORT."""
         super().__init__(collection_name, **kwargs)
-
-        # Check if ChromaDB is available first
-        if not CHROMADB_AVAILABLE:
-            logger.error(f"❌ ChromaDB not available for collection: {collection_name}")
-            logger.warning("🔧 Install ChromaDB with: pip install chromadb")
-            self.enabled = False
-            return
 
         if isinstance(client_type, str):
             try:
                 client_type = ChromaClientType(client_type.lower())
             except ValueError:
                 logger.warning(
-                    f"Invalid client_type '{client_type}', defaulting to LOCAL"
+                    f"Invalid client_type '{client_type}', defaulting to REMOTE"
                 )
-                client_type = ChromaClientType.LOCAL
+                client_type = ChromaClientType.REMOTE
 
         # Initialize ChromaDB client based on type
         try:
@@ -185,33 +83,10 @@ class ChromaDBVectorDB(VectorDBBase):
                     port=chroma_port,
                     ssl=False,
                 )
-            elif client_type == ChromaClientType.LOCAL:
-                # Local persistent client
-                chroma_data_dir = os.path.join(os.getcwd(), ".chroma_db")
-                os.makedirs(chroma_data_dir, exist_ok=True)
-
-                # Check if we should do lazy warmup (if not done at startup)
-                global _chroma_enabled, _chroma_client
-                if not _chroma_enabled and CHROMADB_AVAILABLE:
-                    logger.debug("Doing lazy ChromaDB warmup (not done at startup)")
-                    try:
-                        _initialize_chromadb()
-                    except Exception as e:
-                        logger.warning(f"Lazy ChromaDB warmup failed: {e}")
-
-                # Use warmed-up client patterns for maximum speed
-                if _chroma_enabled and _chroma_client:
-                    # Create client with minimal overhead (ChromaDB is already warmed up)
-                    self.chroma_client = chromadb.PersistentClient(
-                        path=chroma_data_dir,
-                        settings=Settings(
-                            anonymized_telemetry=False,
-                            allow_reset=True,
-                        ),
-                    )
-                else:
-                    # Standard client creation
-                    self.chroma_client = chromadb.PersistentClient(path=chroma_data_dir)
+            else:
+                logger.error(f"❌ Unsupported ChromaDB client type: {client_type}")
+                self.enabled = False
+                return
 
             # Get or create collection
 
@@ -227,18 +102,10 @@ class ChromaDBVectorDB(VectorDBBase):
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't."""
         try:
-            # Fast collection creation leveraging warmup
-            if _chroma_enabled:
-                # Since ChromaDB is warmed up, collection creation should be fast
-                collection = self.chroma_client.get_or_create_collection(
-                    name=self.collection_name,
-                    metadata={"type": "memory"},  # Ultra-minimal metadata
-                )
-            else:
-                # Fallback to basic collection creation
-                collection = self.chroma_client.get_or_create_collection(
-                    name=self.collection_name
-                )
+            collection = self.chroma_client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"type": "memory"},
+            )
             return collection
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB collection: {e}")
@@ -248,7 +115,7 @@ class ChromaDBVectorDB(VectorDBBase):
         self, document: str, doc_id: str, metadata: Optional[Dict] = None
     ) -> bool:
         """Upsert a document (insert if new, update if exists)."""
-        if not CHROMADB_AVAILABLE or not self.enabled:
+        if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot upsert document."
             )
@@ -278,7 +145,7 @@ class ChromaDBVectorDB(VectorDBBase):
         self, query: str, n_results: int, distance_threshold: float
     ) -> Any:
         """Query the collection for similar documents."""
-        if not CHROMADB_AVAILABLE or not self.enabled:
+        if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot query collection."
             )
@@ -352,7 +219,7 @@ class ChromaDBVectorDB(VectorDBBase):
         self, doc_id: str, document: str, metadata: Dict
     ) -> bool:
         """Async wrapper for adding to collection."""
-        if not CHROMADB_AVAILABLE or not self.enabled:
+        if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot add to collection."
             )
@@ -377,7 +244,7 @@ class ChromaDBVectorDB(VectorDBBase):
         self, query: str, n_results: int, distance_threshold: float
     ) -> Dict[str, Any]:
         """Async wrapper for querying collection."""
-        if not CHROMADB_AVAILABLE or not self.enabled:
+        if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot query collection."
             )

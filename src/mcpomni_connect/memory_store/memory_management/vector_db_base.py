@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, is_vector_db_enabled
 from mcpomni_connect.memory_store.memory_management.shared_embedding import (
     get_embed_model,
     embed_text,
     NOMIC_VECTOR_SIZE,
-    is_vector_db_enabled,
 )
 
 

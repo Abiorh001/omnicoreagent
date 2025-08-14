@@ -6,10 +6,9 @@ This module loads the embedding model only when enabled via config.
 import os
 import re
 from decouple import config
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, is_vector_db_enabled
 
-# Vector database feature flag
-ENABLE_VECTOR_DB = config("ENABLE_VECTOR_DB", default=False, cast=bool)
+
 
 # Default vector size fallback
 NOMIC_VECTOR_SIZE = 768
@@ -22,7 +21,7 @@ def _initialize_embedding_system():
     """Initialize the embedding system only when vector DB is enabled."""
     global _EMBED_MODEL, NOMIC_VECTOR_SIZE
 
-    if not ENABLE_VECTOR_DB:
+    if not is_vector_db_enabled():
         logger.debug(
             "Vector database disabled - skipping embedding system initialization"
         )
@@ -81,7 +80,7 @@ def _initialize_embedding_system():
 
 
 # Only initialize if vector DB is enabled
-if ENABLE_VECTOR_DB:
+if is_vector_db_enabled():
     _initialize_embedding_system()
 
 
@@ -93,7 +92,7 @@ def load_embed_model():
 
 def get_embed_model():
     """Get the shared embedding model instance, with safety check."""
-    if not ENABLE_VECTOR_DB:
+    if not is_vector_db_enabled():
         raise RuntimeError("Vector database is disabled by configuration")
     if _EMBED_MODEL is None:
         raise RuntimeError("Embedding model not loaded. Call load_embed_model() first.")
@@ -102,7 +101,7 @@ def get_embed_model():
 
 def embed_text(text: str) -> list[float]:
     """Embed text using the shared nomic model with proper text cleaning."""
-    if not ENABLE_VECTOR_DB:
+    if not is_vector_db_enabled():
         raise RuntimeError("Vector database is disabled by configuration")
 
     if not _EMBED_MODEL:
@@ -150,7 +149,3 @@ def clean_text_for_embedding(text: str) -> str:
 
     return text
 
-
-def is_vector_db_enabled() -> bool:
-    """Check if vector database features are enabled."""
-    return ENABLE_VECTOR_DB
