@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.18] - 2025-06-19
+
+### Changed
+- **BREAKING CHANGE**: Removed local ChromaDB support for performance optimization
+  - Local ChromaDB fallback system has been completely removed
+  - Users must now explicitly configure a vector database provider
+  - No more automatic fallback to local storage
+  - This eliminates the 81+ second startup delay from ChromaDB Rust bindings
+- **Performance Improvement**: Vector database modules now load only when explicitly needed
+  - Lazy loading prevents unnecessary imports during package initialization
+  - Faster startup when vector DB is disabled
+  - Better resource management
+
+### Added
+- **Required Configuration**: Users must set `OMNI_MEMORY_PROVIDER` to one of:
+  - `qdrant-remote` (recommended default)
+  - `chroma-remote` 
+  - `chroma-cloud`
+- **Clear Error Messages**: Better feedback when vector DB configuration is missing
+
+### Removed
+- Local ChromaDB persistence and warmup system
+- Automatic fallback mechanisms
+- Module-level vector DB initialization
+- ChromaDB local client type
+
+### Migration Guide
+- **Before**: `ENABLE_VECTOR_DB=true` would automatically use local ChromaDB
+- **After**: Must set both `ENABLE_VECTOR_DB=true` AND `OMNI_MEMORY_PROVIDER=qdrant-remote` (or other provider)
+- **Impact**: Faster startup, but requires explicit configuration
+
 ## [0.1.17] - 2025-05-28
 
 ### Added

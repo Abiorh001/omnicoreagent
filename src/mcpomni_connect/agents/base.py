@@ -35,6 +35,7 @@ from mcpomni_connect.utils import (
     show_tool_response,
     track,
     OPIK_AVAILABLE,
+    is_vector_db_enabled,
 )
 from mcpomni_connect.events.base import (
     Event,
@@ -49,24 +50,17 @@ from mcpomni_connect.events.base import (
 import traceback
 from decouple import config
 
-# Opik integration is now imported from utils
-
-ENABLE_VECTOR_DB = config("ENABLE_VECTOR_DB", default=False, cast=bool)
 
 
-# Simple environment variable check - no imports, no loading
-def _is_vector_db_enabled():
-    """Check if vector database is enabled without importing anything."""
-    return ENABLE_VECTOR_DB
+
 
 
 # Import memory system first to ensure initialization
-if _is_vector_db_enabled():
-    logger.debug("Vector database is enabled")
+if is_vector_db_enabled():
+    logger.info("Vector database is enabled")
     try:
         # Import memory system to trigger initialization
         from mcpomni_connect.memory_store.memory_management import shared_embedding
-        from mcpomni_connect.memory_store.memory_management import memory_manager
         from mcpomni_connect.memory_store.memory_management.memory_manager import (
             MemoryManagerFactory,
             fire_and_forget_memory_processing,
@@ -75,7 +69,7 @@ if _is_vector_db_enabled():
         # Continue without memory system - it will be handled gracefully later
         pass
 else:
-    logger.debug("Vector database is disabled")
+    logger.info("Vector database is disabled")
 
 
 class BaseReactAgent:
@@ -115,7 +109,7 @@ class BaseReactAgent:
         """Get long-term and episodic memory for a given query and session ID using optimized single query"""
         try:
             # Check if vector database is enabled
-            if not _is_vector_db_enabled():
+            if not is_vector_db_enabled():
                 logger.debug("Vector database disabled - skipping memory retrieval")
                 return [], []
 
@@ -284,7 +278,7 @@ class BaseReactAgent:
 
         try:
             # Memory processing when vector DB is enabled
-            if _is_vector_db_enabled():
+            if is_vector_db_enabled():
                 try:
                     fire_and_forget_memory_processing(
                         session_id, validated_messages, llm_connection
@@ -837,7 +831,7 @@ class BaseReactAgent:
         tools_section = await get_tools()
 
         # Only get memory if vector DB is enabled
-        if _is_vector_db_enabled():
+        if is_vector_db_enabled():
 
             @track("memory_retrieval_step")
             async def get_memory():

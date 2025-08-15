@@ -305,7 +305,7 @@ print("Similar questions:", similar)
 
 ## Configuration
 
-**Provider selection**: Set `OMNI_MEMORY_PROVIDER` to one of `chroma-local` (default), `chroma-remote`, `chroma-cloud` or `qdrant-remote`.
+**Provider selection**: Set `OMNI_MEMORY_PROVIDER` to one of `qdrant-remote` (default), `chroma-remote`, or `chroma-cloud`.
 
 - **Qdrant**: Set `QDRANT_HOST` and `QDRANT_PORT` environment variables.
 - **ChromaDB (cloud)**: Set `CHROMA_TENANT`, `CHROMA_DATABASE`, and `CHROMA_API_KEY`.

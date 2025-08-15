@@ -383,7 +383,7 @@ MCPOmni Connect Platform
 
 **Optional (for advanced features):**
 - Redis (persistent memory)
-- Vector DB (ChromaDB auto-installed, Qdrant for production)
+- Vector DB (Support both Qdrant and ChromaDB)
 - Database (PostgreSQL/MySQL/SQLite)
 - ⚠️ **Vector DB startup**: 30-60s initial load time
 
@@ -461,22 +461,26 @@ OPIK_WORKSPACE=your_opik_workspace_name
 # Vector Database (OPTIONAL) - Smart Memory
 # ===============================================
 # ⚠️ Warning: 30-60s startup time for sentence transformer
-ENABLE_VECTOR_DB=true
-OMNI_MEMORY_PROVIDER=chroma-local  # Default: chroma-local
+# ⚠️ IMPORTANT: You MUST choose a provider - no local fallback
+ENABLE_VECTOR_DB=true # Default: false
 
-# For remote ChromaDB (only if using chroma-remote)
+# Choose ONE provider (required if ENABLE_VECTOR_DB=true):
+
+# Option 1: Qdrant Remote (RECOMMENDED)
+OMNI_MEMORY_PROVIDER=qdrant-remote
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+
+# Option 2: ChromaDB Remote
+# OMNI_MEMORY_PROVIDER=chroma-remote
 # CHROMA_HOST=localhost
 # CHROMA_PORT=8000
 
-# For ChromaDB Cloud (only if using chroma-cloud)  
+# Option 3: ChromaDB Cloud
+# OMNI_MEMORY_PROVIDER=chroma-cloud
 # CHROMA_TENANT=your_tenant
 # CHROMA_DATABASE=your_database
 # CHROMA_API_KEY=your_api_key
-
-# For Qdrant Remote (only if using qdrant-remote)
-# QDRANT_HOST=localhost
-# QDRANT_PORT=6333
-
 # ===============================================
 # Persistent Memory Storage (OPTIONAL)
 # ===============================================
@@ -959,11 +963,20 @@ def process_file(file_path: str, operation: str) -> str:
 
 MCPOmni Connect provides advanced memory capabilities through vector databases for intelligent, semantic search and long-term memory.
 
-#### **⚡ Quick Start (Fastest)**
+#### **⚡ Quick Start (Choose Your Provider)**
 ```bash
-# Enable vector memory with ChromaDB (automatic local setup)
+# Enable vector memory - you MUST choose a provider
 ENABLE_VECTOR_DB=true
-# That's it! ChromaDB local will be used automatically
+
+# Option 1: Qdrant (recommended)
+OMNI_MEMORY_PROVIDER=qdrant-remote
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+
+# Option 2: ChromaDB Remote
+OMNI_MEMORY_PROVIDER=chroma-remote
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
 ```
 
 #### **⚠️ Important: Startup Time Impact**
@@ -974,14 +987,7 @@ ENABLE_VECTOR_DB=true
 
 #### **🔧 Vector Database Providers**
 
-**1. ChromaDB Local (Default & Fallback)**
-```bash
-ENABLE_VECTOR_DB=true
-# Automatically uses local .chroma_db directory
-# No additional setup required
-```
-
-**2. Qdrant Remote (Production)**
+**1. Qdrant Remote (Recommended Default)**
 ```bash
 # Install and run Qdrant
 docker run -p 6333:6333 qdrant/qdrant
@@ -993,15 +999,19 @@ QDRANT_HOST=localhost
 QDRANT_PORT=6333
 ```
 
-**3. ChromaDB Remote**
+**2. ChromaDB Remote**
 ```bash
+# Install and run ChromaDB server
+docker run -p 8000:8000 chromadb/chroma
+
+# Configure
 ENABLE_VECTOR_DB=true
 OMNI_MEMORY_PROVIDER=chroma-remote
 CHROMA_HOST=localhost
 CHROMA_PORT=8000
 ```
 
-**4. ChromaDB Cloud**
+**3. ChromaDB Cloud**
 ```bash
 ENABLE_VECTOR_DB=true
 OMNI_MEMORY_PROVIDER=chroma-cloud
@@ -1010,10 +1020,11 @@ CHROMA_DATABASE=your_database
 CHROMA_API_KEY=your_api_key
 ```
 
-#### **🛡️ Smart Fallback System**
-- If any remote provider fails → automatically falls back to ChromaDB local
-- Ensures uninterrupted operation even with network issues
-- No data loss during fallback transitions
+#### **⚠️ Important: No Local Fallback**
+- **Local ChromaDB support has been removed** for performance reasons
+- **You must configure a vector database provider** - no automatic fallback
+- **If no provider is configured or fails**: Vector DB will be disabled
+- **This ensures fast startup** when vector DB is not needed
 
 #### **✨ What You Get**
 - **Long-term Memory**: Persistent storage across sessions

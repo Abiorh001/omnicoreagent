@@ -27,8 +27,8 @@ DEBUG=false
 LOG_LEVEL=INFO
 
 # Optional: Vector DB selection
-# Default is chroma-local. Options: chroma-local | chroma-remote | chroma-cloud | qdrant-remote
-OMNI_MEMORY_PROVIDER=chroma-local
+# Default is qdrant-remote. Options: chroma-remote | chroma-cloud | qdrant-remote
+OMNI_MEMORY_PROVIDER=qdrant-remote
 
 # If using chroma-remote
 # CHROMA_HOST=localhost
