@@ -24,6 +24,8 @@ from mcpomni_connect.omni_agent.background_agent.background_agent_manager import
 from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
 from mcpomni_connect.utils import logger
 
+# instantiate the tool registry
+tool_registry = ToolRegistry()
 
 class OmniAgentCLI:
     """Comprehensive CLI interface for OmniAgent."""
@@ -36,146 +38,143 @@ class OmniAgentCLI:
         self.background_manager: Optional[BackgroundAgentManager] = None
         self.session_id: Optional[str] = None
 
-    async def create_comprehensive_tool_registry(self) -> ToolRegistry:
-        """Create a comprehensive tool registry with various tool types."""
-        tool_registry = ToolRegistry()
 
-        # Mathematical tools
-        @tool_registry.register_tool("calculate_area")
-        def calculate_area(length: float, width: float) -> str:
-            """Calculate the area of a rectangle."""
-            area = length * width
-            return f"Area of rectangle ({length} x {width}): {area} square units"
+    # Mathematical tools
+    @tool_registry.register_tool("calculate_area")
+    def calculate_area(length: float, width: float) -> str:
+        """Calculate the area of a rectangle."""
+        area = length * width
+        return f"Area of rectangle ({length} x {width}): {area} square units"
 
-        @tool_registry.register_tool("calculate_perimeter")
-        def calculate_perimeter(length: float, width: float) -> str:
-            """Calculate the perimeter of a rectangle."""
-            perimeter = 2 * (length + width)
-            return f"Perimeter of rectangle ({length} x {width}): {perimeter} units"
+    @tool_registry.register_tool("calculate_perimeter")
+    def calculate_perimeter(length: float, width: float) -> str:
+        """Calculate the perimeter of a rectangle."""
+        perimeter = 2 * (length + width)
+        return f"Perimeter of rectangle ({length} x {width}): {perimeter} units"
 
-        # Text processing tools
-        @tool_registry.register_tool("format_text")
-        def format_text(text: str, style: str = "normal") -> str:
-            """Format text in different styles."""
-            if style == "uppercase":
-                return text.upper()
-            elif style == "lowercase":
-                return text.lower()
-            elif style == "title":
-                return text.title()
-            elif style == "reverse":
-                return text[::-1]
-            else:
-                return text
+    # Text processing tools
+    @tool_registry.register_tool("format_text")
+    def format_text(text: str, style: str = "normal") -> str:
+        """Format text in different styles."""
+        if style == "uppercase":
+            return text.upper()
+        elif style == "lowercase":
+            return text.lower()
+        elif style == "title":
+            return text.title()
+        elif style == "reverse":
+            return text[::-1]
+        else:
+            return text
 
-        @tool_registry.register_tool("word_count")
-        def word_count(text: str) -> str:
-            """Count words in text."""
-            words = text.split()
-            return f"Word count: {len(words)} words"
+    @tool_registry.register_tool("word_count")
+    def word_count(text: str) -> str:
+        """Count words in text."""
+        words = text.split()
+        return f"Word count: {len(words)} words"
 
-        # System information tools
-        @tool_registry.register_tool("system_info")
-        def get_system_info() -> str:
-            """Get basic system information."""
-            import platform
-            import time
+    # System information tools
+    @tool_registry.register_tool("system_info")
+    def get_system_info() -> str:
+        """Get basic system information."""
+        import platform
+        import time
 
-            info = f"""System Information:
+        info = f"""System Information:
 • OS: {platform.system()} {platform.release()}
 • Architecture: {platform.machine()}
 • Python Version: {platform.python_version()}
 • Current Time: {time.strftime("%Y-%m-%d %H:%M:%S")}"""
-            return info
+        return info
 
-        # Data analysis tools
-        @tool_registry.register_tool("analyze_numbers")
-        def analyze_numbers(numbers: str) -> str:
-            """Analyze a list of numbers."""
-            try:
-                num_list = [float(x.strip()) for x in numbers.split(",")]
-                if not num_list:
-                    return "No numbers provided"
+    # Data analysis tools
+    @tool_registry.register_tool("analyze_numbers")
+    def analyze_numbers(numbers: str) -> str:
+        """Analyze a list of numbers."""
+        try:
+            num_list = [float(x.strip()) for x in numbers.split(",")]
+            if not num_list:
+                return "No numbers provided"
 
-                total = sum(num_list)
-                average = total / len(num_list)
-                minimum = min(num_list)
-                maximum = max(num_list)
+            total = sum(num_list)
+            average = total / len(num_list)
+            minimum = min(num_list)
+            maximum = max(num_list)
 
-                return f"""Number Analysis:
+            return f"""Number Analysis:
 • Count: {len(num_list)} numbers
 • Sum: {total}
 • Average: {average:.2f}
 • Min: {minimum}
 • Max: {maximum}"""
-            except Exception as e:
-                return f"Error analyzing numbers: {str(e)}"
+        except Exception as e:
+            return f"Error analyzing numbers: {str(e)}"
 
-        # File system tools
-        @tool_registry.register_tool("list_directory")
-        def list_directory(path: str = ".") -> str:
-            """List contents of a directory."""
-            import os
+    # File system tools
+    @tool_registry.register_tool("list_directory")
+    def list_directory(path: str = ".") -> str:
+        """List contents of a directory."""
+        import os
 
-            try:
-                if not os.path.exists(path):
-                    return f"Directory {path} does not exist"
+        try:
+            if not os.path.exists(path):
+                return f"Directory {path} does not exist"
 
-                items = os.listdir(path)
-                files = [
-                    item for item in items if os.path.isfile(os.path.join(path, item))
-                ]
-                dirs = [
-                    item for item in items if os.path.isdir(os.path.join(path, item))
-                ]
+            items = os.listdir(path)
+            files = [
+                item for item in items if os.path.isfile(os.path.join(path, item))
+            ]
+            dirs = [
+                item for item in items if os.path.isdir(os.path.join(path, item))
+            ]
 
-                return f"""Directory: {path}
+            return f"""Directory: {path}
 • Files: {len(files)} ({files[:5]}{"..." if len(files) > 5 else ""})
 • Directories: {len(dirs)} ({dirs[:5]}{"..." if len(dirs) > 5 else ""})"""
-            except Exception as e:
-                return f"Error listing directory: {str(e)}"
+        except Exception as e:
+            return f"Error listing directory: {str(e)}"
 
-        # Background agent specific tools (from working example)
-        @tool_registry.register_tool("file_monitor")
-        def monitor_files(directory: str = "/tmp") -> str:
-            """Monitor files in a directory."""
-            import os
+    # Background agent specific tools (from working example)
+    @tool_registry.register_tool("file_monitor")
+    def monitor_files(directory: str = "/tmp") -> str:
+        """Monitor files in a directory."""
+        import os
 
-            try:
-                if not os.path.exists(directory):
-                    return f"Directory {directory} does not exist"
+        try:
+            if not os.path.exists(directory):
+                return f"Directory {directory} does not exist"
 
-                files = os.listdir(directory)
-                file_count = len(files)
-                sample_files = files[:5] if files else []
+            files = os.listdir(directory)
+            file_count = len(files)
+            sample_files = files[:5] if files else []
 
-                return f"Found {file_count} files in {directory}. Sample files: {sample_files}"
-            except Exception as e:
-                return f"Error monitoring directory {directory}: {str(e)}"
+            return f"Found {file_count} files in {directory}. Sample files: {sample_files}"
+        except Exception as e:
+            return f"Error monitoring directory {directory}: {str(e)}"
 
-        @tool_registry.register_tool("system_status")
-        def get_system_status() -> str:
-            """Get realistic system status information."""
-            import time
-            import random
+    @tool_registry.register_tool("system_status")
+    def get_system_status() -> str:
+        """Get realistic system status information."""
+        import time
+        import random
 
-            # Generate realistic system metrics
-            cpu_usage = random.uniform(5.0, 85.0)
-            memory_usage = random.uniform(20.0, 90.0)
-            disk_usage = random.uniform(30.0, 95.0)
-            uptime_hours = random.randint(1, 720)  # 1 hour to 30 days
-            active_processes = random.randint(50, 300)
+        # Generate realistic system metrics
+        cpu_usage = random.uniform(5.0, 85.0)
+        memory_usage = random.uniform(20.0, 90.0)
+        disk_usage = random.uniform(30.0, 95.0)
+        uptime_hours = random.randint(1, 720)  # 1 hour to 30 days
+        active_processes = random.randint(50, 300)
 
-            # Add some system alerts based on thresholds
-            alerts = []
-            if cpu_usage > 80:
-                alerts.append("High CPU usage detected")
-            if memory_usage > 85:
-                alerts.append("High memory usage detected")
-            if disk_usage > 90:
-                alerts.append("Disk space running low")
+        # Add some system alerts based on thresholds
+        alerts = []
+        if cpu_usage > 80:
+            alerts.append("High CPU usage detected")
+        if memory_usage > 85:
+            alerts.append("High memory usage detected")
+        if disk_usage > 90:
+            alerts.append("Disk space running low")
 
-            status_report = f"""System Status Report:
+        status_report = f"""System Status Report:
 • CPU Usage: {cpu_usage:.1f}%
 • Memory Usage: {memory_usage:.1f}%
 • Disk Usage: {disk_usage:.1f}%
@@ -183,38 +182,38 @@ class OmniAgentCLI:
 • Active Processes: {active_processes}
 • Timestamp: {time.strftime("%Y-%m-%d %H:%M:%S")}"""
 
-            if alerts:
-                status_report += f"\n\n⚠️  Alerts: {'; '.join(alerts)}"
+        if alerts:
+            status_report += f"\n\n⚠️  Alerts: {'; '.join(alerts)}"
 
-            return status_report
+        return status_report
 
-        @tool_registry.register_tool("log_analyzer")
-        def analyze_logs(log_file: str = "/var/log/syslog") -> str:
-            """Analyze log files for patterns."""
-            import random
-            import time
+    @tool_registry.register_tool("log_analyzer")
+    def analyze_logs(log_file: str = "/var/log/syslog") -> str:
+        """Analyze log files for patterns."""
+        import random
+        import time
 
-            try:
-                # Simulate log analysis with realistic data
-                total_lines = random.randint(1000, 50000)
-                error_count = random.randint(0, 50)
-                warning_count = random.randint(5, 200)
-                critical_count = random.randint(0, 10)
+        try:
+            # Simulate log analysis with realistic data
+            total_lines = random.randint(1000, 50000)
+            error_count = random.randint(0, 50)
+            warning_count = random.randint(5, 200)
+            critical_count = random.randint(0, 10)
 
-                # Generate some realistic log patterns
-                log_patterns = []
-                if error_count > 0:
-                    log_patterns.append(
-                        f"Authentication failures: {random.randint(0, error_count // 2)}"
-                    )
-                if warning_count > 0:
-                    log_patterns.append(
-                        f"Service restarts: {random.randint(0, warning_count // 3)}"
-                    )
-                if critical_count > 0:
-                    log_patterns.append(f"System errors: {critical_count}")
+            # Generate some realistic log patterns
+            log_patterns = []
+            if error_count > 0:
+                log_patterns.append(
+                    f"Authentication failures: {random.randint(0, error_count // 2)}"
+                )
+            if warning_count > 0:
+                log_patterns.append(
+                    f"Service restarts: {random.randint(0, warning_count // 3)}"
+                )
+            if critical_count > 0:
+                log_patterns.append(f"System errors: {critical_count}")
 
-                analysis = f"""Log Analysis Report:
+            analysis = f"""Log Analysis Report:
 • Total Log Lines: {total_lines:,}
 • Error Count: {error_count}
 • Warning Count: {warning_count}
@@ -223,89 +222,88 @@ class OmniAgentCLI:
 
 Patterns Found:"""
 
-                if log_patterns:
-                    for pattern in log_patterns:
-                        analysis += f"\n• {pattern}"
-                else:
-                    analysis += "\n• No significant patterns detected"
+            if log_patterns:
+                for pattern in log_patterns:
+                    analysis += f"\n• {pattern}"
+            else:
+                analysis += "\n• No significant patterns detected"
 
-                return analysis
+            return analysis
 
-            except Exception as e:
-                return f"Error analyzing logs: {str(e)}"
+        except Exception as e:
+            return f"Error analyzing logs: {str(e)}"
 
-        @tool_registry.register_tool("directory_info")
-        def get_directory_info(directory: str = "/tmp") -> str:
-            """Get detailed information about a directory."""
-            import os
-            import time
+    @tool_registry.register_tool("directory_info")
+    def get_directory_info(directory: str = "/tmp") -> str:
+        """Get detailed information about a directory."""
+        import os
+        import time
 
-            try:
-                if not os.path.exists(directory):
-                    return f"Directory {directory} does not exist"
+        try:
+            if not os.path.exists(directory):
+                return f"Directory {directory} does not exist"
 
-                stats = os.stat(directory)
-                files = os.listdir(directory)
-                file_count = len(files)
+            stats = os.stat(directory)
+            files = os.listdir(directory)
+            file_count = len(files)
 
-                # Get some basic file info
-                file_types = {}
-                total_size = 0
-                for file in files[:20]:  # Check first 20 files
-                    file_path = os.path.join(directory, file)
-                    try:
-                        if os.path.isfile(file_path):
-                            file_types["files"] = file_types.get("files", 0) + 1
-                            total_size += os.path.getsize(file_path)
-                        elif os.path.isdir(file_path):
-                            file_types["directories"] = (
-                                file_types.get("directories", 0) + 1
-                            )
-                    except:  # noqa: E722
-                        pass
+            # Get some basic file info
+            file_types = {}
+            total_size = 0
+            for file in files[:20]:  # Check first 20 files
+                file_path = os.path.join(directory, file)
+                try:
+                    if os.path.isfile(file_path):
+                        file_types["files"] = file_types.get("files", 0) + 1
+                        total_size += os.path.getsize(file_path)
+                    elif os.path.isdir(file_path):
+                        file_types["directories"] = (
+                            file_types.get("directories", 0) + 1
+                        )
+                except:  # noqa: E722
+                    pass
 
-                return f"""Directory Analysis: {directory}
+            return f"""Directory Analysis: {directory}
 • Total Items: {file_count}
 • Files: {file_types.get("files", 0)}
 • Directories: {file_types.get("directories", 0)}
 • Total Size: {total_size:,} bytes
 • Last Modified: {time.ctime(stats.st_mtime)}"""
-            except Exception as e:
-                return f"Error getting directory info: {str(e)}"
+        except Exception as e:
+            return f"Error getting directory info: {str(e)}"
 
-        @tool_registry.register_tool("simple_calculator")
-        def calculate(operation: str, a: float, b: float = 0) -> str:
-            """Perform simple mathematical calculations.
+    @tool_registry.register_tool("simple_calculator")
+    def calculate(operation: str, a: float, b: float = 0) -> str:
+        """Perform simple mathematical calculations.
 
-            Args:
-                operation: "add", "subtract", "multiply", "divide"
-                a: First number
-                b: Second number (default 0)
-            """
-            try:
-                if operation.lower() == "add":
-                    result = a + b
-                    operation_name = "addition"
-                elif operation.lower() == "subtract":
-                    result = a - b
-                    operation_name = "subtraction"
-                elif operation.lower() == "multiply":
-                    result = a * b
-                    operation_name = "multiplication"
-                elif operation.lower() == "divide":
-                    if b == 0:
-                        return "Error: Division by zero"
-                    result = a / b
-                    operation_name = "division"
-                else:
-                    return f"Unknown operation: '{operation}'. Supported: 'add', 'subtract', 'multiply', 'divide'"
+        Args:
+            operation: "add", "subtract", "multiply", "divide"
+            a: First number
+            b: Second number (default 0)
+        """
+        try:
+            if operation.lower() == "add":
+                result = a + b
+                operation_name = "addition"
+            elif operation.lower() == "subtract":
+                result = a - b
+                operation_name = "subtraction"
+            elif operation.lower() == "multiply":
+                result = a * b
+                operation_name = "multiplication"
+            elif operation.lower() == "divide":
+                if b == 0:
+                    return "Error: Division by zero"
+                result = a / b
+                operation_name = "division"
+            else:
+                return f"Unknown operation: '{operation}'. Supported: 'add', 'subtract', 'multiply', 'divide'"
 
-                return f"Result of {operation_name}({a}, {b}): {result}"
-            except Exception as e:
-                return f"Calculation error: {str(e)}"
+            return f"Result of {operation_name}({a}, {b}): {result}"
+        except Exception as e:
+            return f"Calculation error: {str(e)}"
 
         logger.info("Created comprehensive ToolRegistry with 12 tools")
-        return tool_registry
 
     async def initialize(self):
         """Initialize all components."""
@@ -314,9 +312,6 @@ Patterns Found:"""
         # Initialize routers
         self.memory_router = MemoryRouter("in_memory")
         self.event_router = EventRouter("in_memory")
-
-        # Create comprehensive tool registry
-        tool_registry = await self.create_comprehensive_tool_registry()
 
         # Initialize agent with exact same config as working example
         self.agent = OmniAgent(
@@ -432,7 +427,16 @@ Patterns Found:"""
             tools = self.agent.local_tools.list_tools()
             print("🔧 Available Tools:")
             for tool in tools:
-                print(f"  • {tool['name']}: {tool['description']}")
+                # Handle both Tool objects and dictionaries
+                if hasattr(tool, 'name') and hasattr(tool, 'description'):
+                    # Tool object
+                    print(f"  • {tool.name}: {tool.description}")
+                elif isinstance(tool, dict) and 'name' in tool and 'description' in tool:
+                    # Dictionary format
+                    print(f"  • {tool['name']}: {tool['description']}")
+                else:
+                    # Fallback - just show the tool representation
+                    print(f"  • {tool}")
         else:
             print("🔧 No local tools available")
 
@@ -620,9 +624,6 @@ Patterns Found:"""
         print("=" * 50)
 
         agent_type = input("Enter agent type (1-4): ").strip()
-
-        # Create tool registry for background agents
-        tool_registry = await self.create_comprehensive_tool_registry()
 
         agent_configs = {
             "1": {
