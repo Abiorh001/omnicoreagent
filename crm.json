@@ -1,0 +1,29 @@
+{
+  "users": [
+    {
+      "id": "U1001",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "loyalty_status": "Gold",
+      "bookings": [
+        {
+          "booking_id": "B2001",
+          "flight": "NYC-LON-2025-09-01-F3001",
+          "status": "canceled"
+        },
+        {
+          "booking_id": "B2002",
+          "flight": "F3002",
+          "status": "confirmed"
+        }
+      ]
+    },
+    {
+      "id": "U1002",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "loyalty_status": "Silver",
+      "bookings": []
+    }
+  ]
+}
