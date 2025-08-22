@@ -30,7 +30,7 @@ class OmniAgentServer:
         """Initialize the OmniAgent server."""
 
         # Create memory and event routers
-        self.memory_store = MemoryRouter(memory_store_type="database")
+        self.memory_store = MemoryRouter(memory_store_type="mongodb")
         self.event_router = EventRouter(event_store_type="database")
 
         # Create the OmniAgent
@@ -42,7 +42,7 @@ class OmniAgentServer:
             Always provide clear, helpful responses suitable for web interfaces.""",
             model_config={
                 "provider": "openai",  # Change to your preferred provider
-                "model": "gpt-4",
+                "model": "gpt-4o",
                 "temperature": 0.7,
                 "max_context_length": 5000,
             },

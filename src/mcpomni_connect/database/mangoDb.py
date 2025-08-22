@@ -4,25 +4,32 @@ from mcpomni_connect.utils import logger
 from pymongo import AsyncMongoClient, errors
 
 class MangoDb(AbstractMemoryStore):
-    async def __init__(
-        self,
-        uri="mongodb://localhost:27017/",
-        db_name="mcpomni_connect",
-        collection="messages",
-    ):
-        try:
-            self.client = AsyncMongoClient(uri).aconnect()
-            await self.client.admin.command("ping")  # Check connection
-            self.db = self.client[db_name]
-            self.collection = self.db[collection]
-            await self.collection.create_index("session_id")
-            await self.collection.create_index("msg_metadata.agent_name")
-            logger.info("connected to mongodb")
-        except errors.ConnectionError as e:
-            logger.error(f"Failed to connect to MongoDB: {e}")
-            raise RuntimeError(
-                f"Could not connect to MongoDB at {uri}. Please check your connection."
-            )
+    def __init__(self, uri="mongodb://localhost:27017/", db_name="mcpomni_connect", collection="messages"):
+        self.uri = uri
+        self.db_name = db_name
+        self.collection_name = collection
+        self.client = None
+        self.db = None
+        self.collection = None
+        self._initialized = False
+        self.memory_config = {"mode": "token_budget", "value": None}
+
+    async def _ensure_connected(self):
+        """Ensure MongoDB connection is established"""
+        if not self._initialized:
+            try:
+                self.client = AsyncMongoClient(self.uri)
+                await self.client.admin.command("ping")
+                self.db = self.client[self.db_name]
+                self.collection = self.db[self.collection_name]
+                await self.collection.create_index("session_id")
+                await self.collection.create_index("msg_metadata.agent_name")
+                self._initialized = True
+                logger.info("connected to mongodb")
+            except errors.ConnectionError as e:
+                logger.error(f"Failed to connect to MongoDB: {e}")
+                raise RuntimeError(f"Could not connect to MongoDB at {self.uri}.")
+
 
     def set_memory_config(self, mode: str, value: int = None) -> None:
         valid_modes = {"sliding_window", "token_budget"}
@@ -43,6 +50,7 @@ class MangoDb(AbstractMemoryStore):
         Store a message in the MongoDB collection.
         """
         try:
+            await self._ensure_connected()
             if metadata is None:
                 metadata = {}
             message = {
@@ -63,13 +71,14 @@ class MangoDb(AbstractMemoryStore):
         If agent_name is provided, filter by agent_name in metadata.
         """
         try:
+            await self._ensure_connected()
             query = {}
             if session_id:
                 query["session_id"] = session_id
             if agent_name:
                 query["msg_metadata.agent_name"] = agent_name
 
-            cursor = await self.collection.find(
+            cursor = self.collection.find(
                 query,
                 {"_id": 0},  
             ).sort("timestamp", 1)
@@ -106,6 +115,7 @@ class MangoDb(AbstractMemoryStore):
 
     async def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
         try:
+            await self._ensure_connected()
 
             if session_id and agent_name:
               
