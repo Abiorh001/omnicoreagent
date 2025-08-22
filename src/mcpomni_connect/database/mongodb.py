@@ -3,8 +3,14 @@ from datetime import datetime
 from mcpomni_connect.utils import logger
 from pymongo import AsyncMongoClient, errors
 
-class MangoDb(AbstractMemoryStore):
-    def __init__(self, uri="mongodb://localhost:27017/", db_name="mcpomni_connect", collection="messages"):
+
+class MongoDb(AbstractMemoryStore):
+    def __init__(
+        self,
+        uri="mongodb://localhost:27017/",
+        db_name="mcpomni_connect",
+        collection="messages",
+    ):
         self.uri = uri
         self.db_name = db_name
         self.collection_name = collection
@@ -29,7 +35,6 @@ class MangoDb(AbstractMemoryStore):
             except errors.ConnectionError as e:
                 logger.error(f"Failed to connect to MongoDB: {e}")
                 raise RuntimeError(f"Could not connect to MongoDB at {self.uri}.")
-
 
     def set_memory_config(self, mode: str, value: int = None) -> None:
         valid_modes = {"sliding_window", "token_budget"}
@@ -80,7 +85,7 @@ class MangoDb(AbstractMemoryStore):
 
             cursor = self.collection.find(
                 query,
-                {"_id": 0},  
+                {"_id": 0},
             ).sort("timestamp", 1)
 
             messages = await cursor.to_list(length=None)
@@ -106,31 +111,37 @@ class MangoDb(AbstractMemoryStore):
                 total_tokens = sum(len(str(msg["content"]).split()) for msg in result)
                 while total_tokens > value and result:
                     result.pop(0)
-                    total_tokens = sum(len(str(msg["content"]).split()) for msg in result)
+                    total_tokens = sum(
+                        len(str(msg["content"]).split()) for msg in result
+                    )
         except Exception as e:
             logger.error(f"Failed to retrieve messages: {e}")
             return []
 
         return result
 
-    async def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
+    async def clear_memory(
+        self, session_id: str = None, agent_name: str = None
+    ) -> None:
         try:
             await self._ensure_connected()
 
             if session_id and agent_name:
-              
+
                 await self.collection.delete_many(
                     {"session_id": session_id, "msg_metadata.agent_name": agent_name}
                 )
 
             elif session_id:
-               
+
                 await self.collection.delete_many({"session_id": session_id})
             elif agent_name:
-               
-                await self.collection.delete_many({"msg_metadata.agent_name": agent_name})
+
+                await self.collection.delete_many(
+                    {"msg_metadata.agent_name": agent_name}
+                )
             else:
-               
+
                 await self.collection.delete_many({})
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")

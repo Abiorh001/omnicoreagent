@@ -5,7 +5,7 @@ from mcpomni_connect.memory_store.database_memory import DatabaseMemory
 from mcpomni_connect.memory_store.redis_memory import RedisMemoryStore
 from mcpomni_connect.utils import logger
 from mcpomni_connect.utils import normalize_metadata
-from mcpomni_connect.database.mangoDb import MangoDb
+from mcpomni_connect.database.mongodb import MongoDb
 
 
 class MemoryRouter:
@@ -24,7 +24,7 @@ class MemoryRouter:
             uri = decouple_config("MONGODB_URI", default="mongodb://localhost:27017/")
             db_name = decouple_config("MONGODB_DB_NAME", default="mcpomni_connect")
             collection = decouple_config("MONGODB_COLLECTION", default="messages")
-            self.memory_store = MangoDb(uri=uri, db_name=db_name, collection=collection)
+            self.memory_store = MongoDb(uri=uri, db_name=db_name, collection=collection)
         else:
             raise ValueError(f"Invalid memory store type: {memory_store_type}")
 
