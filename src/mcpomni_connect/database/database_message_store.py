@@ -124,7 +124,7 @@ class DatabaseMessageStore:
                         else m.timestamp,
                         "msg_metadata": m.msg_metadata,
                     }
-                    for m in messages
+                    for  m in messages
                 ]
                 mode = self.memory_config.get("mode", "token_budget")
                 value = self.memory_config.get("value")

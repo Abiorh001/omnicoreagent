@@ -27,6 +27,7 @@ from mcpomni_connect.utils import logger
 # instantiate the tool registry
 tool_registry = ToolRegistry()
 
+
 class OmniAgentCLI:
     """Comprehensive CLI interface for OmniAgent."""
 
@@ -37,7 +38,6 @@ class OmniAgentCLI:
         self.event_router: Optional[EventRouter] = None
         self.background_manager: Optional[BackgroundAgentManager] = None
         self.session_id: Optional[str] = None
-
 
     # Mathematical tools
     @tool_registry.register_tool("calculate_area")
@@ -121,12 +121,8 @@ class OmniAgentCLI:
                 return f"Directory {path} does not exist"
 
             items = os.listdir(path)
-            files = [
-                item for item in items if os.path.isfile(os.path.join(path, item))
-            ]
-            dirs = [
-                item for item in items if os.path.isdir(os.path.join(path, item))
-            ]
+            files = [item for item in items if os.path.isfile(os.path.join(path, item))]
+            dirs = [item for item in items if os.path.isdir(os.path.join(path, item))]
 
             return f"""Directory: {path}
 • Files: {len(files)} ({files[:5]}{"..." if len(files) > 5 else ""})
@@ -148,7 +144,9 @@ class OmniAgentCLI:
             file_count = len(files)
             sample_files = files[:5] if files else []
 
-            return f"Found {file_count} files in {directory}. Sample files: {sample_files}"
+            return (
+                f"Found {file_count} files in {directory}. Sample files: {sample_files}"
+            )
         except Exception as e:
             return f"Error monitoring directory {directory}: {str(e)}"
 
@@ -257,9 +255,7 @@ Patterns Found:"""
                         file_types["files"] = file_types.get("files", 0) + 1
                         total_size += os.path.getsize(file_path)
                     elif os.path.isdir(file_path):
-                        file_types["directories"] = (
-                            file_types.get("directories", 0) + 1
-                        )
+                        file_types["directories"] = file_types.get("directories", 0) + 1
                 except:  # noqa: E722
                     pass
 
@@ -310,7 +306,7 @@ Patterns Found:"""
         print("🚀 Initializing OmniAgent CLI...")
 
         # Initialize routers
-        self.memory_router = MemoryRouter("in_memory")
+        self.memory_router = MemoryRouter("mangodb")
         self.event_router = EventRouter("in_memory")
 
         # Initialize agent with exact same config as working example
@@ -428,10 +424,12 @@ Patterns Found:"""
             print("🔧 Available Tools:")
             for tool in tools:
                 # Handle both Tool objects and dictionaries
-                if hasattr(tool, 'name') and hasattr(tool, 'description'):
+                if hasattr(tool, "name") and hasattr(tool, "description"):
                     # Tool object
                     print(f"  • {tool.name}: {tool.description}")
-                elif isinstance(tool, dict) and 'name' in tool and 'description' in tool:
+                elif (
+                    isinstance(tool, dict) and "name" in tool and "description" in tool
+                ):
                     # Dictionary format
                     print(f"  • {tool['name']}: {tool['description']}")
                 else:
