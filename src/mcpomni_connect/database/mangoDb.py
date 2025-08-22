@@ -1,23 +1,23 @@
-from pymongo import MongoClient, errors
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from datetime import datetime
 from mcpomni_connect.utils import logger
-
+from pymongo import AsyncMongoClient, errors
 
 class MangoDb(AbstractMemoryStore):
-    def __init__(
+    async def __init__(
         self,
         uri="mongodb://localhost:27017/",
         db_name="mcpomni_connect",
         collection="messages",
     ):
         try:
-            self.client = MongoClient(uri)
-            self.client.admin.command("ping")  # Check connection
+            self.client = AsyncMongoClient(uri).aconnect()
+            await self.client.admin.command("ping")  # Check connection
             self.db = self.client[db_name]
             self.collection = self.db[collection]
-            self.collection.create_index("session_id")
-            self.collection.create_index("msg_metadata.agent_name")
+            await self.collection.create_index("session_id")
+            await self.collection.create_index("msg_metadata.agent_name")
+            logger.info("connected to mongodb")
         except errors.ConnectionError as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
             raise RuntimeError(
@@ -32,7 +32,7 @@ class MangoDb(AbstractMemoryStore):
             )
         self.memory_config = {"mode": mode, "value": value}
 
-    def store_message(
+    async def store_message(
         self,
         role: str,
         content: str,
@@ -52,11 +52,11 @@ class MangoDb(AbstractMemoryStore):
                 "session_id": session_id,
                 "timestamp": datetime.now(),
             }
-            self.collection.insert_one(message)
+            await self.collection.insert_one(message)
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
 
-    def get_messages(self, session_id: str = None, agent_name: str = None):
+    async def get_messages(self, session_id: str = None, agent_name: str = None):
         """
         Retrieve messages from the MongoDB collection.
         If session_id is provided, filter by session_id.
@@ -69,12 +69,12 @@ class MangoDb(AbstractMemoryStore):
             if agent_name:
                 query["msg_metadata.agent_name"] = agent_name
 
-            cursor = self.collection.find(
+            cursor = await self.collection.find(
                 query,
-                {"_id": 0},  # optional: drop the internal _id field
+                {"_id": 0},  
             ).sort("timestamp", 1)
 
-            messages = list(cursor)
+            messages = await cursor.to_list(length=None)
             result = [
                 {
                     "role": m["role"],
@@ -95,33 +95,32 @@ class MangoDb(AbstractMemoryStore):
                 result = result[-value:]
             if mode.lower() == "token_budget" and value is not None:
                 total_tokens = sum(len(str(msg["content"]).split()) for msg in result)
-
-            while total_tokens > value and result:
-                result.pop(0)
-                total_tokens = sum(len(str(msg["content"]).split()) for msg in result)
+                while total_tokens > value and result:
+                    result.pop(0)
+                    total_tokens = sum(len(str(msg["content"]).split()) for msg in result)
         except Exception as e:
             logger.error(f"Failed to retrieve messages: {e}")
             return []
 
         return result
 
-    def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
+    async def clear_memory(self, session_id: str = None, agent_name: str = None) -> None:
         try:
 
             if session_id and agent_name:
-                # Clear messages for specific agent in specific session
-                query = self.collection.delete_many(
+              
+                await self.collection.delete_many(
                     {"session_id": session_id, "msg_metadata.agent_name": agent_name}
                 )
 
             elif session_id:
-                # Clear all messages for specific session
-                self.collection.delete_many({"session_id": session_id})
+               
+                await self.collection.delete_many({"session_id": session_id})
             elif agent_name:
-                # Clear messages for specific agent across all sessions
-                self.collection.delete_many({"msg_metadata.agent_name": agent_name})
+               
+                await self.collection.delete_many({"msg_metadata.agent_name": agent_name})
             else:
-                # Clear all messages
-                self.collection.delete_many({})
+               
+                await self.collection.delete_many({})
         except Exception as e:
             logger.error(f"Failed to clear memory: {e}")

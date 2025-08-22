@@ -25,7 +25,7 @@ class BasicAgent:
         """Initialize the basic agent with simple configuration."""
 
         # Create memory and event routers
-        self.memory_store = MemoryRouter(memory_store_type="in_memory")
+        self.memory_store = MemoryRouter(memory_store_type="mongodb")
         self.event_router = EventRouter(event_store_type="in_memory")
 
         # Create the OmniAgent
