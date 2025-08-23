@@ -32,6 +32,7 @@ class MongoDb(AbstractMemoryStore):
                     logger.warning("No collection name provided, using default name")
                     collection_name=f"{self.db_name}_collection_name"
                 self.collection = self.db[collection_name]
+                logger.info(f"using collection: {collection_name}")
                 indexes = [
                     IndexModel([("session_id", 1), ("msg_metadata.agent_name", 1)]),     
                     IndexModel([("session_id", 1)]), 
