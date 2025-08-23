@@ -9,7 +9,7 @@ class MongoDb(AbstractMemoryStore):
         self,
         uri="mongodb://localhost:27017/",
         db_name="mcpomni_connect",
-        collection="messages",
+        collection:str=None,
     ):
         self.uri = uri
         self.db_name = db_name
@@ -24,14 +24,20 @@ class MongoDb(AbstractMemoryStore):
         """Ensure MongoDB connection is established"""
         if not self._initialized:
             try:
+                collection_name=self.collection_name
                 self.client = AsyncMongoClient(self.uri)
                 await self.client.admin.command("ping")
                 self.db = self.client[self.db_name]
-                self.collection = self.db[self.collection_name]
+                if collection_name is None:
+                    logger.warning("No collection name provided, using default name")
+                    collection_name=f"{self.db_name}_collection_name"
+                self.collection = self.db[collection_name]
                 indexes = [
-                    IndexModel([("session_id", 1)]),
-                    IndexModel([("msg_metadata.agent_name", 1)]),
-                ]
+                    IndexModel([("session_id", 1), ("msg_metadata.agent_name", 1)]),     
+                    IndexModel([("session_id", 1)]), 
+                    IndexModel([("msg_metadata.agent_name", 1)]), 
+                    IndexModel([("timestamp", 1)]), 
+                ] 
                 await self.collection.create_indexes(indexes)
                 self._initialized = True
                 logger.info("connected to mongodb")
