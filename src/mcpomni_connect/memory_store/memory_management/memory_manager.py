@@ -18,7 +18,7 @@ from mcpomni_connect.memory_store.memory_management.shared_embedding import (
 
 # Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
-_CACHE_TTL = 1800  # 30 minutes
+_CACHE_TTL = 120  # 10 minutes (changed from 30 minutes for faster testing)
 _CACHE_LOCK = threading.RLock()  # Thread-safe cache access
 
 # Thread pool for background processing
@@ -95,6 +95,24 @@ class MemoryManager:
                     logger.warning("Qdrant not enabled")
             except Exception as e:
                 logger.warning(f"Failed to initialize Qdrant (remote): {e}")
+
+        elif provider == "mongodb-remote":
+            try:
+                # Import MongoDBVectorDB when needed
+                from mcpomni_connect.memory_store.memory_management.mongodb_vector_db import (
+                    MongoDBVectorDB,
+                )
+
+                self.vector_db = MongoDBVectorDB(
+                    self.collection_name, session_id=session_id, memory_type=memory_type
+                )
+                if self.vector_db.enabled:
+                    logger.debug(f"Using MongoDB for {memory_type} memory")
+                    return
+                else:
+                    logger.warning("MongoDB not enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize MongoDB (remote): {e}")
 
         elif provider.startswith("chroma"):
             try:
@@ -244,7 +262,7 @@ class MemoryManager:
     async def process_conversation_memory(
         self, messages: list, llm_connection: Callable
     ):
-        """Process conversation memory only if 30min have passed since last summary."""
+        """Process conversation memory only if cache TTL has passed since last summary."""
         if not self.vector_db or not self.vector_db.enabled:
             logger.debug(
                 f"Vector database is not enabled. Skipping memory operation for {self.memory_type}."
@@ -262,6 +280,7 @@ class MemoryManager:
             if most_recent:
                 # Extract end_time using universal helper method
                 last_end_time = self._extract_end_time(most_recent)
+                logger.info(f"🕐 Last summary end_time extracted: {last_end_time}")
 
                 if last_end_time and isinstance(last_end_time, str):
                     try:
@@ -271,14 +290,16 @@ class MemoryManager:
                         last_end_time = datetime.fromisoformat(last_end_time)
                         # Ensure it's timezone-aware UTC
                         last_end_time = self._ensure_utc_datetime(last_end_time)
-
+                        logger.info(f"🕐 Parsed last_end_time: {last_end_time} (UTC)")
                     except Exception as e:
                         logger.error(f"Failed to parse last_end_time: {e}")
                         last_end_time = None
             else:
+                logger.info("🕐 No previous memory summary found")
                 last_end_time = None
 
             now = datetime.now(timezone.utc)
+            logger.info(f"🕐 Current time: {now} (UTC)")
 
             # Extract and validate timestamps, converting to UTC datetimes
             valid_timestamps = []
@@ -290,31 +311,38 @@ class MemoryManager:
             if valid_timestamps:
                 window_start = min(valid_timestamps)
                 window_start_dt = datetime.fromtimestamp(window_start, tz=timezone.utc)
+                logger.info(f"🕐 Message window start: {window_start_dt} (UTC)")
 
             else:
                 window_start = now
                 window_start_dt = now
+                logger.info(f"🕐 No valid message timestamps, using current time: {window_start_dt} (UTC)")
 
-            # Only proceed if at least 30min have passed since last summary
+            # Only proceed if at least cache TTL has passed since last summary
             if last_end_time is None:
-                logger.debug(
-                    "No previous memory summary found, proceeding with all messages"
+                logger.info(
+                    "🕐 No previous memory summary found, proceeding with all messages"
                 )
             else:
                 time_diff_seconds = (now - last_end_time).total_seconds()
                 time_diff_minutes = time_diff_seconds / 60
+                cache_ttl_minutes = _CACHE_TTL / 60
 
-                if time_diff_seconds < 1800:  # 30 minutes = 1800 seconds
-                    logger.debug(
-                        f"Less than 30min since last summary ({time_diff_minutes:.1f} min), skipping"
+                logger.info(f"🕐 Time since last summary: {time_diff_minutes:.1f} minutes")
+                logger.info(f"🕐 Cache TTL threshold: {cache_ttl_minutes:.1f} minutes")
+
+                if time_diff_seconds < _CACHE_TTL:
+                    logger.info(
+                        f"🕐 SKIPPING: Less than {cache_ttl_minutes:.1f}min since last summary ({time_diff_minutes:.1f} min)"
                     )
                     return
                 else:
-                    logger.debug("More than 30min since last summary, proceeding")
+                    logger.info(f"🕐 PROCEEDING: More than {cache_ttl_minutes:.1f}min since last summary ({time_diff_minutes:.1f} min)")
 
             # Filter messages after last_end_time
             if last_end_time:
                 messages_to_summarize = []
+                total_messages = len(messages)
 
                 for m in messages:
                     msg_datetime = self._ensure_utc_datetime(
@@ -323,11 +351,14 @@ class MemoryManager:
                     if msg_datetime > last_end_time:
                         messages_to_summarize.append(m)
 
+                logger.info(f"🕐 Filtered {len(messages_to_summarize)}/{total_messages} messages after last_end_time: {last_end_time}")
+
             else:
                 messages_to_summarize = messages
+                logger.info(f"🕐 No last_end_time filter, processing all {len(messages)} messages")
 
             if not messages_to_summarize:
-                logger.debug("No new messages to summarize for memory window")
+                logger.info("🕐 No new messages to summarize for memory window")
                 return
 
             # Summarize and store
@@ -350,22 +381,30 @@ class MemoryManager:
             doc_id = str(uuid.uuid4())
 
             # window_start_dt is already properly set above as UTC datetime
+            new_end_time = now.isoformat()
+            logger.info(f"💾 Storing new {self.memory_type} memory:")
+            logger.info(f"💾   - Start time: {window_start_dt.isoformat() if window_start_dt else 'N/A'}")
+            logger.info(f"💾   - End time: {new_end_time}")
+            logger.info(f"💾   - Message count: {len(messages_to_summarize)}")
+            logger.info(f"💾   - Next background indexing will run after: {(_CACHE_TTL/60):.1f} minutes")
 
-            await self.vector_db.add_to_collection_async(
+            self.vector_db.add_to_collection(
                 document=memory_content,
                 metadata={
                     "memory_type": self.memory_type,
                     "start_time": window_start_dt.isoformat()
                     if window_start_dt
                     else None,
-                    "end_time": now.isoformat(),
+                    "end_time": new_end_time,
                     "message_count": len(messages_to_summarize),
                     "universal_query": "memory_document",  # Universal query field for reliable retrieval
                 },
                 doc_id=doc_id,
             )
 
+            logger.info(f"💾 Successfully stored memory document with ID: {doc_id}")
             self.invalidate_recent_summary_cache()
+            logger.info(f"💾 Invalidated cache for {self.memory_type} - next query will hit vector DB")
 
         except Exception:
             pass  # Silent background processing
@@ -381,42 +420,65 @@ class MemoryManager:
         # Check cache with TTL validation (thread-safe)
         with _CACHE_LOCK:
             cached = _RECENT_SUMMARY_CACHE.get(cache_key)
+            logger.debug(f"📋 Cache check for {self.memory_type}: {'HIT' if cached else 'MISS'}")
             if cached:
                 cached_data, cached_time = cached
-                if (now - cached_time).total_seconds() < _CACHE_TTL:
+                cache_age = (now - cached_time).total_seconds()
+                if cache_age < _CACHE_TTL:
                     logger.info(
-                        f"📋 Returning cached summary for {self.memory_type} (age: {int((now - cached_time).total_seconds())}s)"
+                        f"📋 REDIS CACHE HIT for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s)"
                     )
+                    if cached_data:
+                        end_time_str = cached_data.get("end_time", "N/A")
+                        logger.info(f"📋 Cached summary end_time: {end_time_str}")
                     return cached_data
                 else:
                     logger.info(
-                        f"📋 Cache expired for {self.memory_type} (age: {int((now - cached_time).total_seconds())}s), invalidating and refreshing"
+                        f"📋 REDIS CACHE EXPIRED for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s), invalidating and refreshing"
                     )
                     # Invalidate expired cache
                     del _RECENT_SUMMARY_CACHE[cache_key]
+            else:
+                logger.debug(f"📋 No cache entry found for {self.memory_type}")
 
         # Use universal query field to get all memory documents
         try:
-            logger.debug(
-                f"🔍 Querying with universal query field for {self.memory_type}"
+            logger.info(
+                f"🔍 REDIS CACHE MISS - Querying vector DB for {self.memory_type}"
             )
 
-            results = await self.vector_db.query_collection_async(
+            results = self.vector_db.query_collection(
                 query="memory_document",  # Universal query field
                 n_results=50,
                 distance_threshold=0.01,
             )
 
             if not results or not results.get("metadatas"):
-                logger.debug(f"📋 No documents found for {self.memory_type}")
+                logger.info(f"📋 No documents found for {self.memory_type}")
                 with _CACHE_LOCK:
                     _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
                 return None
 
+            # Debug: Show the actual results structure
+            logger.info(f"📋 Raw results structure: {list(results.keys())}")
+            logger.info(f"📋 Number of metadatas: {len(results.get('metadatas', []))}")
+            logger.info(f"📋 Results: {results}")
+            logger.info(f"📋 Metadatas: {results.get('metadatas', [])}")
+            # Show first few metadata entries for debugging
+            for i, metadata in enumerate(results["metadatas"][:3]):
+                logger.info(f"📋 Metadata {i+1} keys: {list(metadata.keys())}")
+                logger.info(f"📋 Metadata {i+1} end_time: {metadata.get('end_time', 'NOT_FOUND')}")
+                logger.info(f"📋 Metadata {i+1} memory_type: {metadata.get('memory_type', 'NOT_FOUND')}")
+                logger.info(f"📋 Metadata {i+1} raw content: {metadata}")
+
             # Sort by end_time to get most recent
             valid_metadatas = []
-            for metadata in results["metadatas"]:
-                end_time_str = metadata.get("end_time")
+            for result in results["metadatas"]:
+                # end_time and memory_type are now at the root level of each result
+                end_time_str = result.get("end_time")
+                memory_type = result.get("memory_type")
+                
+                logger.debug(f"📋 Checking result: {memory_type} - end_time: {end_time_str}")
                 if end_time_str:
                     try:
                         # Handle various ISO formats and ensure UTC timezone
@@ -425,25 +487,35 @@ class MemoryManager:
                         end_time = datetime.fromisoformat(end_time_str)
                         # Ensure it's timezone-aware UTC
                         end_time = self._ensure_utc_datetime(end_time)
-                        valid_metadatas.append((metadata, end_time))
-                    except Exception:
-                        logger.warning(f"⚠️ Failed to parse end_time: {end_time_str}")
+                        valid_metadatas.append((result, end_time))
+                        logger.debug(f"📋 Valid end_time: {end_time_str} -> {end_time}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to parse end_time: {end_time_str} - Error: {e}")
                         continue
+                else:
+                    logger.debug(f"📋 No end_time found in result: {memory_type}")
 
             if not valid_metadatas:
-                logger.debug(f"📋 No valid end_time found for {self.memory_type}")
+                logger.info(f"📋 No valid end_time found for {self.memory_type}")
+                logger.info(f"📋 Total metadatas checked: {len(results['metadatas'])}")
+                logger.info(f"📋 Valid metadatas with end_time: {len(valid_metadatas)}")
                 with _CACHE_LOCK:
                     _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
                 return None
 
             # Get most recent
-            most_recent_metadata, most_recent_time = max(
+            most_recent_result, most_recent_time = max(
                 valid_metadatas, key=lambda x: x[1]
             )
+            
+            # Debug: Show what's actually in the most recent result
+            logger.info(f"📋 Most recent result keys: {list(most_recent_result.keys())}")
+            logger.info(f"📋 Most recent summary found - end_time: {most_recent_result.get('end_time')}")
+            logger.info(f"📋 Most recent summary found - memory_type: {most_recent_result.get('memory_type')}")
 
             with _CACHE_LOCK:
-                _RECENT_SUMMARY_CACHE[cache_key] = (most_recent_metadata, now)
-            return most_recent_metadata
+                _RECENT_SUMMARY_CACHE[cache_key] = (most_recent_result, now)
+            return most_recent_result
 
         except Exception as e:
             logger.error(f"❌ Error fetching most recent summary: {e}")
@@ -456,9 +528,12 @@ class MemoryManager:
         cache_key = (self.collection_name, self.memory_type)
         with _CACHE_LOCK:
             if cache_key in _RECENT_SUMMARY_CACHE:
+                logger.info(f"🗑️ Invalidating cache for {self.memory_type} (key: {cache_key})")
                 del _RECENT_SUMMARY_CACHE[cache_key]
+            else:
+                logger.debug(f"🗑️ Cache key {cache_key} not found for invalidation")
 
-    async def query_memory(
+    def query_memory(
         self, query: str, n_results: int, distance_threshold: float
     ) -> List[str]:
         """Query memory for relevant information."""
@@ -466,9 +541,11 @@ class MemoryManager:
             return []
 
         try:
-            results = await self.vector_db.query_collection_async(
+            results = self.vector_db.query_collection(
                 query=query, n_results=n_results, distance_threshold=distance_threshold
             )
+            
+            
 
             if isinstance(results, dict) and "documents" in results:
                 documents = results["documents"]

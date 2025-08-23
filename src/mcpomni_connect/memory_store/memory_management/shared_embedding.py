@@ -9,7 +9,6 @@ from decouple import config
 from mcpomni_connect.utils import logger, is_vector_db_enabled
 
 
-
 # Default vector size fallback
 NOMIC_VECTOR_SIZE = 768
 
@@ -148,4 +147,3 @@ def clean_text_for_embedding(text: str) -> str:
         return "default placeholder text for consistent embedding dimensions"
 
     return text
-

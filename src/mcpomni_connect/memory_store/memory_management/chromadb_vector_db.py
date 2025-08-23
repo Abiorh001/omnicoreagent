@@ -3,20 +3,13 @@ from enum import Enum
 from mcpomni_connect.utils import logger
 from decouple import config
 import chromadb
-from chromadb.config import Settings
-
-
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
 
-# No more warmup - ChromaDB only loads when explicitly needed
-_chroma_client = None
-_chroma_enabled = False
-
 
 class ChromaClientType(Enum):
-    """Enumeration for ChromaDB client types - NO LOCAL SUPPORT."""
+    """Enumeration for ChromaDB client types"""
 
     REMOTE = "remote"
     CLOUD = "cloud"
@@ -31,7 +24,7 @@ class ChromaDBVectorDB(VectorDBBase):
         client_type: ChromaClientType = ChromaClientType.REMOTE,
         **kwargs,
     ):
-        """Initialize ChromaDB vector database - NO LOCAL SUPPORT."""
+        """Initialize ChromaDB vector database ."""
         super().__init__(collection_name, **kwargs)
 
         if isinstance(client_type, str):
@@ -111,114 +104,8 @@ class ChromaDBVectorDB(VectorDBBase):
             logger.error(f"Failed to initialize ChromaDB collection: {e}")
             raise
 
-    def upsert_document(
-        self, document: str, doc_id: str, metadata: Optional[Dict] = None
-    ) -> bool:
-        """Upsert a document (insert if new, update if exists)."""
-        if not self.enabled:
-            logger.warning(
-                "ChromaDB is not available or enabled. Cannot upsert document."
-            )
-            return False
-
-        try:
-            # Prepare metadata with consistent timestamp
-            if metadata is None:
-                metadata = {}
-            current_time = datetime.now(timezone.utc)
-            metadata["text"] = document
-            metadata["timestamp"] = current_time.isoformat()
-
-            # Add document to ChromaDB
-            self.collection.add(
-                documents=[document], metadatas=[metadata], ids=[doc_id]
-            )
-            logger.debug(
-                f"Successfully upserted document to ChromaDB with ID: {doc_id}"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to upsert document to ChromaDB: {e}")
-            raise
-
-    def query_collection(
-        self, query: str, n_results: int, distance_threshold: float
-    ) -> Any:
-        """Query the collection for similar documents."""
-        if not self.enabled:
-            logger.warning(
-                "ChromaDB is not available or enabled. Cannot query collection."
-            )
-            return "No relevant documents found"
-
-        try:
-            logger.debug(
-                f"Querying ChromaDB collection: {self.collection_name} with query: {query}"
-            )
-
-            # Query the collection
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=n_results,
-                include=["documents", "metadatas", "distances"],
-            )
-
-            if not results or not results["documents"] or not results["documents"][0]:
-                return "No relevant documents found"
-
-            # Filter by distance threshold
-            documents = results["documents"][0]
-            distances = results["distances"][0]
-            metadatas = results["metadatas"][0]
-
-            # Filter results by distance threshold
-            filtered_results = []
-            for doc, dist, meta in zip(documents, distances, metadatas):
-                if (
-                    dist <= distance_threshold
-                ):  # ChromaDB uses distance, lower is better
-                    filtered_results.append(doc)
-
-            if not filtered_results:
-                return "No relevant documents found"
-            else:
-                return filtered_results
-
-        except Exception as e:
-            # Silently handle collection not found errors
-            if "not found" in str(e).lower() or "doesn't exist" in str(e).lower():
-                logger.debug(
-                    f"Collection {self.collection_name} doesn't exist yet, returning empty results"
-                )
-                return "No relevant documents found"
-            else:
-                logger.error(f"Failed to query ChromaDB: {e}")
-                return "No relevant documents found"
-
-    def delete_from_collection(
-        self, doc_id: Optional[str] = None, where: Optional[Dict] = None
-    ):
-        """Delete document from the collection."""
-        if not self.enabled:
-            logger.warning("ChromaDB is not enabled. Cannot delete from collection.")
-            return
-
-        try:
-            if doc_id:
-                self.collection.delete(ids=[doc_id])
-
-            elif where:
-                # ChromaDB doesn't support complex where clauses like Qdrant
-                # We can only delete by IDs or metadata filters
-                logger.warning("ChromaDB delete with where clause not fully supported")
-        except Exception as e:
-            logger.error(f"Failed to delete document from ChromaDB: {e}")
-            raise
-
-    async def add_to_collection_async(
-        self, doc_id: str, document: str, metadata: Dict
-    ) -> bool:
-        """Async wrapper for adding to collection."""
+    def add_to_collection(self, doc_id: str, document: str, metadata: Dict) -> bool:
+        """for adding to collection."""
         if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot add to collection."
@@ -240,10 +127,10 @@ class ChromaDBVectorDB(VectorDBBase):
         except Exception:
             return False
 
-    async def query_collection_async(
+    def query_collection(
         self, query: str, n_results: int, distance_threshold: float
     ) -> Dict[str, Any]:
-        """Async wrapper for querying collection."""
+        """for querying collection."""
         if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot query collection."

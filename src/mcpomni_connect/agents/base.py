@@ -51,10 +51,6 @@ import traceback
 from decouple import config
 
 
-
-
-
-
 # Import memory system first to ensure initialization
 if is_vector_db_enabled():
     logger.info("Vector database is enabled")
@@ -65,8 +61,8 @@ if is_vector_db_enabled():
             MemoryManagerFactory,
             fire_and_forget_memory_processing,
         )
-    except Exception:
-        # Continue without memory system - it will be handled gracefully later
+    except Exception as e:
+        logger.warning(f"Failed to import memory manager: {e}")
         pass
 else:
     logger.info("Vector database is disabled")
@@ -122,15 +118,16 @@ class BaseReactAgent:
                     )
                 )
 
-                # Query both memory types
-                episodic_results = await episodic_manager.query_memory(
-                    query, n_results=3, distance_threshold=0.4
-                )
+                # Run both queries concurrently in thread pool
+                import asyncio
 
-                long_term_results = await long_term_manager.query_memory(
-                    query, n_results=3, distance_threshold=0.4
+                start_time = asyncio.get_event_loop().time()
+                long_term_results, episodic_results = await asyncio.gather(
+                    asyncio.to_thread(long_term_manager.query_memory, query, 3, 0.5),
+                    asyncio.to_thread(episodic_manager.query_memory, query, 3, 0.5),
                 )
-
+                end_time = asyncio.get_event_loop().time()
+                logger.info(f"Memory queries took {end_time - start_time:.2f} seconds")
                 return long_term_results, episodic_results
 
             except ImportError as e:

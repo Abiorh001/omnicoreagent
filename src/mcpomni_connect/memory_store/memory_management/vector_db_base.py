@@ -46,39 +46,16 @@ class VectorDBBase(ABC):
     @abstractmethod
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
-    def upsert_document(
-        self, document: str, doc_id: str, metadata: Optional[Dict] = None
-    ) -> bool:
-        """Upsert a document (insert if new, update if exists)."""
-        pass
+    def add_to_collection(self, doc_id: str, document: str, metadata: Dict) -> bool:
+        """for adding to collection."""
+        raise NotImplementedError
 
     @abstractmethod
     def query_collection(
         self, query: str, n_results: int, distance_threshold: float
-    ) -> Any:
-        """Query the collection for similar documents."""
-        pass
-
-    @abstractmethod
-    def delete_from_collection(
-        self, doc_id: Optional[str] = None, where: Optional[Dict] = None
-    ):
-        """Delete document from the collection."""
-        pass
-
-    @abstractmethod
-    async def add_to_collection_async(
-        self, doc_id: str, document: str, metadata: Dict
-    ) -> bool:
-        """Async wrapper for adding to collection."""
-        pass
-
-    @abstractmethod
-    async def query_collection_async(
-        self, query: str, n_results: int, distance_threshold: float
     ) -> Dict[str, Any]:
-        """Async wrapper for querying collection."""
-        pass
+        """for querying collection."""
+        raise NotImplementedError

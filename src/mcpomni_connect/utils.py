@@ -16,6 +16,7 @@ from rich.pretty import Pretty
 from rich.text import Text
 from datetime import datetime
 from decouple import config as decouple_config
+
 console = Console()
 # Configure logging
 logger = logging.getLogger("mcpomni_connect")
@@ -24,9 +25,11 @@ logger.setLevel(logging.INFO)
 # Vector database feature flag
 ENABLE_VECTOR_DB = decouple_config("ENABLE_VECTOR_DB", default=False, cast=bool)
 
+
 def is_vector_db_enabled() -> bool:
     """Check if vector database features are enabled."""
     return ENABLE_VECTOR_DB
+
 
 # Remove any existing handlers
 for handler in logger.handlers[:]:
@@ -541,15 +544,12 @@ OPIK_AVAILABLE = False
 track = None
 
 try:
-    
-
-    
-
     api_key = decouple_config("OPIK_API_KEY", default=None)
     workspace = decouple_config("OPIK_WORKSPACE", default=None)
 
     if api_key and workspace:
         from opik import track as opik_track
+
         OPIK_AVAILABLE = True
         track = opik_track
         logger.debug("Opik imported successfully with valid credentials")
