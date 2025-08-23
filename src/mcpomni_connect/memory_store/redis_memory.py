@@ -92,6 +92,7 @@ class RedisMemoryStore(AbstractMemoryStore):
             List of messages
         """
         try:
+
             key = f"mcp_memory:{session_id}"
 
             messages = await self._redis_client.zrange(key, 0, -1)

@@ -109,22 +109,32 @@ class DatabaseMessageStore:
     ) -> list[dict[str, Any]]:
         logger.info(f"get memory config: {self.memory_config}")
         try:
-            with self.database_session_factory() as session_factory:
-                query = session_factory.query(StorageMessage).filter(
-                    StorageMessage.session_id == session_id
+            filters = []
+            if session_id:
+                filters.append(StorageMessage.session_id == session_id)
+            if agent_name:
+                filters.append(
+                    StorageMessage.msg_metadata.contains({"agent_name": agent_name})
                 )
+
+            with self.database_session_factory() as session_factory:
+                query = session_factory.query(StorageMessage)
+                if filters:
+                    query = query.filter(*filters)
                 messages = query.order_by(StorageMessage.timestamp.asc()).all()
                 result = [
                     {
                         "role": m.role,
                         "content": m.content,
                         "session_id": m.session_id,
-                        "timestamp": m.timestamp.timestamp()
-                        if isinstance(m.timestamp, datetime)
-                        else m.timestamp,
+                        "timestamp": (
+                            m.timestamp.timestamp()
+                            if isinstance(m.timestamp, datetime)
+                            else m.timestamp
+                        ),
                         "msg_metadata": m.msg_metadata,
                     }
-                    for  m in messages
+                    for m in messages
                 ]
                 mode = self.memory_config.get("mode", "token_budget")
                 value = self.memory_config.get("value")
@@ -139,12 +149,7 @@ class DatabaseMessageStore:
                         total_tokens = sum(
                             len(str(msg["content"]).split()) for msg in result
                         )
-                if agent_name:
-                    result = [
-                        msg
-                        for msg in result
-                        if msg["msg_metadata"].get("agent_name") == agent_name
-                    ]
+
                 return result
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
