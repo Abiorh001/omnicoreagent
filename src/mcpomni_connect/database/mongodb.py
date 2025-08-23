@@ -1,7 +1,7 @@
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from datetime import datetime
 from mcpomni_connect.utils import logger
-from pymongo import AsyncMongoClient, errors
+from pymongo import AsyncMongoClient, errors, IndexModel
 
 
 class MongoDb(AbstractMemoryStore):
@@ -28,8 +28,11 @@ class MongoDb(AbstractMemoryStore):
                 await self.client.admin.command("ping")
                 self.db = self.client[self.db_name]
                 self.collection = self.db[self.collection_name]
-                await self.collection.create_index("session_id")
-                await self.collection.create_index("msg_metadata.agent_name")
+                indexes = [
+                    IndexModel([("session_id", 1)]),
+                    IndexModel([("msg_metadata.agent_name", 1)]),
+                ]
+                await self.collection.create_indexes(indexes)
                 self._initialized = True
                 logger.info("connected to mongodb")
             except errors.ConnectionError as e:
@@ -88,7 +91,7 @@ class MongoDb(AbstractMemoryStore):
                 {"_id": 0},
             ).sort("timestamp", 1)
 
-            messages = await cursor.to_list(length=None)
+            messages = await cursor.to_list(length=1000)
             result = [
                 {
                     "role": m["role"],
