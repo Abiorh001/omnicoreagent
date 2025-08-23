@@ -1,5 +1,6 @@
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from mcpomni_connect.database.database_message_store import DatabaseMessageStore
+from urllib.parse import urlparse
 
 
 class DatabaseMemory(AbstractMemoryStore):
@@ -8,6 +9,7 @@ class DatabaseMemory(AbstractMemoryStore):
         Initialize the database memory store and set up the database message store service.
         """
         self.db_url = db_url
+
         self.db_session = DatabaseMessageStore(db_url=db_url)
         self.memory_config = {"mode": "sliding_window", "value": 10000}
         self.db_session.set_memory_config(

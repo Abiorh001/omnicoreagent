@@ -1,22 +1,22 @@
 {
   "AgentConfig": {
-    "agent_name": "comprehensive_demo_agent",
+    "agent_name": "basic_agent",
     "mcp_enabled": false,
     "tool_call_timeout": 60,
     "max_steps": 15,
     "request_limit": 1000,
     "total_tokens_limit": 40000000,
     "memory_config": {
-      "mode": "token_budget",
-      "value": 10000
+      "mode": "sliding_window",
+      "value": 100
     }
   },
   "LLM": {
     "provider": "openai",
-    "model": "gpt-4.1",
+    "model": "gpt-4o",
     "temperature": 0.7,
     "max_tokens": 5000,
-    "max_context_length": 3000,
+    "max_context_length": 50000,
     "top_p": 0.7,
     "top_k": "N/A"
   },
@@ -27,8 +27,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/home/abiorh",
-        "/home/abiorh/ai/mcp_omni_connect/examples"
+        "C:\\Users\\Baze University"
       ]
     }
   }

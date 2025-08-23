@@ -25,7 +25,7 @@ class BasicAgent:
         """Initialize the basic agent with simple configuration."""
 
         # Create memory and event routers
-        self.memory_store = MemoryRouter(memory_store_type="in_memory")
+        self.memory_store = MemoryRouter(memory_store_type="mongodb")
         self.event_router = EventRouter(event_store_type="in_memory")
 
         # Create the OmniAgent
@@ -37,7 +37,7 @@ class BasicAgent:
             Always be friendly, helpful, and accurate in your responses.""",
             model_config={
                 "provider": "openai",  # Change to your preferred provider
-                "model": "gpt-4",
+                "model": "gpt-4o",
                 "temperature": 0.7,
                 "max_context_length": 50000,
             },
