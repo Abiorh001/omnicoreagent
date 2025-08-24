@@ -121,7 +121,9 @@ class DatabaseMessageStore:
                 query = session_factory.query(StorageMessage)
                 if filters:
                     query = query.filter(*filters)
-                messages = query.order_by(StorageMessage.timestamp.asc()).all()
+                messages = (
+                    query.order_by(StorageMessage.timestamp.asc()).limit(1000).all()
+                )
                 result = [
                     {
                         "role": m.role,
