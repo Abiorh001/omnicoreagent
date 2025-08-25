@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from decouple import config as decouple_config
 from mcpomni_connect.memory_store.in_memory import InMemoryStore
 from mcpomni_connect.memory_store.database_memory import DatabaseMemory
@@ -43,11 +43,15 @@ class MemoryRouter:
         self,
         role: str,
         content: str,
-        metadata: dict | None = None,
-        session_id: str = None,
+        metadata: dict,
+        session_id: str,
     ) -> None:
-        if metadata is not None:
-            metadata = normalize_metadata(metadata)
+        if metadata is None:
+            raise ValueError(
+                "Metadata cannot be None. Please provide a valid metadata dictionary."
+            )
+        metadata = normalize_metadata(metadata)
+
         await self.memory_store.store_message(role, content, metadata, session_id)
 
     async def get_messages(
@@ -58,6 +62,23 @@ class MemoryRouter:
         for message in messages:
             message["metadata"] = message.pop("msg_metadata", None)
         return messages
+
+    async def set_last_processed_messages(
+        self, session_id: str, agent_name: str, timestamp: float, memory_type: str
+    ) -> None:
+        await self.memory_store.set_last_processed_messages(
+            session_id=session_id,
+            agent_name=agent_name,
+            timestamp=timestamp,
+            memory_type=memory_type,
+        )
+
+    async def get_last_processed_messages(
+        self, session_id: str, agent_name: str, memory_type: str
+    ) -> Optional[float]:
+        return await self.memory_store.get_last_processed_messages(
+            session_id=session_id, agent_name=agent_name, memory_type=memory_type
+        )
 
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None

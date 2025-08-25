@@ -1,4 +1,5 @@
 from qdrant_client import QdrantClient
+from qdrant_client.http import models as rest
 from qdrant_client.models import VectorParams, Distance
 from mcpomni_connect.utils import logger
 from typing import Dict, Any, Optional
@@ -6,26 +7,9 @@ from datetime import datetime, timezone
 from qdrant_client import models
 from decouple import config
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
-
-# ==== 🔥 Warm up Qdrant client at module import ====
-_qdrant_client = None
-_qdrant_enabled = False
-_qdrant_host = config("QDRANT_HOST", default=None)
-_qdrant_port = config("QDRANT_PORT", default=None)
-
-# Try to initialize Qdrant
-if _qdrant_host and _qdrant_port:
-    try:
-        _qdrant_client = QdrantClient(host=_qdrant_host, port=_qdrant_port)
-        _qdrant_enabled = True
-        logger.debug("[Warmup] Qdrant client initialized successfully.")
-    except Exception as e:
-        logger.error(f"[Warmup] Failed to initialize Qdrant client: {e}")
-        _qdrant_enabled = False
-else:
-    logger.warning(
-        "[Warmup] QDRANT_HOST or QDRANT_PORT not set. Qdrant will be disabled."
-    )
+from mcpomni_connect.memory_store.memory_management.connection_manager import (
+    get_connection_manager,
+)
 
 
 class QdrantVectorDB(VectorDBBase):
@@ -35,20 +19,63 @@ class QdrantVectorDB(VectorDBBase):
         """Initialize Qdrant vector database."""
         super().__init__(collection_name, **kwargs)
 
-        self.qdrant_host = _qdrant_host
-        self.qdrant_port = _qdrant_port
+        # Check if this is for background processing
+        self.is_background = kwargs.get("is_background", False)
 
-        if _qdrant_enabled:
-            self.client = _qdrant_client
-            self.enabled = True
-            logger.debug(
-                f"Initialized QdrantVectorDB for collection: {collection_name}"
-            )
+        # Get Qdrant configuration
+        self.qdrant_host = config("QDRANT_HOST", default=None)
+        self.qdrant_port = config("QDRANT_PORT", default=None)
+
+        if self.qdrant_host and self.qdrant_port:
+            try:
+                if self.is_background:
+                    # Background processing gets fresh connections - no pooling to avoid interference
+                    from qdrant_client import QdrantClient
+
+                    self.client = QdrantClient(
+                        host=self.qdrant_host, port=self.qdrant_port
+                    )
+                    self.connection_manager = (
+                        None  # No connection manager for background
+                    )
+                    logger.debug(
+                        f"🔄 Background QdrantVectorDB created fresh connection for: {collection_name}"
+                    )
+                else:
+                    # Main thread gets pooled connections
+                    self.connection_manager = get_connection_manager()
+                    self.client = self.connection_manager.get_qdrant_connection(
+                        self.qdrant_host, self.qdrant_port
+                    )
+                    logger.debug(
+                        f"♻️ QdrantVectorDB using pooled connection for: {collection_name}"
+                    )
+
+                self.enabled = self.client is not None
+            except Exception as e:
+                logger.error(f"Failed to initialize Qdrant connection: {e}")
+                self.client = None
+                self.enabled = False
         else:
             self.enabled = False
+            self.client = None
+            self.connection_manager = None
             logger.warning(
-                f"Qdrant not available. VectorDB operations will be disabled for collection: {collection_name}"
+                f"QDRANT_HOST or QDRANT_PORT not set. Qdrant will be disabled for collection: {collection_name}"
             )
+
+    def __del__(self):
+        """Cleanup method to release connection back to pool."""
+        try:
+            # Only release if we have a connection manager
+            if (
+                hasattr(self, "connection_manager")
+                and self.connection_manager is not None
+            ):
+                self.connection_manager.release_connection("qdrant")
+        except Exception:
+            # Ignore errors during cleanup
+            pass
 
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't."""
@@ -90,10 +117,7 @@ class QdrantVectorDB(VectorDBBase):
             # Ensure collection exists
             self._ensure_collection()
 
-            # Prepare metadata with consistent timestamp
-            current_time = datetime.now(timezone.utc)
             metadata["text"] = document
-            metadata["timestamp"] = current_time.isoformat()
 
             # Generate embedding with error handling
             try:
@@ -114,7 +138,7 @@ class QdrantVectorDB(VectorDBBase):
             return False
 
     def query_collection(
-        self, query: str, n_results: int, distance_threshold: float
+        self, query: str, session_id: str, n_results: int, similarity_threshold: float
     ) -> Dict[str, Any]:
         """for querying collection."""
         if not self.enabled:
@@ -131,6 +155,13 @@ class QdrantVectorDB(VectorDBBase):
                 query=self.embed_text(query),
                 limit=n_results,
                 with_payload=True,
+                query_filter=rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="session_id", match=rest.MatchValue(value=session_id)
+                        )
+                    ]
+                ),
             ).points
 
             logger.debug(f"Found {len(search_result)} raw results from Qdrant")
@@ -138,25 +169,21 @@ class QdrantVectorDB(VectorDBBase):
             if not search_result:
                 return {
                     "documents": [],
-                    "session_id": [],
-                    "distances": [],
+                    "scores": [],
                     "metadatas": [],
                     "ids": [],
                 }
 
-            # Filter by distance threshold and format results
+            # Filter by similarity threshold and format results
             filtered_results = [
-                hit for hit in search_result if hit.score >= distance_threshold
+                hit for hit in search_result if hit.score >= similarity_threshold
             ]
 
             logger.debug(f"Found {len(filtered_results)} results after filtering")
 
             results = {
                 "documents": [hit.payload["text"] for hit in filtered_results],
-                "session_id": [
-                    hit.payload.get("session_id", "") for hit in filtered_results
-                ],
-                "distances": [hit.score for hit in filtered_results],
+                "scores": [hit.score for hit in filtered_results],
                 "metadatas": [hit.payload for hit in filtered_results],
                 "ids": [hit.id for hit in filtered_results],
             }

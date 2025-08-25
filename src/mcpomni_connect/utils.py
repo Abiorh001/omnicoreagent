@@ -14,7 +14,7 @@ from rich.console import Console, Group
 from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.text import Text
-from datetime import datetime
+from datetime import datetime, timezone
 from decouple import config as decouple_config
 
 console = Console()
@@ -453,6 +453,10 @@ def normalize_metadata(obj):
 
 def dict_to_namespace(d):
     return json.loads(json.dumps(d), object_hook=lambda x: SimpleNamespace(**x))
+
+
+def utc_now_str() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def format_timestamp(ts) -> str:

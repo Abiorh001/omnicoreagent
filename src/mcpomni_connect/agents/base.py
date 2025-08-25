@@ -59,6 +59,8 @@ if is_vector_db_enabled():
         from mcpomni_connect.memory_store.memory_management import shared_embedding
         from mcpomni_connect.memory_store.memory_management.memory_manager import (
             MemoryManagerFactory,
+        )
+        from mcpomni_connect.memory_store.memory_management.background_memory_management import (
             fire_and_forget_memory_processing,
         )
     except Exception as e:
@@ -109,27 +111,39 @@ class BaseReactAgent:
                 logger.debug("Vector database disabled - skipping memory retrieval")
                 return [], []
 
-            # Vector DB is enabled - load memory functions and use them
             try:
-                # Create both memory managers
+                # Vector DB is enabled - load memory functions and use them
                 episodic_manager, long_term_manager = (
                     MemoryManagerFactory.create_both_memory_managers(
-                        session_id=session_id
+                        agent_name=self.agent_name
                     )
                 )
 
-                # Run both queries concurrently in thread pool
-                import asyncio
+                async def run_queries():
+                    start_time = asyncio.get_event_loop().time()
+                    long_term_results, episodic_results = await asyncio.gather(
+                        asyncio.to_thread(
+                            long_term_manager.query_memory, query, session_id, 5, 0.5
+                        ),
+                        asyncio.to_thread(
+                            episodic_manager.query_memory, query, session_id, 5, 0.5
+                        ),
+                    )
+                    end_time = asyncio.get_event_loop().time()
+                    logger.info(
+                        f"Memory queries took {end_time - start_time:.2f} seconds"
+                    )
+                    return long_term_results, episodic_results
 
-                start_time = asyncio.get_event_loop().time()
-                long_term_results, episodic_results = await asyncio.gather(
-                    asyncio.to_thread(long_term_manager.query_memory, query, 3, 0.5),
-                    asyncio.to_thread(episodic_manager.query_memory, query, 3, 0.5),
+                # Enforce timeout (10 seconds)
+                long_term_results, episodic_results = await asyncio.wait_for(
+                    run_queries(), timeout=10.0
                 )
-                end_time = asyncio.get_event_loop().time()
-                logger.info(f"Memory queries took {end_time - start_time:.2f} seconds")
                 return long_term_results, episodic_results
 
+            except asyncio.TimeoutError:
+                logger.warning("Memory queries timed out after 10 seconds")
+                return [], []
             except ImportError as e:
                 logger.warning(f"Memory management modules not available: {e}")
                 return [], []
@@ -138,8 +152,8 @@ class BaseReactAgent:
                 return [], []
 
         except Exception as e:
-            logger.error(f"❌ Failed to retrieve memory for session {session_id}: {e}")
-            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
+            logger.error(f"Failed to retrieve memory for session {session_id}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return (
                 "No relevant long-term memory found",
                 "No relevant episodic memory found",
@@ -277,8 +291,15 @@ class BaseReactAgent:
             # Memory processing when vector DB is enabled
             if is_vector_db_enabled():
                 try:
+                    # get the name of the memory store type used
+                    memory_store_type = message_history.__self__.memory_store_type
+
                     fire_and_forget_memory_processing(
-                        session_id, validated_messages, llm_connection
+                        session_id=session_id,
+                        agent_name=self.agent_name,
+                        messages=validated_messages,
+                        memory_store_type=memory_store_type,
+                        llm_connection=llm_connection,
                     )
                     logger.debug("Memory processing initiated")
                 except ImportError as e:
@@ -341,7 +362,7 @@ class BaseReactAgent:
                 )
 
             else:
-                logger.warning(f"⚠️ Unknown message role encountered: {role}")
+                logger.warning(f"Unknown message role encountered: {role}")
 
     @track("message_flushing")
     def _try_flush_pending(self):
@@ -929,69 +950,60 @@ class BaseReactAgent:
 
                         # check if it has usage
                         if hasattr(response, "usage"):
-
-                            @track("usage_tracking")
-                            def track_usage():
-                                request_usage = Usage(
-                                    requests=current_steps,
-                                    request_tokens=response.usage.prompt_tokens,
-                                    response_tokens=response.usage.completion_tokens,
-                                    total_tokens=response.usage.total_tokens,
+                            request_usage = Usage(
+                                requests=current_steps,
+                                request_tokens=response.usage.prompt_tokens,
+                                response_tokens=response.usage.completion_tokens,
+                                total_tokens=response.usage.total_tokens,
+                            )
+                            usage.incr(request_usage)
+                            # Check if we've exceeded token limits
+                            self.usage_limits.check_tokens(usage)
+                            # Show remaining resources
+                            remaining_tokens = self.usage_limits.remaining_tokens(usage)
+                            used_tokens = usage.total_tokens
+                            used_requests = usage.requests
+                            remaining_requests = self.request_limit - used_requests
+                            session_stats.update(
+                                {
+                                    "used_requests": used_requests,
+                                    "used_tokens": used_tokens,
+                                    "remaining_requests": remaining_requests,
+                                    "remaining_tokens": remaining_tokens,
+                                    "request_tokens": request_usage.request_tokens,
+                                    "response_tokens": request_usage.response_tokens,
+                                    "total_tokens": request_usage.total_tokens,
+                                }
+                            )
+                            if debug:
+                                logger.info(
+                                    f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
+                                    f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
+                                    f"Request Tokens: {request_usage.request_tokens}, "
+                                    f"Response Tokens: {request_usage.response_tokens}, "
+                                    f"Total Tokens: {request_usage.total_tokens}, "
+                                    f"Remaining Requests: {remaining_requests}, "
+                                    f"Remaining Tokens: {remaining_tokens}"
                                 )
-                                usage.incr(request_usage)
-                                # Check if we've exceeded token limits
-                                self.usage_limits.check_tokens(usage)
-                                # Show remaining resources
-                                remaining_tokens = self.usage_limits.remaining_tokens(
-                                    usage
-                                )
-                                used_tokens = usage.total_tokens
-                                used_requests = usage.requests
-                                remaining_requests = self.request_limit - used_requests
-                                session_stats.update(
-                                    {
-                                        "used_requests": used_requests,
-                                        "used_tokens": used_tokens,
-                                        "remaining_requests": remaining_requests,
-                                        "remaining_tokens": remaining_tokens,
-                                        "request_tokens": request_usage.request_tokens,
-                                        "response_tokens": request_usage.response_tokens,
-                                        "total_tokens": request_usage.total_tokens,
-                                    }
-                                )
-                                if debug:
-                                    logger.info(
-                                        f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
-                                        f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
-                                        f"Request Tokens: {request_usage.request_tokens}, "
-                                        f"Response Tokens: {request_usage.response_tokens}, "
-                                        f"Total Tokens: {request_usage.total_tokens}, "
-                                        f"Remaining Requests: {remaining_requests}, "
-                                        f"Remaining Tokens: {remaining_tokens}"
-                                    )
-
-                            track_usage()
 
                         if hasattr(response, "choices"):
                             response = response.choices[0].message.content.strip()
                         elif hasattr(response, "message"):
                             response = response.message.content.strip()
+                    else:
+                        raise Exception("No response from LLM")
                 except UsageLimitExceeded as e:
                     error_message = f"Usage limit error: {e}"
                     logger.error(error_message)
                     return error_message
                 except Exception as e:
-                    error_message = f"API error: {e}"
-                    logger.error(error_message)
+                    error_message = f"LLM error: {e}"
+                    logger.error(e)
                     return error_message
 
-                @track("response_parsing_step")
-                async def parse_response():
-                    return await self.extract_action_or_answer(
-                        response=response, debug=debug
-                    )
-
-                parsed_response = await parse_response()
+                parsed_response = await self.extract_action_or_answer(
+                    response=response, debug=debug
+                )
                 if debug:
                     logger.info(f"current steps: {current_steps}")
                 # check for final answer
@@ -1061,6 +1073,20 @@ class BaseReactAgent:
 
                     await execute_action()
 
+                if parsed_response.error is not None:
+                    logger.error(f"Error in parsed response: {parsed_response.error}")
+                    # we need to continue the loop if there is an error in parsing
+                    self.messages[self.agent_name].append(
+                        Message(
+                            role="user",
+                            content=(
+                                f"{parsed_response.error}\n\n"
+                                "Error in your response parsing. Please follow the response format strictly. "
+                                "If the issue persists, provide a final answer to the user and stop."
+                            ),
+                        )
+                    )
+                    continue
                 # check for stuck state
                 if current_steps >= self.max_steps:
                     self.state = AgentState.STUCK

@@ -7,6 +7,9 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from decouple import config
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
+from mcpomni_connect.memory_store.memory_management.connection_manager import (
+    get_connection_manager,
+)
 
 
 class MongoDBVectorDB(VectorDBBase):
@@ -15,6 +18,9 @@ class MongoDBVectorDB(VectorDBBase):
     def __init__(self, collection_name: str, **kwargs):
         """Initialize MongoDB vector database."""
         super().__init__(collection_name, **kwargs)
+
+        # Check if this is for background processing
+        self.is_background = kwargs.get("is_background", False)
 
         # Get MongoDB configuration from environment
         self.mongodb_uri = config("MONGODB_URI", default=None)
@@ -28,19 +34,62 @@ class MongoDBVectorDB(VectorDBBase):
 
         if self.mongodb_uri:
             try:
-                self.client = MongoClient(self.mongodb_uri, server_api=ServerApi("1"))
-                self.db = self.client[self.db_name]
-                self.collection = self.db[self.collection_name]
+                if self.is_background:
+                    # Background processing gets fresh connections - no pooling to avoid interference
+                    from pymongo.mongo_client import MongoClient
+                    from pymongo.server_api import ServerApi
+
+                    self.client = MongoClient(
+                        self.mongodb_uri, server_api=ServerApi("1")
+                    )
+                    self.db = self.client[self.db_name]
+                    self.collection = self.db[self.collection_name]
+                    self.connection_manager = (
+                        None  # No connection manager for background
+                    )
+                    logger.debug(
+                        f"🔄 Background MongoDBVectorDB created fresh connection for: {collection_name}"
+                    )
+                else:
+                    # Main thread gets pooled connections
+                    self.connection_manager = get_connection_manager()
+                    self.client, self.db = (
+                        self.connection_manager.get_mongodb_connection(
+                            self.mongodb_uri, self.db_name
+                        )
+                    )
+                    if self.client is not None and self.db is not None:
+                        self.collection = self.db[self.collection_name]
+                        logger.debug(
+                            f"♻️ MongoDBVectorDB using pooled connection for: {collection_name}"
+                        )
+                    else:
+                        logger.warning("Failed to get MongoDB connection from pool")
+                        self.enabled = False
+                        return
+
                 self.enabled = True
-                logger.debug(
-                    f"Initialized MongoDBVectorDB for collection: {collection_name}"
-                )
+                self._ensure_collection_and_index()
+
             except Exception as e:
-                logger.error(f"Failed to initialize MongoDB client: {e}")
+                logger.error(f"Failed to initialize MongoDB connection: {e}")
                 self.enabled = False
         else:
             logger.warning("MONGODB_URI not set. MongoDB will be disabled.")
             self.enabled = False
+
+    def __del__(self):
+        """Cleanup method to release connection back to pool."""
+        try:
+            # Only release if we have a connection manager
+            if (
+                hasattr(self, "connection_manager")
+                and self.connection_manager is not None
+            ):
+                self.connection_manager.release_connection("mongodb")
+        except Exception:
+            # Ignore errors during cleanup
+            pass
 
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't."""
@@ -94,6 +143,10 @@ class MongoDBVectorDB(VectorDBBase):
                             "type": "filter",
                             "path": "text",  # Allow filtering by text content
                         },
+                        {
+                            "type": "filter",
+                            "path": "session_id",  # Allow filtering by session_id
+                        },
                     ]
                 },
                 name=index_name,
@@ -108,6 +161,25 @@ class MongoDBVectorDB(VectorDBBase):
             logger.error(f"Failed to create search index: {e}")
             return None
 
+    def _ensure_collection_and_index(self):
+        """Ensure the collection and index exist during initialization."""
+        if not self.enabled:
+            logger.warning("MongoDB is not enabled. Cannot ensure collection.")
+            return
+
+        try:
+            # Check if collection exists
+            if self.collection_name not in self.db.list_collection_names():
+                self.db.create_collection(self.collection_name)
+                logger.debug(f"Created new MongoDB collection: {self.collection_name}")
+
+            # Create vector search index if it doesn't exist (only once during init)
+            self.index_name = self._create_vector_search_index()
+
+        except Exception as e:
+            logger.error(f"Failed to initialize MongoDB collection and index: {e}")
+            raise
+
     def _generate_bson_vector(self, vector, vector_dtype=BinaryVectorDtype.FLOAT32):
         """Convert float vector to BSON vector for MongoDB Atlas."""
         return Binary.from_vector(vector, vector_dtype)
@@ -121,11 +193,7 @@ class MongoDBVectorDB(VectorDBBase):
         try:
             # Ensure collection exists
             self._ensure_collection()
-
-            # Prepare metadata with consistent timestamp
-            current_time = datetime.now(timezone.utc)
             metadata["text"] = document
-            metadata["timestamp"] = current_time.isoformat()
 
             # Generate embedding using shared model
             try:
@@ -152,7 +220,7 @@ class MongoDBVectorDB(VectorDBBase):
             return False
 
     def query_collection(
-        self, query: str, n_results: int, distance_threshold: float
+        self, query: str, session_id: str, n_results: int, similarity_threshold: float
     ) -> Dict[str, Any]:
         """for querying collection."""
         if not self.enabled:
@@ -175,6 +243,7 @@ class MongoDBVectorDB(VectorDBBase):
                         "path": "embedding",
                         "limit": n_results,
                         "exact": True,  # for ENN
+                        "filter": {"session_id": session_id},
                     }
                 },
                 {
@@ -184,16 +253,15 @@ class MongoDBVectorDB(VectorDBBase):
                         "score": {"$meta": "vectorSearchScore"},
                         "session_id": 1,
                         "timestamp": 1,
-                        "end_time": 1,
                         "memory_type": 1,
                         "metadata": {
                             "$mergeObjects": [
                                 "$metadata",
                                 {
                                     "_id": "$_id",
+                                    "session_id": "$session_id",
                                     "text": "$text",
                                     "timestamp": "$timestamp",
-                                    "end_time": "$end_time",
                                     "memory_type": "$memory_type",
                                 },
                             ]
@@ -207,9 +275,6 @@ class MongoDBVectorDB(VectorDBBase):
             results = list(self.collection.aggregate(pipeline))
 
             if not results:
-                logger.info(
-                    f"MongoDB Vector Search (Async): No results found for query: {query[:100]}..."
-                )
                 return {
                     "documents": [],
                     "session_id": [],
@@ -218,15 +283,12 @@ class MongoDBVectorDB(VectorDBBase):
                     "ids": [],
                 }
 
-            # Filter by distance threshold and format results
+            # Filter by score similarity threshold
             filtered_results = [
-                result for result in results if result["score"] >= distance_threshold
+                result for result in results if result["score"] >= similarity_threshold
             ]
 
             if not filtered_results:
-                logger.info(
-                    f"MongoDB Vector Search (Async): No results above threshold {distance_threshold}"
-                )
                 return {
                     "documents": [],
                     "session_id": [],
@@ -239,7 +301,7 @@ class MongoDBVectorDB(VectorDBBase):
             formatted_results = {
                 "documents": [hit["text"] for hit in filtered_results],
                 "session_id": [hit.get("session_id", "") for hit in filtered_results],
-                "distances": [hit["score"] for hit in filtered_results],
+                "scores": [hit["score"] for hit in filtered_results],
                 "metadatas": [hit["metadata"] for hit in filtered_results],
                 "ids": [hit["_id"] for hit in filtered_results],
             }

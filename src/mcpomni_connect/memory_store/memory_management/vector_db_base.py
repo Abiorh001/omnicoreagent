@@ -55,7 +55,7 @@ class VectorDBBase(ABC):
 
     @abstractmethod
     def query_collection(
-        self, query: str, n_results: int, distance_threshold: float
+        self, query: str, session_id: str, n_results: int, similarity_threshold: float
     ) -> Dict[str, Any]:
         """for querying collection."""
         raise NotImplementedError

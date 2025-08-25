@@ -6,6 +6,9 @@ import chromadb
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
+from mcpomni_connect.memory_store.memory_management.connection_manager import (
+    get_connection_manager,
+)
 
 
 class ChromaClientType(Enum):
@@ -26,6 +29,8 @@ class ChromaDBVectorDB(VectorDBBase):
     ):
         """Initialize ChromaDB vector database ."""
         super().__init__(collection_name, **kwargs)
+
+        self.is_background = kwargs.get("is_background", False)
 
         if isinstance(client_type, str):
             try:
@@ -55,11 +60,38 @@ class ChromaDBVectorDB(VectorDBBase):
                     self.enabled = False
                     return
 
-                self.chroma_client = chromadb.CloudClient(
-                    tenant=cloud_tenant,
-                    database=cloud_database,
-                    api_key=cloud_api_key,
-                )
+                if self.is_background:
+                    # Background processing gets fresh connections - no pooling to avoid interference
+                    self.chroma_client = chromadb.CloudClient(
+                        tenant=cloud_tenant,
+                        database=cloud_database,
+                        api_key=cloud_api_key,
+                    )
+                    self.connection_manager = (
+                        None  # No connection manager for background
+                    )
+                    logger.debug(
+                        f"🔄 Background ChromaDBVectorDB created fresh connection for: {collection_name}"
+                    )
+                else:
+                    # Main thread gets pooled connections
+                    self.connection_manager = get_connection_manager()
+                    self.chroma_client = (
+                        self.connection_manager.get_chromadb_connection(
+                            client_type="cloud",
+                            tenant=cloud_tenant,
+                            database=cloud_database,
+                            api_key=cloud_api_key,
+                        )
+                    )
+                    if self.chroma_client is None:
+                        logger.warning("Failed to get ChromaDB connection from pool")
+                        self.enabled = False
+                        return
+                    logger.debug(
+                        f"♻️ ChromaDBVectorDB using pooled connection for: {collection_name}"
+                    )
+
                 logger.debug(
                     f"ChromaDB Cloud client initialized for tenant: {cloud_tenant}"
                 )
@@ -68,13 +100,38 @@ class ChromaDBVectorDB(VectorDBBase):
                 # Remote HTTP client
                 chroma_host = config("CHROMA_HOST", default="localhost")
                 chroma_port = config("CHROMA_PORT", default=8000, cast=int)
+
+                if self.is_background:
+                    # Background processing gets fresh connections - no pooling to avoid interference
+                    self.chroma_client = chromadb.HttpClient(
+                        host=chroma_host,
+                        port=chroma_port,
+                        ssl=False,
+                    )
+                    self.connection_manager = (
+                        None  # No connection manager for background
+                    )
+                    logger.debug(
+                        f"🔄 Background ChromaDBVectorDB created fresh connection for: {collection_name}"
+                    )
+                else:
+                    # Main thread gets pooled connections
+                    self.connection_manager = get_connection_manager()
+                    self.chroma_client = (
+                        self.connection_manager.get_chromadb_connection(
+                            client_type="remote", host=chroma_host, port=chroma_port
+                        )
+                    )
+                    if self.chroma_client is None:
+                        logger.warning("Failed to get ChromaDB connection from pool")
+                        self.enabled = False
+                        return
+                    logger.debug(
+                        f"♻️ ChromaDBVectorDB using pooled connection for: {collection_name}"
+                    )
+
                 logger.debug(
                     f"ChromaDB Remote client initialized for host: {chroma_host} and port: {chroma_port}"
-                )
-                self.chroma_client = chromadb.HttpClient(
-                    host=chroma_host,
-                    port=chroma_port,
-                    ssl=False,
                 )
             else:
                 logger.error(f"❌ Unsupported ChromaDB client type: {client_type}")
@@ -82,7 +139,6 @@ class ChromaDBVectorDB(VectorDBBase):
                 return
 
             # Get or create collection
-
             self.collection = self._ensure_collection()
             self.enabled = True
             logger.debug(
@@ -91,6 +147,19 @@ class ChromaDBVectorDB(VectorDBBase):
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
             self.enabled = False
+
+    def __del__(self):
+        """Cleanup method to release connection back to pool."""
+        try:
+            # Only release if we have a connection manager
+            if (
+                hasattr(self, "connection_manager")
+                and self.connection_manager is not None
+            ):
+                self.connection_manager.release_connection("chromadb")
+        except Exception:
+            # Ignore errors during cleanup
+            pass
 
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't."""
@@ -113,10 +182,7 @@ class ChromaDBVectorDB(VectorDBBase):
             return False
 
         try:
-            # Prepare metadata with consistent timestamp
-            current_time = datetime.now(timezone.utc)
             metadata["text"] = document
-            metadata["timestamp"] = current_time.isoformat()
 
             # Add document to ChromaDB
             self.collection.add(
@@ -128,7 +194,7 @@ class ChromaDBVectorDB(VectorDBBase):
             return False
 
     def query_collection(
-        self, query: str, n_results: int, distance_threshold: float
+        self, query: str, session_id: str, n_results: int, similarity_threshold: float
     ) -> Dict[str, Any]:
         """for querying collection."""
         if not self.enabled:
@@ -137,8 +203,7 @@ class ChromaDBVectorDB(VectorDBBase):
             )
             return {
                 "documents": [],
-                "session_id": [],
-                "distances": [],
+                "scores": [],
                 "metadatas": [],
                 "ids": [],
             }
@@ -149,12 +214,12 @@ class ChromaDBVectorDB(VectorDBBase):
                 query_texts=[query],
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"],
+                where={"session_id": session_id},
             )
 
             if not results["documents"] or not results["documents"][0]:
                 return {
                     "documents": [],
-                    "session_id": [],
                     "distances": [],
                     "metadatas": [],
                     "ids": [],
@@ -167,18 +232,15 @@ class ChromaDBVectorDB(VectorDBBase):
 
             filtered_results = []
             for doc, meta, dist in zip(documents, metadatas, distances):
-                if dist >= distance_threshold:
+                score = 1 - dist  # Convert distance to similarity score
+                if score >= similarity_threshold:
                     filtered_results.append(
-                        {"document": doc, "metadata": meta, "distance": dist}
+                        {"document": doc, "metadata": meta, "score": score}
                     )
 
             results = {
                 "documents": [result["document"] for result in filtered_results],
-                "session_id": [
-                    result["metadata"].get("session_id", "")
-                    for result in filtered_results
-                ],
-                "distances": [result["distance"] for result in filtered_results],
+                "scores": [result["score"] for result in filtered_results],
                 "metadatas": [result["metadata"] for result in filtered_results],
                 "ids": [
                     result["metadata"].get("id", "") for result in filtered_results

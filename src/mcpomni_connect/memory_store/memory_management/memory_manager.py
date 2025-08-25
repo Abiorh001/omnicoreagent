@@ -13,13 +13,14 @@ from mcpomni_connect.memory_store.memory_management.system_prompts import (
 from mcpomni_connect.memory_store.memory_management.shared_embedding import (
     load_embed_model,
 )
-
+from mcpomni_connect.utils import logger, utc_now_str
 # No more pre-loaded variables - everything imports when needed
 
 # Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
-_CACHE_TTL = 120  # 10 minutes (changed from 30 minutes for faster testing)
+_CACHE_TTL = 600  # 10 minutes (changed from 30 minutes for faster testing)
 _CACHE_LOCK = threading.RLock()  # Thread-safe cache access
+
 
 # Thread pool for background processing
 _THREAD_POOL = None
@@ -44,21 +45,21 @@ _initialize_memory_system()
 
 
 class MemoryManager:
-    """Memory management operations with automatic fallback between Qdrant and ChromaDB."""
+    """Memory management operations ."""
 
-    def __init__(self, session_id: str, memory_type: str):
+    def __init__(self, agent_name: str, memory_type: str, is_background: bool = False):
         """Initialize memory manager with automatic backend selection.
 
         Args:
-            session_id: Session ID for the collection
+            agent_name: Name of the agent
             memory_type: Type of memory (episodic, long_term)
+            is_background: Whether this is for background processing
         """
-        # No global variables needed anymore
 
-        self.session_id = session_id
+        self.agent_name = agent_name
         self.memory_type = memory_type
-        self.collection_name = f"{memory_type}_{session_id}"
-
+        self.is_background = is_background
+        self.collection_name = f"{self.agent_name}_{self.memory_type}"
         # Check if vector database is enabled
         if not is_vector_db_enabled():
             logger.debug("Vector database is disabled by configuration")
@@ -74,7 +75,7 @@ class MemoryManager:
             logger.error("OMNI_MEMORY_PROVIDER is not set in the environment")
             self.vector_db = None
             return
-        
+
         provider = provider.lower()
 
         # Try provider-specific initialization with sensible fallbacks
@@ -86,7 +87,9 @@ class MemoryManager:
                 )
 
                 self.vector_db = QdrantVectorDB(
-                    self.collection_name, session_id=session_id, memory_type=memory_type
+                    self.collection_name,
+                    memory_type=memory_type,
+                    is_background=self.is_background,
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using Qdrant for {memory_type} memory")
@@ -104,7 +107,9 @@ class MemoryManager:
                 )
 
                 self.vector_db = MongoDBVectorDB(
-                    self.collection_name, session_id=session_id, memory_type=memory_type
+                    self.collection_name,
+                    memory_type=memory_type,
+                    is_background=self.is_background,
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using MongoDB for {memory_type} memory")
@@ -132,12 +137,13 @@ class MemoryManager:
 
                 self.vector_db = ChromaDBVectorDB(
                     self.collection_name,
-                    session_id=session_id,
                     memory_type=memory_type,
                     client_type=client_type,
                 )
                 if self.vector_db.enabled:
-                    logger.debug(f"Using ChromaDB ({client_type}) for {memory_type} memory")
+                    logger.debug(
+                        f"Using ChromaDB ({client_type}) for {memory_type} memory"
+                    )
                     return
                 else:
                     logger.warning(f"ChromaDB ({client_type}) not enabled")
@@ -145,7 +151,9 @@ class MemoryManager:
                 logger.warning(f"Failed to initialize ChromaDB ({client_type}): {e}")
 
         # No fallback - if the configured provider fails, vector DB is disabled
-        logger.warning(f"Vector database provider '{provider}' failed - vector DB disabled")
+        logger.warning(
+            f"Vector database provider '{provider}' failed - vector DB disabled"
+        )
         self.vector_db = None
 
     async def create_episodic_memory(
@@ -219,48 +227,111 @@ class MemoryManager:
             formatted_messages.append(f"[{timestamp}] {role}: {content}{meta_str}")
         return "\n".join(formatted_messages)
 
-    def _extract_end_time(self, metadata):
-        """Extract end_time from metadata regardless of DB backend."""
-        try:
-            if hasattr(metadata, "payload"):
-                # Qdrant format
-                end_time = metadata.payload.get("end_time")
-                logger.debug(f"📅 Extracted end_time from Qdrant payload: {end_time}")
-                return end_time
-            elif isinstance(metadata, dict):
-                # ChromaDB format or generic dict
-                end_time = metadata.get("end_time")
-                logger.debug(f"📅 Extracted end_time from dict: {end_time}")
-                return end_time
-            else:
-                logger.warning(f"❌ Unknown metadata format: {type(metadata)}")
-                return None
-        except Exception as e:
-            logger.error(f"❌ Error extracting end_time: {e}")
+    def parse_iso_to_datetime(self, timestamp_str: str) -> Optional[datetime]:
+        """
+        Convert an ISO 8601 timestamp string to a UTC datetime object.
+        """
+        if not timestamp_str:
+            return None
+        if timestamp_str.endswith("Z"):
+            timestamp_str = timestamp_str[:-1] + "+00:00"
+        dt = datetime.fromisoformat(timestamp_str)
+        # Ensure it’s timezone-aware and normalized to UTC
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    async def get_last_procced_messages_timestamp(
+        self, get_last_processed_messages: Callable, session_id: str
+    ) -> Optional[datetime]:
+        """Get the last processed messages timestamp"""
+        if not self.vector_db or not self.vector_db.enabled:
             return None
 
-    def _ensure_utc_datetime(self, timestamp):
-        """Ensure message timestamp is a valid UTC timezone-aware datetime."""
-        if timestamp is None:
-            return datetime.now(timezone.utc)
+        cache_key = (self.collection_name, self.memory_type, session_id)
+        now = datetime.now(timezone.utc)
 
-        # If it's already a datetime object (Message objects now use timezone-aware datetimes)
-        if isinstance(timestamp, datetime):
-            # If timezone-aware, convert to UTC
-            if timestamp.tzinfo is not None:
-                return timestamp.astimezone(timezone.utc)
-            # If naive, assume it's UTC and add timezone info
+        # Check cache with TTL validation (thread-safe)
+        with _CACHE_LOCK:
+            cached = _RECENT_SUMMARY_CACHE.get(cache_key)
+            logger.debug(
+                f"Cache check for {self.memory_type}: {'HIT' if cached else 'MISS'}"
+            )
+            if cached:
+                cached_last_timestamp, cached_time = cached
+                cache_age = (now - cached_time).total_seconds()
+                if cache_age < _CACHE_TTL:
+                    logger.debug(
+                        f"REDIS CACHE HIT for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s)"
+                    )
+                    if cached_last_timestamp:
+                        return cached_last_timestamp
+                else:
+                    # Invalidate expired cache
+                    del _RECENT_SUMMARY_CACHE[cache_key]
             else:
-                return timestamp.replace(tzinfo=timezone.utc)
+                logger.debug(f"No cache entry found for {self.memory_type}")
 
-        # If it's a timestamp (float/int), convert to UTC timezone-aware datetime
         try:
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc)
-        except (ValueError, OverflowError, OSError):
+            last_timestamp_str = await get_last_processed_messages(
+                session_id=session_id,
+                agent_name=self.agent_name,
+                memory_type=self.memory_type,
+            )
+
+            logger.debug(f"current last procced timestamp: {last_timestamp_str}")
+
+            last_timestamp = None
+            if last_timestamp_str:
+                try:
+                    last_timestamp = self.parse_iso_to_datetime(last_timestamp_str)
+                except Exception as e:
+                    logger.warning(f"Failed to parse last timestamp: Error: {e}")
+
+            if not last_timestamp:
+                with _CACHE_LOCK:
+                    _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
+                return None
+
+            # set the retrieved timestamp in cache
+            with _CACHE_LOCK:
+                _RECENT_SUMMARY_CACHE[cache_key] = (last_timestamp, now)
+            return last_timestamp
+
+        except Exception as e:
+            logger.error(f"Error fetching most recent procced message timestamp: {e}")
+            with _CACHE_LOCK:
+                _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
+            return None
+
+    def get_last_message_timestamp(self, messages: list) -> datetime:
+        """
+        Get the latest message timestamp (ISO format) from a list of messages.
+        If no valid timestamps exist, return the current UTC time in ISO format.
+        """
+        valid_datetimes = []
+
+        for m in messages:
+            if hasattr(m, "timestamp") and m.timestamp is not None:
+                try:
+                    dt = self.parse_iso_to_datetime(timestamp_str=m.timestamp)
+                    valid_datetimes.append(dt)
+                except Exception:
+                    continue
+
+        if valid_datetimes:
+            latest = max(valid_datetimes)  # highest datetime is the most recent
+            return latest
+        else:
             return datetime.now(timezone.utc)
 
     async def process_conversation_memory(
-        self, messages: list, llm_connection: Callable
+        self,
+        session_id: str,
+        messages: list,
+        add_last_processed_messages: Callable,
+        get_last_processed_messages: Callable,
+        llm_connection: Callable,
     ):
         """Process conversation memory only if cache TTL has passed since last summary."""
         if not self.vector_db or not self.vector_db.enabled:
@@ -273,94 +344,69 @@ class MemoryManager:
             # Ensure collection exists
             self.vector_db._ensure_collection()
 
-            # Get the most recent summary
-            most_recent = await self.get_most_recent_summary()
-            last_end_time = None
-
-            if most_recent:
-                # Extract end_time using universal helper method
-                last_end_time = self._extract_end_time(most_recent)
-                logger.info(f"🕐 Last summary end_time extracted: {last_end_time}")
-
-                if last_end_time and isinstance(last_end_time, str):
-                    try:
-                        # Handle various ISO formats and ensure UTC timezone
-                        if last_end_time.endswith("Z"):
-                            last_end_time = last_end_time.replace("Z", "+00:00")
-                        last_end_time = datetime.fromisoformat(last_end_time)
-                        # Ensure it's timezone-aware UTC
-                        last_end_time = self._ensure_utc_datetime(last_end_time)
-                        logger.info(f"🕐 Parsed last_end_time: {last_end_time} (UTC)")
-                    except Exception as e:
-                        logger.error(f"Failed to parse last_end_time: {e}")
-                        last_end_time = None
-            else:
-                logger.info("🕐 No previous memory summary found")
-                last_end_time = None
-
-            now = datetime.now(timezone.utc)
-            logger.info(f"🕐 Current time: {now} (UTC)")
-
-            # Extract and validate timestamps, converting to UTC datetimes
-            valid_timestamps = []
-            for m in messages:
-                if hasattr(m, "timestamp") and m.timestamp is not None:
-                    utc_dt = self._ensure_utc_datetime(m.timestamp)
-                    valid_timestamps.append(utc_dt.timestamp())
-
-            if valid_timestamps:
-                window_start = min(valid_timestamps)
-                window_start_dt = datetime.fromtimestamp(window_start, tz=timezone.utc)
-                logger.info(f"🕐 Message window start: {window_start_dt} (UTC)")
-
-            else:
-                window_start = now
-                window_start_dt = now
-                logger.info(f"🕐 No valid message timestamps, using current time: {window_start_dt} (UTC)")
-
+            # Get last time we process the message for memory
+            last_timestamp = await self.get_last_procced_messages_timestamp(
+                get_last_processed_messages=get_last_processed_messages,
+                session_id=session_id,
+            )
+            # get the last message stored in the messages
+            latest_timestamp_datetime = self.get_last_message_timestamp(
+                messages=messages
+            )
             # Only proceed if at least cache TTL has passed since last summary
-            if last_end_time is None:
-                logger.info(
+            if last_timestamp is None:
+                logger.debug(
                     "🕐 No previous memory summary found, proceeding with all messages"
                 )
             else:
-                time_diff_seconds = (now - last_end_time).total_seconds()
-                time_diff_minutes = time_diff_seconds / 60
-                cache_ttl_minutes = _CACHE_TTL / 60
-
-                logger.info(f"🕐 Time since last summary: {time_diff_minutes:.1f} minutes")
-                logger.info(f"🕐 Cache TTL threshold: {cache_ttl_minutes:.1f} minutes")
+                time_diff_seconds = (
+                    latest_timestamp_datetime - last_timestamp
+                ).total_seconds()
+                logger.debug(
+                    f"Time since last {self.memory_type} memory summary: {int(time_diff_seconds)} seconds"
+                )
 
                 if time_diff_seconds < _CACHE_TTL:
-                    logger.info(
-                        f"🕐 SKIPPING: Less than {cache_ttl_minutes:.1f}min since last summary ({time_diff_minutes:.1f} min)"
+                    logger.debug(
+                        f"🕐 Last {self.memory_type} memory summary was {int(time_diff_seconds)} seconds ago, which is less than the cache TTL of {_CACHE_TTL} seconds. Skipping summarization."
                     )
                     return
-                else:
-                    logger.info(f"🕐 PROCEEDING: More than {cache_ttl_minutes:.1f}min since last summary ({time_diff_minutes:.1f} min)")
 
             # Filter messages after last_end_time
-            if last_end_time:
+            if last_timestamp:
                 messages_to_summarize = []
-                total_messages = len(messages)
+                # count lenght of message first before filter
+                message_recieved = len(messages)
+                logger.debug(
+                    f"Total messages received: {message_recieved} since last summary at {last_timestamp.isoformat()}"
+                )
 
                 for m in messages:
-                    msg_datetime = self._ensure_utc_datetime(
-                        getattr(m, "timestamp", None)
+                    msg_datetime = self.parse_iso_to_datetime(
+                        timestamp_str=getattr(m, "timestamp")
                     )
-                    if msg_datetime > last_end_time:
+                    if not msg_datetime:
+                        continue
+                    if msg_datetime > last_timestamp:
+                        logger.debug(
+                            f"Message to summarize timestamp: {msg_datetime}, last_timestamp: {last_timestamp}"
+                        )
                         messages_to_summarize.append(m)
-
-                logger.info(f"🕐 Filtered {len(messages_to_summarize)}/{total_messages} messages after last_end_time: {last_end_time}")
+                logger.debug(
+                    f"Messages to summarize after filtering the timestamp: {len(messages_to_summarize)}"
+                )
 
             else:
                 messages_to_summarize = messages
-                logger.info(f"🕐 No last_end_time filter, processing all {len(messages)} messages")
 
             if not messages_to_summarize:
-                logger.info("🕐 No new messages to summarize for memory window")
                 return
-
+            # count message to ensure min is 10 before summarizing or return
+            # if len(messages_to_summarize) < 5:
+            #     logger.debug(
+            #         f"🕐 Only {len(messages_to_summarize)} new messages since last summary, skipping summarization"
+            #     )
+            #     return
             # Summarize and store
             conversation_text = self._format_conversation(messages_to_summarize)
 
@@ -380,161 +426,40 @@ class MemoryManager:
 
             doc_id = str(uuid.uuid4())
 
-            # window_start_dt is already properly set above as UTC datetime
-            new_end_time = now.isoformat()
-            logger.info(f"💾 Storing new {self.memory_type} memory:")
-            logger.info(f"💾   - Start time: {window_start_dt.isoformat() if window_start_dt else 'N/A'}")
-            logger.info(f"💾   - End time: {new_end_time}")
-            logger.info(f"💾   - Message count: {len(messages_to_summarize)}")
-            logger.info(f"💾   - Next background indexing will run after: {(_CACHE_TTL/60):.1f} minutes")
-
             self.vector_db.add_to_collection(
                 document=memory_content,
                 metadata={
+                    "session_id": session_id,
                     "memory_type": self.memory_type,
-                    "start_time": window_start_dt.isoformat()
-                    if window_start_dt
-                    else None,
-                    "end_time": new_end_time,
+                    "timestamp": latest_timestamp_datetime.isoformat(),
                     "message_count": len(messages_to_summarize),
-                    "universal_query": "memory_document",  # Universal query field for reliable retrieval
+                    "agent_name": self.agent_name,
                 },
                 doc_id=doc_id,
             )
 
-            logger.info(f"💾 Successfully stored memory document with ID: {doc_id}")
-            self.invalidate_recent_summary_cache()
-            logger.info(f"💾 Invalidated cache for {self.memory_type} - next query will hit vector DB")
+            logger.debug(f"💾 Successfully stored memory document with ID: {doc_id}")
+            # Update last processed message timestamp
+            await add_last_processed_messages(
+                session_id=session_id,
+                agent_name=self.agent_name,
+                timestamp=latest_timestamp_datetime.isoformat(),
+                memory_type=self.memory_type,
+            )
+
+            with _CACHE_LOCK:
+                _RECENT_SUMMARY_CACHE[
+                    (self.collection_name, self.memory_type, session_id)
+                ] = (
+                    latest_timestamp_datetime,
+                    datetime.now(timezone.utc),
+                )
 
         except Exception:
             pass  # Silent background processing
 
-    async def get_most_recent_summary(self) -> Optional[Dict]:
-        """Get the most recent summary using universal query field."""
-        if not self.vector_db or not self.vector_db.enabled:
-            return None
-
-        cache_key = (self.collection_name, self.memory_type)
-        now = datetime.utcnow()
-
-        # Check cache with TTL validation (thread-safe)
-        with _CACHE_LOCK:
-            cached = _RECENT_SUMMARY_CACHE.get(cache_key)
-            logger.debug(f"📋 Cache check for {self.memory_type}: {'HIT' if cached else 'MISS'}")
-            if cached:
-                cached_data, cached_time = cached
-                cache_age = (now - cached_time).total_seconds()
-                if cache_age < _CACHE_TTL:
-                    logger.info(
-                        f"📋 REDIS CACHE HIT for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s)"
-                    )
-                    if cached_data:
-                        end_time_str = cached_data.get("end_time", "N/A")
-                        logger.info(f"📋 Cached summary end_time: {end_time_str}")
-                    return cached_data
-                else:
-                    logger.info(
-                        f"📋 REDIS CACHE EXPIRED for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s), invalidating and refreshing"
-                    )
-                    # Invalidate expired cache
-                    del _RECENT_SUMMARY_CACHE[cache_key]
-            else:
-                logger.debug(f"📋 No cache entry found for {self.memory_type}")
-
-        # Use universal query field to get all memory documents
-        try:
-            logger.info(
-                f"🔍 REDIS CACHE MISS - Querying vector DB for {self.memory_type}"
-            )
-
-            results = self.vector_db.query_collection(
-                query="memory_document",  # Universal query field
-                n_results=50,
-                distance_threshold=0.01,
-            )
-
-            if not results or not results.get("metadatas"):
-                logger.info(f"📋 No documents found for {self.memory_type}")
-                with _CACHE_LOCK:
-                    _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
-                return None
-
-            # Debug: Show the actual results structure
-            logger.info(f"📋 Raw results structure: {list(results.keys())}")
-            logger.info(f"📋 Number of metadatas: {len(results.get('metadatas', []))}")
-            logger.info(f"📋 Results: {results}")
-            logger.info(f"📋 Metadatas: {results.get('metadatas', [])}")
-            # Show first few metadata entries for debugging
-            for i, metadata in enumerate(results["metadatas"][:3]):
-                logger.info(f"📋 Metadata {i+1} keys: {list(metadata.keys())}")
-                logger.info(f"📋 Metadata {i+1} end_time: {metadata.get('end_time', 'NOT_FOUND')}")
-                logger.info(f"📋 Metadata {i+1} memory_type: {metadata.get('memory_type', 'NOT_FOUND')}")
-                logger.info(f"📋 Metadata {i+1} raw content: {metadata}")
-
-            # Sort by end_time to get most recent
-            valid_metadatas = []
-            for result in results["metadatas"]:
-                # end_time and memory_type are now at the root level of each result
-                end_time_str = result.get("end_time")
-                memory_type = result.get("memory_type")
-                
-                logger.debug(f"📋 Checking result: {memory_type} - end_time: {end_time_str}")
-                if end_time_str:
-                    try:
-                        # Handle various ISO formats and ensure UTC timezone
-                        if end_time_str.endswith("Z"):
-                            end_time_str = end_time_str.replace("Z", "+00:00")
-                        end_time = datetime.fromisoformat(end_time_str)
-                        # Ensure it's timezone-aware UTC
-                        end_time = self._ensure_utc_datetime(end_time)
-                        valid_metadatas.append((result, end_time))
-                        logger.debug(f"📋 Valid end_time: {end_time_str} -> {end_time}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to parse end_time: {end_time_str} - Error: {e}")
-                        continue
-                else:
-                    logger.debug(f"📋 No end_time found in result: {memory_type}")
-
-            if not valid_metadatas:
-                logger.info(f"📋 No valid end_time found for {self.memory_type}")
-                logger.info(f"📋 Total metadatas checked: {len(results['metadatas'])}")
-                logger.info(f"📋 Valid metadatas with end_time: {len(valid_metadatas)}")
-                with _CACHE_LOCK:
-                    _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
-                return None
-
-            # Get most recent
-            most_recent_result, most_recent_time = max(
-                valid_metadatas, key=lambda x: x[1]
-            )
-            
-            # Debug: Show what's actually in the most recent result
-            logger.info(f"📋 Most recent result keys: {list(most_recent_result.keys())}")
-            logger.info(f"📋 Most recent summary found - end_time: {most_recent_result.get('end_time')}")
-            logger.info(f"📋 Most recent summary found - memory_type: {most_recent_result.get('memory_type')}")
-
-            with _CACHE_LOCK:
-                _RECENT_SUMMARY_CACHE[cache_key] = (most_recent_result, now)
-            return most_recent_result
-
-        except Exception as e:
-            logger.error(f"❌ Error fetching most recent summary: {e}")
-            with _CACHE_LOCK:
-                _RECENT_SUMMARY_CACHE[cache_key] = (None, now)
-            return None
-
-    def invalidate_recent_summary_cache(self):
-        """Invalidate the cache for this collection/memory_type."""
-        cache_key = (self.collection_name, self.memory_type)
-        with _CACHE_LOCK:
-            if cache_key in _RECENT_SUMMARY_CACHE:
-                logger.info(f"🗑️ Invalidating cache for {self.memory_type} (key: {cache_key})")
-                del _RECENT_SUMMARY_CACHE[cache_key]
-            else:
-                logger.debug(f"🗑️ Cache key {cache_key} not found for invalidation")
-
     def query_memory(
-        self, query: str, n_results: int, distance_threshold: float
+        self, query: str, session_id: str, n_results: int, similarity_threshold: float
     ) -> List[str]:
         """Query memory for relevant information."""
         if not self.vector_db or not self.vector_db.enabled:
@@ -542,11 +467,13 @@ class MemoryManager:
 
         try:
             results = self.vector_db.query_collection(
-                query=query, n_results=n_results, distance_threshold=distance_threshold
+                query=query,
+                session_id=session_id,
+                n_results=n_results,
+                similarity_threshold=similarity_threshold,
             )
-            
-            
-
+            # lets see the scores
+            #  logger.debug(f"QUERY RESULTS HERE: {results}")
             if isinstance(results, dict) and "documents" in results:
                 documents = results["documents"]
                 return documents
@@ -559,117 +486,19 @@ class MemoryManager:
             return []
 
 
-def process_both_memory_types_threaded(session_id, validated_messages, llm_connection):
-    """Process both episodic and long-term memory in a single threaded operation."""
-    try:
-        # Process episodic memory in a completely separate thread
-        def episodic_task():
-            try:
-                episodic_manager = MemoryManager(
-                    session_id=session_id, memory_type="episodic"
-                )
-
-                if episodic_manager.vector_db and episodic_manager.vector_db.enabled:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            episodic_manager.process_conversation_memory(
-                                validated_messages, llm_connection
-                            )
-                        )
-
-                    finally:
-                        loop.close()
-            except Exception:
-                pass  # Silent background processing
-
-        # Process long-term memory in a completely separate thread
-        def long_term_task():
-            try:
-                long_term_manager = MemoryManager(
-                    session_id=session_id, memory_type="long_term"
-                )
-
-                if long_term_manager.vector_db and long_term_manager.vector_db.enabled:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            long_term_manager.process_conversation_memory(
-                                validated_messages, llm_connection
-                            )
-                        )
-                    finally:
-                        loop.close()
-            except Exception:
-                pass  # Silent background processing
-
-        # Start both tasks in separate threads without waiting
-
-        episodic_thread = threading.Thread(target=episodic_task, daemon=True)
-        episodic_thread.start()
-
-        long_term_thread = threading.Thread(target=long_term_task, daemon=True)
-        long_term_thread.start()
-
-    except Exception:
-        pass  # Silent background processing
-
-
-def fire_and_forget_memory_processing(session_id, validated_messages, llm_connection):
-    """Fire and forget memory processing using actual threading."""
-    if not is_vector_db_enabled():
-        return
-
-    # Check if thread pool is available
-    if _THREAD_POOL is None:
-        logger.debug("Thread pool not initialized - skipping memory processing")
-        return
-
-    # Submit to thread pool and return immediately
-    future = _THREAD_POOL.submit(
-        process_both_memory_types_threaded,
-        session_id,
-        validated_messages,
-        llm_connection,
-    )
-    return future
-
-
 class MemoryManagerFactory:
     """Factory for creating memory managers."""
 
     @staticmethod
-    def create_episodic_memory_manager(session_id: str) -> MemoryManager:
-        """Create episodic memory manager."""
-        if not is_vector_db_enabled():
-            logger.debug(
-                "Vector database disabled - skipping episodic memory manager creation"
-            )
-            return None
-        return MemoryManager(session_id, "episodic")
-
-    @staticmethod
-    def create_long_term_memory_manager(session_id: str) -> MemoryManager:
-        """Create long-term memory manager."""
-        if not is_vector_db_enabled():
-            logger.debug(
-                "Vector database disabled - skipping long-term memory manager creation"
-            )
-            return None
-        return MemoryManager(session_id, "long_term")
-
-    @staticmethod
     def create_both_memory_managers(
-        session_id: str,
-    ) -> Tuple[MemoryManager, MemoryManager]:
+        agent_name: str,
+    ) -> Tuple[Optional[MemoryManager], Optional[MemoryManager]]:
         """Create both episodic and long-term memory managers."""
         if not is_vector_db_enabled():
             logger.debug("Vector database disabled - skipping memory manager creation")
             return None, None
-        episodic = MemoryManager(session_id, "episodic")
-        long_term = MemoryManager(session_id, "long_term")
+        episodic = MemoryManager(agent_name=agent_name, memory_type="episodic")
+        long_term = MemoryManager(agent_name=agent_name, memory_type="long_term")
         return episodic, long_term
 
 

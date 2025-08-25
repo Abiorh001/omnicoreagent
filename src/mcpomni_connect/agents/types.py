@@ -1,6 +1,6 @@
 # types.py
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
@@ -46,37 +46,10 @@ class ToolCallMetadata(BaseModel):
 class Message(BaseModel):
     role: str
     content: str
-    tool_call_id: str = None
-    tool_calls: str = None
-    metadata: ToolCallMetadata | None = None
-    timestamp: datetime = None
-
-    def __init__(self, **data):
-        # Always set proper timezone-aware datetime if not provided or invalid
-        if "timestamp" not in data or data["timestamp"] is None:
-            # No timestamp provided - use current UTC time
-            data["timestamp"] = datetime.now(timezone.utc)
-        else:
-            ts = data["timestamp"]
-            if isinstance(ts, (int, float)):
-                # Convert timestamp to timezone-aware datetime
-                if ts < 946684800:  # Before year 2000 - probably bad
-                    data["timestamp"] = datetime.now(timezone.utc)
-                else:
-                    data["timestamp"] = datetime.fromtimestamp(ts, tz=timezone.utc)
-            elif isinstance(ts, datetime):
-                # Ensure datetime is timezone-aware UTC
-                if ts.tzinfo is None:
-                    if ts.year < 2000:
-                        data["timestamp"] = datetime.now(timezone.utc)
-                    else:
-                        # Assume naive datetime is UTC
-                        data["timestamp"] = ts.replace(tzinfo=timezone.utc)
-                else:
-                    # Convert to UTC if it has timezone info
-                    data["timestamp"] = ts.astimezone(timezone.utc)
-
-        super().__init__(**data)
+    tool_call_id: Optional[str] = None
+    tool_calls: Optional[str] = None
+    metadata: Optional[ToolCallMetadata] = None
+    timestamp: Optional[str] = None
 
 
 class ParsedResponse(BaseModel):

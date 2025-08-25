@@ -1,12 +1,12 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 import uuid
 from sqlalchemy import String, Text, DateTime, create_engine, func, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.mutable import MutableDict
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, utc_now_str
 
 DEFAULT_MAX_KEY_LENGTH = 128
 DEFAULT_MAX_VARCHAR_LENGTH = 256
@@ -40,9 +40,32 @@ class StorageMessage(Base):
     session_id: Mapped[str] = mapped_column(String(DEFAULT_MAX_KEY_LENGTH))
     role: Mapped[str] = mapped_column(String(DEFAULT_MAX_VARCHAR_LENGTH))
     content: Mapped[str] = mapped_column(Text)
-    timestamp: Mapped[float] = mapped_column(DateTime(), default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # ISO 8601 string for portability
+    timestamp: Mapped[str] = mapped_column(
+        String(50), default=lambda: datetime.now(timezone.utc).isoformat()
+    )
     msg_metadata: Mapped[dict[str, Any]] = mapped_column(
         MutableDict.as_mutable(DynamicJSON), default={}
+    )
+
+
+class LastProcessedMessage(Base):
+    __tablename__ = "last_processed_messages"
+    id: Mapped[str] = mapped_column(
+        String(DEFAULT_MAX_KEY_LENGTH),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+    )
+    session_id: Mapped[str] = mapped_column(String(DEFAULT_MAX_KEY_LENGTH))
+    agent_name: Mapped[str] = mapped_column(String(DEFAULT_MAX_VARCHAR_LENGTH))
+    memory_type: Mapped[str] = mapped_column(String(DEFAULT_MAX_VARCHAR_LENGTH))
+    timestamp: Mapped[str] = mapped_column()
+    last_processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -65,11 +88,11 @@ class DatabaseMessageStore:
         inspector = inspect(self.db_engine)
         existing_tables = inspector.get_table_names()
 
-        if "messages" not in existing_tables:
-            logger.info("Creating database tables for the first time")
+        if (
+            "messages" not in existing_tables
+            or "last_processed_messages" not in existing_tables
+        ):
             Base.metadata.create_all(self.db_engine)
-        else:
-            logger.info("Database tables already exist, skipping creation")
 
         self.memory_config: dict[str, Any] = {}
 
@@ -96,7 +119,6 @@ class DatabaseMessageStore:
                     session_id=session_id,
                     role=role,
                     content=content,
-                    timestamp=datetime.now(),
                     msg_metadata=metadata,
                 )
                 session_factory.add(message)
@@ -149,6 +171,57 @@ class DatabaseMessageStore:
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
+
+    async def set_last_processed_messages(
+        self, session_id: str, agent_name: str, timestamp: float, memory_type: str
+    ) -> None:
+        try:
+            with self.database_session_factory() as session_factory:
+                existing = (
+                    session_factory.query(LastProcessedMessage)
+                    .filter(
+                        LastProcessedMessage.session_id == session_id,
+                        LastProcessedMessage.agent_name == agent_name,
+                        LastProcessedMessage.memory_type == memory_type,
+                    )
+                    .first()
+                )
+                if existing:
+                    existing.agent_name = agent_name
+                    existing.memory_type = memory_type
+                    existing.timestamp = timestamp
+                else:
+                    new_entry = LastProcessedMessage(
+                        session_id=session_id,
+                        agent_name=agent_name,
+                        memory_type=memory_type,
+                        timestamp=timestamp,
+                    )
+                    session_factory.add(new_entry)
+                session_factory.commit()
+        except Exception as e:
+            logger.error(f"Failed to set last processed: {e}")
+
+    async def get_last_processed_messages(
+        self, session_id: str, agent_name: str, memory_type: str
+    ) -> Any:
+        try:
+            with self.database_session_factory() as session_factory:
+                entry = (
+                    session_factory.query(LastProcessedMessage)
+                    .filter(
+                        LastProcessedMessage.session_id == session_id,
+                        LastProcessedMessage.agent_name == agent_name,
+                        LastProcessedMessage.memory_type == memory_type,
+                    )
+                    .first()
+                )
+                if entry:
+                    return entry.timestamp
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get last processed: {e}")
+            return None
 
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None

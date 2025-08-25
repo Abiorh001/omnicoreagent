@@ -1,11 +1,12 @@
 import json
 import time
-from typing import Any, List
+from typing import Any, List, Optional
 import redis.asyncio as redis
 from decouple import config
 
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, utc_now_str
+from datetime import datetime, timezone
 
 REDIS_URL = config("REDIS_URL", default="redis://localhost:6379/0")
 
@@ -60,21 +61,22 @@ class RedisMemoryStore(AbstractMemoryStore):
         """
         try:
             metadata = metadata or {}
-            logger.info(f"Storing message for session {session_id}: {content}")
 
             key = f"mcp_memory:{session_id}"
-            timestamp = time.time()
+
+            dt = datetime.now(timezone.utc)  # timezone-aware UTC
+            timestamp_iso = dt.isoformat()
+            timestamp_score = dt.timestamp()  # float (epoch seconds)
 
             message = {
                 "role": role,
                 "content": str(content),
                 "session_id": session_id,
                 "msg_metadata": metadata,
-                "timestamp": timestamp,
+                "timestamp": timestamp_iso,  # keep ISO in the payload
             }
 
-            # Store as a JSON string in Redis
-            await self._redis_client.zadd(key, {json.dumps(message): timestamp})
+            await self._redis_client.zadd(key, {json.dumps(message): timestamp_score})
 
         except Exception as e:
             logger.error(f"Failed to store message: {e}")
@@ -124,6 +126,30 @@ class RedisMemoryStore(AbstractMemoryStore):
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
+
+    async def set_last_processed_messages(
+        self, session_id: str, agent_name: str, timestamp: float, memory_type: str
+    ) -> None:
+        """Set the last processed timestamp for a given session/agent."""
+        try:
+            key = f"mcp_last_processed:{session_id}:{agent_name}:{memory_type}"
+            await self._redis_client.set(key, timestamp)
+
+        except Exception as e:
+            logger.error(f"Failed to set last processed: {e}")
+
+    async def get_last_processed_messages(
+        self, session_id: str, agent_name: str, memory_type: str
+    ) -> Optional[datetime]:
+        """Get the last processed timestamp for a given session/agent."""
+        try:
+            key = f"mcp_last_processed:{session_id}:{agent_name}:{memory_type}"
+            ts = await self._redis_client.get(key)
+
+            return ts
+        except Exception as e:
+            logger.error(f"Failed to get last processed: {e}")
+            return None
 
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None
