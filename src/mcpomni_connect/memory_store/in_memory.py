@@ -1,18 +1,33 @@
-from typing import Any
-import asyncio
+from typing import Any, Dict, Optional
+import threading
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
-from mcpomni_connect.utils import logger
+from mcpomni_connect.utils import logger, utc_now_str
+import copy
+import os
+import json
 
 
-def _get_agent_name_from_metadata(msg_metadata) -> str:
-    # This function is now unused, but kept for compatibility if needed in the future.
-    if not msg_metadata:
-        return None
-    if hasattr(msg_metadata, "agent_name"):
-        return msg_metadata.agent_name
-    if isinstance(msg_metadata, dict):
-        return msg_metadata.get("agent_name")
-    return None
+last_processed_file = "._last_processed.json"
+
+
+# # Create encoder once (module-level cache)
+# _encoder_cache: dict[str, object] = {}
+
+# def get_encoder(model_name: str = "gpt-4o-mini"):
+#     if model_name in _encoder_cache:
+#         return _encoder_cache[model_name]
+#     if not tiktoken:
+#         return None
+#     enc = tiktoken.encoding_for_model(model_name)
+#     _encoder_cache[model_name] = enc
+#     return enc
+
+# def count_tokens(content: str, model_name: str = "gpt-4o-mini") -> int:
+#     enc = get_encoder(model_name)
+#     if enc:
+#         return len(enc.encode(content))
+#     # fallback heuristic
+#     return len(content.split())
 
 
 class InMemoryStore(AbstractMemoryStore):
@@ -29,7 +44,9 @@ class InMemoryStore(AbstractMemoryStore):
         """
         # Changed to session-based storage for database compatibility
         self.sessions_history: dict[str, list[dict[str, Any]]] = {}
+        self.last_processed: dict[tuple[str, str, str], float] = {}
         self.memory_config: dict[str, Any] = {}
+        self._lock = threading.RLock()
 
     def set_memory_config(self, mode: str, value: int = None) -> None:
         """Set global memory strategy.
@@ -53,79 +70,106 @@ class InMemoryStore(AbstractMemoryStore):
         self,
         role: str,
         content: str,
-        metadata: dict | None = None,
-        session_id: str = None,
+        metadata: dict,
+        session_id: str,
     ) -> None:
-        """Store a message in memory.
+        """Store a message in memory."""
+        # Defensive copy to avoid external mutation after storage
+        metadata_copy = dict(metadata)
 
-        Args:
-            role: Message role (e.g., 'user', 'assistant')
-            content: Message content
-            msg_metadata: Optional metadata about the message
-            session_id: Session ID for grouping messages
-        """
-        try:
-            # Ensure metadata exists
-            if metadata is None:
-                metadata = {}
+        # Normalize agent_name if present for consistent storage
+        if "agent_name" in metadata_copy and isinstance(
+            metadata_copy["agent_name"], str
+        ):
+            metadata_copy["agent_name"] = metadata_copy["agent_name"].strip()
 
-            # Use session-based storage for database compatibility
+        message = {
+            "role": role,
+            "content": content,
+            "session_id": session_id,
+            "timestamp": utc_now_str(),
+            "msg_metadata": metadata_copy,
+        }
+
+        with self._lock:
             if session_id not in self.sessions_history:
                 self.sessions_history[session_id] = []
-
-            message = {
-                "role": role,
-                "content": content,
-                "session_id": session_id,
-                "timestamp": asyncio.get_running_loop().time(),
-                "msg_metadata": metadata,
-            }
             self.sessions_history[session_id].append(message)
 
-        except Exception as e:
-            logger.error(f"Failed to store message: {e}")
-
     async def get_messages(
-        self, session_id: str, agent_name: str = None
+        self, session_id: str = None, agent_name: str = None
     ) -> list[dict[str, Any]]:
-        """Get messages from memory.
+        session_id = session_id or "default_session"
 
-        Args:
-            session_id: Session ID to get messages for
-
-        Returns:
-            List of messages
-        """
-        try:
+        with self._lock:
             if session_id not in self.sessions_history:
                 self.sessions_history[session_id] = []
-                return []
+            messages = list(self.sessions_history[session_id])
 
-            messages = self.sessions_history[session_id]
-            mode = self.memory_config.get("mode", "token_budget")
-            value = self.memory_config.get("value")
-            if mode.lower() == "sliding_window":
-                messages = messages[-value:]
+        mode = self.memory_config.get("mode", "token_budget")
+        value = self.memory_config.get("value")
+        if mode.lower() == "sliding_window":
+            messages = messages[-value:]
 
-            elif mode.lower() == "token_budget":
+        elif mode.lower() == "token_budget":
+            total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
+
+            while value is not None and total_tokens > value and messages:
+                messages.pop(0)
                 total_tokens = sum(len(str(msg["content"]).split()) for msg in messages)
-                while value is not None and total_tokens > value and messages:
-                    messages.pop(0)
-                    total_tokens = sum(
-                        len(str(msg["content"]).split()) for msg in messages
-                    )
-            if agent_name:
-                messages = [
-                    msg
-                    for msg in messages
-                    if msg.get("msg_metadata", {}).get("agent_name") == agent_name
-                ]
-            return messages
 
-        except Exception as e:
-            logger.error(f"Failed to truncate message history: {e}")
-            self.sessions_history[session_id] = []
-            return []
+        # If caller supplied an agent_name, normalize compare (strip only)
+        if agent_name:
+            # normalize caller arg
+            agent_name_norm = agent_name.strip()
+            filtered = [
+                msg
+                for msg in messages
+                if (msg.get("msg_metadata", {}).get("agent_name") or "").strip()
+                == agent_name_norm
+            ]
+        else:
+            filtered = messages
+
+        logger.info(f"returning {len(filtered)} messages after filtering")
+        # Return deep copies so caller cannot change our internal store
+        return [copy.deepcopy(m) for m in filtered]
+
+    async def set_last_processed_messages(
+        self, session_id: str, agent_name: str, timestamp: float, memory_type: str
+    ) -> None:
+        """Set the last processed timestamp for a given session/agent."""
+        with self._lock:
+            data = {}
+            if os.path.exists(last_processed_file):
+                try:
+                    with open(last_processed_file, "r") as f:
+                        data = json.load(f)
+                except json.JSONDecodeError:
+                    data = {}
+
+            key = f"{session_id}:{agent_name}:{memory_type}"
+            data[key] = timestamp
+
+            with open(last_processed_file, "w") as f:
+                json.dump(data, f)
+
+    async def get_last_processed_messages(
+        self, session_id: str, agent_name: str, memory_type: str
+    ) -> Optional[float]:
+        """Get the last processed timestamp for a given session/agent."""
+        with self._lock:
+            if not os.path.exists(last_processed_file):
+                return None
+
+            try:
+                with open(last_processed_file, "r") as f:
+                    data = json.load(f)
+            except json.JSONDecodeError:
+                return None
+
+            key = f"{session_id}:{agent_name}:{memory_type}"
+            return data.get(key)
 
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None

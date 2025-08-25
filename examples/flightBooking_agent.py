@@ -57,9 +57,21 @@ local_tools = ToolRegistry()
     inputSchema={
         "type": "object",
         "properties": {
-            "origin": {"type": "string", "maxLength": 10, "description": "Origin airport or city code"},
-            "destination": {"type": "string", "maxLength": 10, "description": "Destination airport or city code"},
-            "date": {"type": "string", "format": "date", "description": "Travel date YYYY-MM-DD"},
+            "origin": {
+                "type": "string",
+                "maxLength": 10,
+                "description": "Origin airport or city code",
+            },
+            "destination": {
+                "type": "string",
+                "maxLength": 10,
+                "description": "Destination airport or city code",
+            },
+            "date": {
+                "type": "string",
+                "format": "date",
+                "description": "Travel date YYYY-MM-DD",
+            },
         },
         "required": ["origin", "destination", "date"],
         "additionalProperties": False,
@@ -68,9 +80,27 @@ local_tools = ToolRegistry()
 def search_flights(origin: str, destination: str, date: str) -> dict:
     """Return a small set of mocked flights for given origin/destination/date."""
     flights = [
-        {"flight_id": "F3001", "route": f"{origin}-{destination}", "date": date, "price": 550, "class": "Economy"},
-        {"flight_id": "F3002", "route": f"{origin}-{destination}", "date": date, "price": 720, "class": "Economy Plus"},
-        {"flight_id": "F3003", "route": f"{origin}-{destination}", "date": date, "price": 1200, "class": "Business"},
+        {
+            "flight_id": "F3001",
+            "route": f"{origin}-{destination}",
+            "date": date,
+            "price": 550,
+            "class": "Economy",
+        },
+        {
+            "flight_id": "F3002",
+            "route": f"{origin}-{destination}",
+            "date": date,
+            "price": 720,
+            "class": "Economy Plus",
+        },
+        {
+            "flight_id": "F3003",
+            "route": f"{origin}-{destination}",
+            "date": date,
+            "price": 1200,
+            "class": "Business",
+        },
     ]
     return {"flights": flights}
 
@@ -107,7 +137,11 @@ def book_flight(user_id: str, flight_id: str) -> dict:
     with open(CRM_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-    return {"status": "success", "message": f"Booking confirmed: {booking_id} for user {user['name']}", "booking": booking}
+    return {
+        "status": "success",
+        "message": f"Booking confirmed: {booking_id} for user {user['name']}",
+        "booking": booking,
+    }
 
 
 @local_tools.register_tool(
@@ -135,7 +169,9 @@ def cancel_booking(user_id: str, booking_id: str) -> dict:
     if not user:
         return {"error": f"User {user_id} not found"}
 
-    booking = next((b for b in user.get("bookings", []) if b["booking_id"] == booking_id), None)
+    booking = next(
+        (b for b in user.get("bookings", []) if b["booking_id"] == booking_id), None
+    )
     if not booking:
         return {"error": f"Booking {booking_id} not found for user {user_id}"}
 
@@ -144,7 +180,11 @@ def cancel_booking(user_id: str, booking_id: str) -> dict:
     with open(CRM_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-    return {"status": "success", "message": f"Booking {booking_id} canceled for user {user['name']}", "booking": booking}
+    return {
+        "status": "success",
+        "message": f"Booking {booking_id} canceled for user {user['name']}",
+        "booking": booking,
+    }
 
 
 @local_tools.register_tool(
@@ -176,9 +216,9 @@ def get_customer_profile(user_id: str) -> dict:
     name="think",
     description="Use the tool to think about something. It will not obtain new information or change the database, but just append the thought to the log. Use it when complex reasoning or some cache memory is needed.",
     inputSchema={
-    "type": "object",
-    "properties": {
-      "thought": {
+        "type": "object",
+        "properties": {
+            "thought": {
                 "type": "string",
                 "description": "A thought to think about.",
             }
@@ -217,16 +257,13 @@ class AirlineAgentCLI:
                 "You are an expert Flight Booking Agent with access to flight search, booking, cancellation, "
                 "and customer profile tools. You MUST use the `think` tool as your reasoning scratchpad for "
                 "ANY multi-step or complex requests before taking action.\n\n"
-                
                 "## CRITICAL: Always use the think tool first for complex requests\n\n"
-                
                 "**When to use think tool:**\n"
                 "- Multi-step operations (search + book, cancel + rebook)\n"
                 "- Complex requests requiring policy verification\n"
                 "- Requests needing customer profile analysis\n"
                 "- Operations requiring rule compliance checks\n"
                 "- Any request with multiple conditions or constraints\n\n"
-                
                 "**Think tool workflow:**\n"
                 "1. **Analyze the request** - Break down what's needed\n"
                 "2. **List applicable rules** - Identify policies, restrictions, requirements\n"
@@ -234,7 +271,6 @@ class AirlineAgentCLI:
                 "4. **Verify compliance** - Ensure planned actions follow all policies\n"
                 "5. **Plan execution steps** - Outline the exact sequence of tool calls\n"
                 "6. **Validate assumptions** - Check if your plan makes sense\n\n"
-                
                 "**Examples of think tool usage:**\n"
                 "- User: 'Book cheapest flight for John on Sept 1'\n"
                 "  → Think: Need user ID, search flights, compare prices, verify payment methods, check baggage rules\n"
@@ -242,10 +278,8 @@ class AirlineAgentCLI:
                 "  → Think: Verify cancellation policy, check rebooking rules, ensure no double-booking, calculate fees\n"
                 "- User: 'Book 3 tickets with 2 bags each'\n"
                 "  → Think: Check membership tier for baggage allowance, verify payment method limits, calculate total costs\n\n"
-                
                 "**After thinking, execute your plan step-by-step using the appropriate tools.**\n"
                 "Always include booking IDs in confirmations and keep responses professional but concise.\n\n"
-                
                 "**Remember:** The think tool is your strategic planning center. Use it to avoid mistakes and ensure compliance with all airline policies and customer requirements."
             ),
             model_config={

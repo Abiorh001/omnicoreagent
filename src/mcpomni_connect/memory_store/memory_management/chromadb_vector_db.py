@@ -3,20 +3,16 @@ from enum import Enum
 from mcpomni_connect.utils import logger
 from decouple import config
 import chromadb
-from chromadb.config import Settings
-
-
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
-
-# No more warmup - ChromaDB only loads when explicitly needed
-_chroma_client = None
-_chroma_enabled = False
+from mcpomni_connect.memory_store.memory_management.connection_manager import (
+    get_connection_manager,
+)
 
 
 class ChromaClientType(Enum):
-    """Enumeration for ChromaDB client types - NO LOCAL SUPPORT."""
+    """Enumeration for ChromaDB client types"""
 
     REMOTE = "remote"
     CLOUD = "cloud"
@@ -31,8 +27,10 @@ class ChromaDBVectorDB(VectorDBBase):
         client_type: ChromaClientType = ChromaClientType.REMOTE,
         **kwargs,
     ):
-        """Initialize ChromaDB vector database - NO LOCAL SUPPORT."""
+        """Initialize ChromaDB vector database ."""
         super().__init__(collection_name, **kwargs)
+
+        self.is_background = kwargs.get("is_background", False)
 
         if isinstance(client_type, str):
             try:
@@ -62,11 +60,38 @@ class ChromaDBVectorDB(VectorDBBase):
                     self.enabled = False
                     return
 
-                self.chroma_client = chromadb.CloudClient(
-                    tenant=cloud_tenant,
-                    database=cloud_database,
-                    api_key=cloud_api_key,
-                )
+                if self.is_background:
+                    # Background processing gets fresh connections - no pooling to avoid interference
+                    self.chroma_client = chromadb.CloudClient(
+                        tenant=cloud_tenant,
+                        database=cloud_database,
+                        api_key=cloud_api_key,
+                    )
+                    self.connection_manager = (
+                        None  # No connection manager for background
+                    )
+                    logger.debug(
+                        f"🔄 Background ChromaDBVectorDB created fresh connection for: {collection_name}"
+                    )
+                else:
+                    # Main thread gets pooled connections
+                    self.connection_manager = get_connection_manager()
+                    self.chroma_client = (
+                        self.connection_manager.get_chromadb_connection(
+                            client_type="cloud",
+                            tenant=cloud_tenant,
+                            database=cloud_database,
+                            api_key=cloud_api_key,
+                        )
+                    )
+                    if self.chroma_client is None:
+                        logger.warning("Failed to get ChromaDB connection from pool")
+                        self.enabled = False
+                        return
+                    logger.debug(
+                        f"♻️ ChromaDBVectorDB using pooled connection for: {collection_name}"
+                    )
+
                 logger.debug(
                     f"ChromaDB Cloud client initialized for tenant: {cloud_tenant}"
                 )
@@ -75,13 +100,38 @@ class ChromaDBVectorDB(VectorDBBase):
                 # Remote HTTP client
                 chroma_host = config("CHROMA_HOST", default="localhost")
                 chroma_port = config("CHROMA_PORT", default=8000, cast=int)
+
+                if self.is_background:
+                    # Background processing gets fresh connections - no pooling to avoid interference
+                    self.chroma_client = chromadb.HttpClient(
+                        host=chroma_host,
+                        port=chroma_port,
+                        ssl=False,
+                    )
+                    self.connection_manager = (
+                        None  # No connection manager for background
+                    )
+                    logger.debug(
+                        f"🔄 Background ChromaDBVectorDB created fresh connection for: {collection_name}"
+                    )
+                else:
+                    # Main thread gets pooled connections
+                    self.connection_manager = get_connection_manager()
+                    self.chroma_client = (
+                        self.connection_manager.get_chromadb_connection(
+                            client_type="remote", host=chroma_host, port=chroma_port
+                        )
+                    )
+                    if self.chroma_client is None:
+                        logger.warning("Failed to get ChromaDB connection from pool")
+                        self.enabled = False
+                        return
+                    logger.debug(
+                        f"♻️ ChromaDBVectorDB using pooled connection for: {collection_name}"
+                    )
+
                 logger.debug(
                     f"ChromaDB Remote client initialized for host: {chroma_host} and port: {chroma_port}"
-                )
-                self.chroma_client = chromadb.HttpClient(
-                    host=chroma_host,
-                    port=chroma_port,
-                    ssl=False,
                 )
             else:
                 logger.error(f"❌ Unsupported ChromaDB client type: {client_type}")
@@ -89,7 +139,6 @@ class ChromaDBVectorDB(VectorDBBase):
                 return
 
             # Get or create collection
-
             self.collection = self._ensure_collection()
             self.enabled = True
             logger.debug(
@@ -98,6 +147,19 @@ class ChromaDBVectorDB(VectorDBBase):
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
             self.enabled = False
+
+    def __del__(self):
+        """Cleanup method to release connection back to pool."""
+        try:
+            # Only release if we have a connection manager
+            if (
+                hasattr(self, "connection_manager")
+                and self.connection_manager is not None
+            ):
+                self.connection_manager.release_connection("chromadb")
+        except Exception:
+            # Ignore errors during cleanup
+            pass
 
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't."""
@@ -111,114 +173,8 @@ class ChromaDBVectorDB(VectorDBBase):
             logger.error(f"Failed to initialize ChromaDB collection: {e}")
             raise
 
-    def upsert_document(
-        self, document: str, doc_id: str, metadata: Optional[Dict] = None
-    ) -> bool:
-        """Upsert a document (insert if new, update if exists)."""
-        if not self.enabled:
-            logger.warning(
-                "ChromaDB is not available or enabled. Cannot upsert document."
-            )
-            return False
-
-        try:
-            # Prepare metadata with consistent timestamp
-            if metadata is None:
-                metadata = {}
-            current_time = datetime.now(timezone.utc)
-            metadata["text"] = document
-            metadata["timestamp"] = current_time.isoformat()
-
-            # Add document to ChromaDB
-            self.collection.add(
-                documents=[document], metadatas=[metadata], ids=[doc_id]
-            )
-            logger.debug(
-                f"Successfully upserted document to ChromaDB with ID: {doc_id}"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to upsert document to ChromaDB: {e}")
-            raise
-
-    def query_collection(
-        self, query: str, n_results: int, distance_threshold: float
-    ) -> Any:
-        """Query the collection for similar documents."""
-        if not self.enabled:
-            logger.warning(
-                "ChromaDB is not available or enabled. Cannot query collection."
-            )
-            return "No relevant documents found"
-
-        try:
-            logger.debug(
-                f"Querying ChromaDB collection: {self.collection_name} with query: {query}"
-            )
-
-            # Query the collection
-            results = self.collection.query(
-                query_texts=[query],
-                n_results=n_results,
-                include=["documents", "metadatas", "distances"],
-            )
-
-            if not results or not results["documents"] or not results["documents"][0]:
-                return "No relevant documents found"
-
-            # Filter by distance threshold
-            documents = results["documents"][0]
-            distances = results["distances"][0]
-            metadatas = results["metadatas"][0]
-
-            # Filter results by distance threshold
-            filtered_results = []
-            for doc, dist, meta in zip(documents, distances, metadatas):
-                if (
-                    dist <= distance_threshold
-                ):  # ChromaDB uses distance, lower is better
-                    filtered_results.append(doc)
-
-            if not filtered_results:
-                return "No relevant documents found"
-            else:
-                return filtered_results
-
-        except Exception as e:
-            # Silently handle collection not found errors
-            if "not found" in str(e).lower() or "doesn't exist" in str(e).lower():
-                logger.debug(
-                    f"Collection {self.collection_name} doesn't exist yet, returning empty results"
-                )
-                return "No relevant documents found"
-            else:
-                logger.error(f"Failed to query ChromaDB: {e}")
-                return "No relevant documents found"
-
-    def delete_from_collection(
-        self, doc_id: Optional[str] = None, where: Optional[Dict] = None
-    ):
-        """Delete document from the collection."""
-        if not self.enabled:
-            logger.warning("ChromaDB is not enabled. Cannot delete from collection.")
-            return
-
-        try:
-            if doc_id:
-                self.collection.delete(ids=[doc_id])
-
-            elif where:
-                # ChromaDB doesn't support complex where clauses like Qdrant
-                # We can only delete by IDs or metadata filters
-                logger.warning("ChromaDB delete with where clause not fully supported")
-        except Exception as e:
-            logger.error(f"Failed to delete document from ChromaDB: {e}")
-            raise
-
-    async def add_to_collection_async(
-        self, doc_id: str, document: str, metadata: Dict
-    ) -> bool:
-        """Async wrapper for adding to collection."""
+    def add_to_collection(self, doc_id: str, document: str, metadata: Dict) -> bool:
+        """for adding to collection."""
         if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot add to collection."
@@ -226,10 +182,7 @@ class ChromaDBVectorDB(VectorDBBase):
             return False
 
         try:
-            # Prepare metadata with consistent timestamp
-            current_time = datetime.now(timezone.utc)
             metadata["text"] = document
-            metadata["timestamp"] = current_time.isoformat()
 
             # Add document to ChromaDB
             self.collection.add(
@@ -240,18 +193,17 @@ class ChromaDBVectorDB(VectorDBBase):
         except Exception:
             return False
 
-    async def query_collection_async(
-        self, query: str, n_results: int, distance_threshold: float
+    def query_collection(
+        self, query: str, session_id: str, n_results: int, similarity_threshold: float
     ) -> Dict[str, Any]:
-        """Async wrapper for querying collection."""
+        """for querying collection."""
         if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot query collection."
             )
             return {
                 "documents": [],
-                "session_id": [],
-                "distances": [],
+                "scores": [],
                 "metadatas": [],
                 "ids": [],
             }
@@ -262,12 +214,12 @@ class ChromaDBVectorDB(VectorDBBase):
                 query_texts=[query],
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"],
+                where={"session_id": session_id},
             )
 
             if not results["documents"] or not results["documents"][0]:
                 return {
                     "documents": [],
-                    "session_id": [],
                     "distances": [],
                     "metadatas": [],
                     "ids": [],
@@ -280,18 +232,15 @@ class ChromaDBVectorDB(VectorDBBase):
 
             filtered_results = []
             for doc, meta, dist in zip(documents, metadatas, distances):
-                if dist >= distance_threshold:
+                score = 1 - dist  # Convert distance to similarity score
+                if score >= similarity_threshold:
                     filtered_results.append(
-                        {"document": doc, "metadata": meta, "distance": dist}
+                        {"document": doc, "metadata": meta, "score": score}
                     )
 
             results = {
                 "documents": [result["document"] for result in filtered_results],
-                "session_id": [
-                    result["metadata"].get("session_id", "")
-                    for result in filtered_results
-                ],
-                "distances": [result["distance"] for result in filtered_results],
+                "scores": [result["score"] for result in filtered_results],
                 "metadatas": [result["metadata"] for result in filtered_results],
                 "ids": [
                     result["metadata"].get("id", "") for result in filtered_results

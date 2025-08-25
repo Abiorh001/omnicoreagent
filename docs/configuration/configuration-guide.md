@@ -190,6 +190,44 @@ Configure connections to MCP servers using different transport types:
     }
     ```
 
+## Vector Database Configuration
+
+The system supports multiple vector database providers for storing and retrieving semantic memory:
+
+### Available Providers
+
+- **`qdrant-remote`** (Recommended): Remote Qdrant instance
+- **`mongodb-remote`**: MongoDB Atlas with Vector Search
+- **`chroma-remote`**: Remote ChromaDB instance  
+- **`chroma-cloud`**: ChromaDB Cloud
+
+### Provider Selection
+
+Set the `OMNI_MEMORY_PROVIDER` environment variable to your preferred provider:
+
+```bash
+# For Qdrant (recommended)
+export OMNI_MEMORY_PROVIDER=qdrant-remote
+
+# For MongoDB Atlas
+export OMNI_MEMORY_PROVIDER=mongodb-remote
+
+# For ChromaDB
+export OMNI_MEMORY_PROVIDER=chroma-remote
+```
+
+### MongoDB Atlas Configuration
+
+When using `mongodb-remote`, you need to configure:
+
+```bash
+# MongoDB connection string
+export MONGODB_URI="mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+
+# Optional: Database name (defaults to "omniagent")
+export MONGODB_DB_NAME="your_database_name"
+```
+
 ## Complete Configuration Examples
 
 ### Minimal Setup

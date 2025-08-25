@@ -50,6 +50,20 @@ class DatabaseMemory(AbstractMemoryStore):
             session_id=session_id, agent_name=agent_name
         )
 
+    async def set_last_processed_messages(
+        self, session_id: str, agent_name: str, timestamp: float, memory_type: str
+    ) -> None:
+        return await self.db_session.set_last_processed_messages(
+            session_id, agent_name, timestamp, memory_type
+        )
+
+    async def get_last_processed_messages(
+        self, session_id: str, agent_name: str, memory_type: str
+    ) -> float | None:
+        return await self.db_session.get_last_processed_messages(
+            session_id, agent_name, memory_type
+        )
+
     async def clear_memory(
         self,
         session_id: str = None,

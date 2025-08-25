@@ -166,7 +166,10 @@ class LLMConnection:
             return response
 
         except Exception as e:
-            logger.error(f"Error calling LLM: {e}")
+            error_mssage = (
+                f"Error calling LLM with model {self.llm_config.get('model')}: {e}"
+            )
+            logger.error(error_mssage)
             return None
 
     def llm_call_sync(

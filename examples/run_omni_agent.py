@@ -299,14 +299,12 @@ Patterns Found:"""
         except Exception as e:
             return f"Calculation error: {str(e)}"
 
-        logger.info("Created comprehensive ToolRegistry with 12 tools")
-
     async def initialize(self):
         """Initialize all components."""
         print("🚀 Initializing OmniAgent CLI...")
 
         # Initialize routers
-        self.memory_router = MemoryRouter("mangodb")
+        self.memory_router = MemoryRouter("database")
         self.event_router = EventRouter("in_memory")
 
         # Initialize agent with exact same config as working example
@@ -314,10 +312,10 @@ Patterns Found:"""
             name="comprehensive_demo_agent",
             system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
-                "provider": "openai",
-                "model": "gpt-4.1",
-                "temperature": 0.7,
-                "max_context_length": 50000,
+                "provider": "gemini",
+                "model": "gemini-2.5-flash",
+                "temperature": 0.3,
+                "max_context_length": 5000,
             },
             mcp_tools=[
                 {
@@ -335,7 +333,7 @@ Patterns Found:"""
                 "max_steps": 15,
                 "tool_call_timeout": 60,
                 "request_limit": 1000,
-                "memory_config": {"mode": "token_budget", "value": 10000},
+                "memory_config": {"mode": "sliding_window", "value": 100},
             },
             memory_store=self.memory_router,
             event_router=self.event_router,
