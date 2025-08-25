@@ -59,7 +59,8 @@ dependencies = [
     "litellm>=1.75.2",
     "fastapi-sso>=0.18.0",
     "opik>=1.8.19",
-    "voyageai>=0.3.4",
+    "pymongo[srv]>=4.14.1",
+    "cryptography>=45.0.6",
 ]
 
 [project.scripts]
