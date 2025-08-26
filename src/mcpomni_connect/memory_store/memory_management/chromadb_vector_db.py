@@ -71,7 +71,7 @@ class ChromaDBVectorDB(VectorDBBase):
                         None  # No connection manager for background
                     )
                     logger.debug(
-                        f"🔄 Background ChromaDBVectorDB created fresh connection for: {collection_name}"
+                        f"Background ChromaDBVectorDB created fresh connection for: {collection_name}"
                     )
                 else:
                     # Main thread gets pooled connections
@@ -89,7 +89,7 @@ class ChromaDBVectorDB(VectorDBBase):
                         self.enabled = False
                         return
                     logger.debug(
-                        f"♻️ ChromaDBVectorDB using pooled connection for: {collection_name}"
+                        f"ChromaDBVectorDB using pooled connection for: {collection_name}"
                     )
 
                 logger.debug(
@@ -102,20 +102,16 @@ class ChromaDBVectorDB(VectorDBBase):
                 chroma_port = config("CHROMA_PORT", default=8000, cast=int)
 
                 if self.is_background:
-                    # Background processing gets fresh connections - no pooling to avoid interference
                     self.chroma_client = chromadb.HttpClient(
                         host=chroma_host,
                         port=chroma_port,
                         ssl=False,
                     )
-                    self.connection_manager = (
-                        None  # No connection manager for background
-                    )
+                    self.connection_manager = None
                     logger.debug(
-                        f"🔄 Background ChromaDBVectorDB created fresh connection for: {collection_name}"
+                        f"Background ChromaDBVectorDB created fresh connection for: {collection_name}"
                     )
                 else:
-                    # Main thread gets pooled connections
                     self.connection_manager = get_connection_manager()
                     self.chroma_client = (
                         self.connection_manager.get_chromadb_connection(
@@ -127,14 +123,14 @@ class ChromaDBVectorDB(VectorDBBase):
                         self.enabled = False
                         return
                     logger.debug(
-                        f"♻️ ChromaDBVectorDB using pooled connection for: {collection_name}"
+                        f"ChromaDBVectorDB using pooled connection for: {collection_name}"
                     )
 
                 logger.debug(
                     f"ChromaDB Remote client initialized for host: {chroma_host} and port: {chroma_port}"
                 )
             else:
-                logger.error(f"❌ Unsupported ChromaDB client type: {client_type}")
+                logger.error(f"Unsupported ChromaDB client type: {client_type}")
                 self.enabled = False
                 return
 
@@ -232,7 +228,8 @@ class ChromaDBVectorDB(VectorDBBase):
 
             filtered_results = []
             for doc, meta, dist in zip(documents, metadatas, distances):
-                score = 1 - dist  # Convert distance to similarity score
+                # Convert distance to similarity score
+                score = 1 - dist
                 if score >= similarity_threshold:
                     filtered_results.append(
                         {"document": doc, "metadata": meta, "score": score}

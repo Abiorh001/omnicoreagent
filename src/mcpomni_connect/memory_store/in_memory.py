@@ -130,8 +130,6 @@ class InMemoryStore(AbstractMemoryStore):
             ]
         else:
             filtered = messages
-
-        logger.info(f"returning {len(filtered)} messages after filtering")
         # Return deep copies so caller cannot change our internal store
         return [copy.deepcopy(m) for m in filtered]
 

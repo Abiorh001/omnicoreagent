@@ -14,12 +14,12 @@ from mcpomni_connect.memory_store.memory_management.shared_embedding import (
     load_embed_model,
 )
 from mcpomni_connect.utils import logger, utc_now_str
-# No more pre-loaded variables - everything imports when needed
+
 
 # Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
-_CACHE_TTL = 600  # 10 minutes (changed from 30 minutes for faster testing)
-_CACHE_LOCK = threading.RLock()  # Thread-safe cache access
+_CACHE_TTL = 60  # 10 minutes
+_CACHE_LOCK = threading.RLock()
 
 
 # Thread pool for background processing
@@ -78,7 +78,6 @@ class MemoryManager:
 
         provider = provider.lower()
 
-        # Try provider-specific initialization with sensible fallbacks
         if provider == "qdrant-remote":
             try:
                 # Import QdrantVectorDB when needed
@@ -150,7 +149,6 @@ class MemoryManager:
             except Exception as e:
                 logger.warning(f"Failed to initialize ChromaDB ({client_type}): {e}")
 
-        # No fallback - if the configured provider fails, vector DB is disabled
         logger.warning(
             f"Vector database provider '{provider}' failed - vector DB disabled"
         )
@@ -169,7 +167,7 @@ class MemoryManager:
                 {"role": "user", "content": message},
             ]
 
-            # Use sync call for memory processing
+            # Use sync llm call for memory processing
             response = llm_connection.llm_call_sync(llm_messages)
             if response and response.choices:
                 content = response.choices[0].message.content
@@ -193,7 +191,6 @@ class MemoryManager:
                 {"role": "user", "content": message},
             ]
 
-            # Use sync call for memory processing
             response = llm_connection.llm_call_sync(llm_messages)
 
             if response and response.choices:
@@ -236,7 +233,7 @@ class MemoryManager:
         if timestamp_str.endswith("Z"):
             timestamp_str = timestamp_str[:-1] + "+00:00"
         dt = datetime.fromisoformat(timestamp_str)
-        # Ensure it’s timezone-aware and normalized to UTC
+
         if dt.tzinfo is None:
             return dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
@@ -262,7 +259,7 @@ class MemoryManager:
                 cache_age = (now - cached_time).total_seconds()
                 if cache_age < _CACHE_TTL:
                     logger.debug(
-                        f"REDIS CACHE HIT for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s)"
+                        f"CACHE HIT for {self.memory_type} (age: {int(cache_age)}s, TTL: {_CACHE_TTL}s)"
                     )
                     if cached_last_timestamp:
                         return cached_last_timestamp
@@ -320,7 +317,7 @@ class MemoryManager:
                     continue
 
         if valid_datetimes:
-            latest = max(valid_datetimes)  # highest datetime is the most recent
+            latest = max(valid_datetimes)
             return latest
         else:
             return datetime.now(timezone.utc)
@@ -356,7 +353,7 @@ class MemoryManager:
             # Only proceed if at least cache TTL has passed since last summary
             if last_timestamp is None:
                 logger.debug(
-                    "🕐 No previous memory summary found, proceeding with all messages"
+                    "No previous memory summary found, proceeding with all messages"
                 )
             else:
                 time_diff_seconds = (
@@ -368,7 +365,7 @@ class MemoryManager:
 
                 if time_diff_seconds < _CACHE_TTL:
                     logger.debug(
-                        f"🕐 Last {self.memory_type} memory summary was {int(time_diff_seconds)} seconds ago, which is less than the cache TTL of {_CACHE_TTL} seconds. Skipping summarization."
+                        f"Last {self.memory_type} memory summary was {int(time_diff_seconds)} seconds ago, which is less than the cache TTL of {_CACHE_TTL} seconds. Skipping summarization."
                     )
                     return
 
@@ -404,7 +401,7 @@ class MemoryManager:
             # count message to ensure min is 10 before summarizing or return
             # if len(messages_to_summarize) < 5:
             #     logger.debug(
-            #         f"🕐 Only {len(messages_to_summarize)} new messages since last summary, skipping summarization"
+            #         f"Only {len(messages_to_summarize)} new messages since last summary, skipping summarization"
             #     )
             #     return
             # Summarize and store
@@ -472,7 +469,7 @@ class MemoryManager:
                 n_results=n_results,
                 similarity_threshold=similarity_threshold,
             )
-            # lets see the scores
+
             #  logger.debug(f"QUERY RESULTS HERE: {results}")
             if isinstance(results, dict) and "documents" in results:
                 documents = results["documents"]

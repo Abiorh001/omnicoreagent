@@ -304,7 +304,7 @@ Patterns Found:"""
         print("🚀 Initializing OmniAgent CLI...")
 
         # Initialize routers
-        self.memory_router = MemoryRouter("database")
+        self.memory_router = MemoryRouter("redis")
         self.event_router = EventRouter("in_memory")
 
         # Initialize agent with exact same config as working example
@@ -312,8 +312,8 @@ Patterns Found:"""
             name="comprehensive_demo_agent",
             system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
-                "provider": "gemini",
-                "model": "gemini-2.5-flash",
+                "provider": "openai",
+                "model": "gpt-4.1",
                 "temperature": 0.3,
                 "max_context_length": 5000,
             },

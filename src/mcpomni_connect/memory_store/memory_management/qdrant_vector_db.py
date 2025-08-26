@@ -39,7 +39,7 @@ class QdrantVectorDB(VectorDBBase):
                         None  # No connection manager for background
                     )
                     logger.debug(
-                        f"🔄 Background QdrantVectorDB created fresh connection for: {collection_name}"
+                        f"Background QdrantVectorDB created fresh connection for: {collection_name}"
                     )
                 else:
                     # Main thread gets pooled connections
@@ -48,7 +48,7 @@ class QdrantVectorDB(VectorDBBase):
                         self.qdrant_host, self.qdrant_port
                     )
                     logger.debug(
-                        f"♻️ QdrantVectorDB using pooled connection for: {collection_name}"
+                        f"QdrantVectorDB using pooled connection for: {collection_name}"
                     )
 
                 self.enabled = self.client is not None

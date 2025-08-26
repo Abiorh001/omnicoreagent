@@ -18,4 +18,6 @@ qdrant_db/
 site/
 .chroma_db/
 .chroma_warmup/
+._last_processed.json
+*.db
 venv/

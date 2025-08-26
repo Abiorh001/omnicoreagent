@@ -30,7 +30,7 @@ class MongoDBVectorDB(VectorDBBase):
         # MongoDB Atlas Vector Search specific settings
         self.similarity = "dotProduct"  # Default similarity metric
         self.dimensions = self._vector_size  # Use the shared embedding model size
-        self.quantization = "scalar"  # Better performance than none
+        self.quantization = "scalar"
 
         if self.mongodb_uri:
             try:
@@ -48,7 +48,7 @@ class MongoDBVectorDB(VectorDBBase):
                         None  # No connection manager for background
                     )
                     logger.debug(
-                        f"🔄 Background MongoDBVectorDB created fresh connection for: {collection_name}"
+                        f"Background MongoDBVectorDB created fresh connection for: {collection_name}"
                     )
                 else:
                     # Main thread gets pooled connections
@@ -61,7 +61,7 @@ class MongoDBVectorDB(VectorDBBase):
                     if self.client is not None and self.db is not None:
                         self.collection = self.db[self.collection_name]
                         logger.debug(
-                            f"♻️ MongoDBVectorDB using pooled connection for: {collection_name}"
+                            f"MongoDBVectorDB using pooled connection for: {collection_name}"
                         )
                     else:
                         logger.warning("Failed to get MongoDB connection from pool")
@@ -173,7 +173,7 @@ class MongoDBVectorDB(VectorDBBase):
                 self.db.create_collection(self.collection_name)
                 logger.debug(f"Created new MongoDB collection: {self.collection_name}")
 
-            # Create vector search index if it doesn't exist (only once during init)
+            # Create vector search index if it doesn't exist
             self.index_name = self._create_vector_search_index()
 
         except Exception as e:

@@ -72,25 +72,25 @@ class VectorDBConnectionManager:
                         "usage_count": 0,
                     }
                     logger.debug(
-                        f"🔌 [ConnectionManager] Created new Qdrant connection: {connection_key} (host={host}:{port})"
+                        f"[ConnectionManager] Created new Qdrant connection: {connection_key} (host={host}:{port})"
                     )
                     logger.debug(
-                        f"📊 [ConnectionManager] Total connections: {len(self._connections)}"
+                        f"[ConnectionManager] Total connections: {len(self._connections)}"
                     )
                 except Exception as e:
                     logger.error(
-                        f"❌ [ConnectionManager] Failed to create Qdrant connection: {e}"
+                        f"[ConnectionManager] Failed to create Qdrant connection: {e}"
                     )
                     return None
             else:
                 logger.debug(
-                    f"♻️ [ConnectionManager] Reusing existing Qdrant connection: {connection_key}"
+                    f"[ConnectionManager] Reusing existing Qdrant connection: {connection_key}"
                 )
 
             connection = self._connections[connection_key]
             connection["usage_count"] += 1
             logger.debug(
-                f"📈 [ConnectionManager] Qdrant connection usage count: {connection_key} = {connection['usage_count']}"
+                f"[ConnectionManager] Qdrant connection usage count: {connection_key} = {connection['usage_count']}"
             )
             return connection["client"]
 
@@ -114,25 +114,25 @@ class VectorDBConnectionManager:
                         "usage_count": 0,
                     }
                     logger.debug(
-                        f"🔌 [ConnectionManager] Created new MongoDB connection: {connection_key} (db={db_name})"
+                        f"[ConnectionManager] Created new MongoDB connection: {connection_key} (db={db_name})"
                     )
                     logger.debug(
-                        f"📊 [ConnectionManager] Total connections: {len(self._connections)}"
+                        f"[ConnectionManager] Total connections: {len(self._connections)}"
                     )
                 except Exception as e:
                     logger.error(
-                        f"❌ [ConnectionManager] Failed to create MongoDB connection: {e}"
+                        f"[ConnectionManager] Failed to create MongoDB connection: {e}"
                     )
                     return None, None
             else:
                 logger.debug(
-                    f"♻️ [ConnectionManager] Reusing existing MongoDB connection: {connection_key}"
+                    f"[ConnectionManager] Reusing existing MongoDB connection: {connection_key}"
                 )
 
             connection = self._connections[connection_key]
             connection["usage_count"] += 1
             logger.debug(
-                f"📈 [ConnectionManager] MongoDB connection usage count: {connection_key} = {connection['usage_count']}"
+                f"[ConnectionManager] MongoDB connection usage count: {connection_key} = {connection['usage_count']}"
             )
             return connection["client"], connection["db"]
 
@@ -167,7 +167,7 @@ class VectorDBConnectionManager:
                         )
                     else:
                         logger.error(
-                            f"❌ [ConnectionManager] Unsupported ChromaDB client type: {client_type}"
+                            f"[ConnectionManager] Unsupported ChromaDB client type: {client_type}"
                         )
                         return None
 
@@ -181,25 +181,25 @@ class VectorDBConnectionManager:
                         "usage_count": 0,
                     }
                     logger.debug(
-                        f"🔌 [ConnectionManager] Created new ChromaDB connection: {connection_key} (type={client_type})"
+                        f"[ConnectionManager] Created new ChromaDB connection: {connection_key} (type={client_type})"
                     )
                     logger.debug(
-                        f"📊 [ConnectionManager] Total connections: {len(self._connections)}"
+                        f"[ConnectionManager] Total connections: {len(self._connections)}"
                     )
                 except Exception as e:
                     logger.error(
-                        f"❌ [ConnectionManager] Failed to create ChromaDB connection: {e}"
+                        f"[ConnectionManager] Failed to create ChromaDB connection: {e}"
                     )
                     return None
             else:
                 logger.debug(
-                    f"♻️ [ConnectionManager] Reusing existing ChromaDB connection: {connection_key}"
+                    f"[ConnectionManager] Reusing existing ChromaDB connection: {connection_key}"
                 )
 
             connection = self._connections[connection_key]
             connection["usage_count"] += 1
             logger.debug(
-                f"📈 [ConnectionManager] ChromaDB connection usage count: {connection_key} = {connection['usage_count']}"
+                f"[ConnectionManager] ChromaDB connection usage count: {connection_key} = {connection['usage_count']}"
             )
             return connection["client"]
 
@@ -234,11 +234,11 @@ class VectorDBConnectionManager:
                 connection = self._connections[connection_key]
                 connection["usage_count"] = max(0, connection["usage_count"] - 1)
                 logger.debug(
-                    f"📉 [ConnectionManager] Released {provider} connection: {connection_key}, new usage count: {connection['usage_count']}"
+                    f"[ConnectionManager] Released {provider} connection: {connection_key}, new usage count: {connection['usage_count']}"
                 )
             else:
                 logger.warning(
-                    f"⚠️ [ConnectionManager] Tried to release non-existent connection: {connection_key}"
+                    f"[ConnectionManager] Tried to release non-existent connection: {connection_key}"
                 )
 
     def get_connection_stats(self) -> Dict[str, Any]:

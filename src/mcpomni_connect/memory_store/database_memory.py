@@ -4,10 +4,13 @@ from urllib.parse import urlparse
 
 
 class DatabaseMemory(AbstractMemoryStore):
-    def __init__(self, db_url: str):
+    def __init__(self, db_url: str = None):
         """
         Initialize the database memory store and set up the database message store service.
         """
+        if db_url is None:
+            raise ValueError("Database URL is required for DatabaseMemory")
+
         self.db_url = db_url
 
         self.db_session = DatabaseMessageStore(db_url=db_url)
