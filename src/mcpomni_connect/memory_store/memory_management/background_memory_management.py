@@ -17,7 +17,6 @@ from mcpomni_connect.utils import logger
 _GLOBAL_THREAD_POOL = ThreadPoolExecutor(max_workers=4)
 
 
-# --- BackgroundMemoryManager (improved) ---
 class BackgroundMemoryManager:
     def __init__(
         self,
@@ -40,14 +39,12 @@ class BackgroundMemoryManager:
 
     def stop(self):
         self._running = False
-        # no executor here to shutdown globally; use app shutdown handler to shutdown _GLOBAL_THREAD_POOL
 
     def _process_both_memories(self, messages: List[Dict[str, Any]]):
         """Create a dedicated loop inside this thread and run memory work."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            # Run both concurrently in the same loop (non-blocking to each other)
             loop.run_until_complete(
                 asyncio.gather(
                     self._process_memory(messages, "episodic"),
@@ -63,11 +60,10 @@ class BackgroundMemoryManager:
                 pass
 
     async def _process_memory(self, messages: List[Dict[str, Any]], memory_type: str):
-        # Create MemoryManager inside this thread/loop
         memory_manager = MemoryManager(
             agent_name=self.agent_name,
             memory_type=memory_type,
-            is_background=True,  # Signal that this is background processing
+            is_background=True,
         )
 
         if not memory_manager.vector_db or not memory_manager.vector_db.enabled:

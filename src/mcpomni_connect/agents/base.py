@@ -130,9 +130,9 @@ class BaseReactAgent:
                         ),
                     )
                     end_time = asyncio.get_event_loop().time()
-                    logger.info(
-                        f"Memory queries took {end_time - start_time:.2f} seconds"
-                    )
+                    # logger.info(
+                    #     f"Memory queries took {end_time - start_time:.2f} seconds"
+                    # )
                     return long_term_results, episodic_results
 
                 # Enforce timeout (10 seconds)
@@ -159,7 +159,6 @@ class BaseReactAgent:
                 "No relevant episodic memory found",
             )
 
-    @track("response_parsing")
     async def extract_action_or_answer(
         self,
         response: str,
@@ -309,8 +308,8 @@ class BaseReactAgent:
             else:
                 logger.debug("Vector DB disabled - skipping memory processing")
         except Exception as e:
-            logger.error(f"❌ Error in memory processing: {e}")
-            logger.error(f"📋 Full traceback: {traceback.format_exc()}")
+            logger.error(f"Error in memory processing: {e}")
+
         for message in validated_messages:
             role = message.role
             metadata = message.metadata

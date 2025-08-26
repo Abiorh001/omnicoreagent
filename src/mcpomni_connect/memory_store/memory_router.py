@@ -14,17 +14,30 @@ class MemoryRouter:
         if memory_store_type == "in_memory":
             self.memory_store = InMemoryStore()
         elif memory_store_type == "database":
-            db_url = decouple_config(
-                "DATABASE_URL", default="sqlite:///mcpomni_memory.db"
-            )
-            self.memory_store = DatabaseMemory(db_url=db_url)
+            db_url = decouple_config("DATABASE_URL", default=None)
+            if db_url is None:
+                logger.info("Database not configured, using in_memory")
+                self.memory_store = InMemoryStore()
+            else:
+                self.memory_store = DatabaseMemory(db_url=db_url)
         elif memory_store_type == "redis":
-            self.memory_store = RedisMemoryStore()
+            redis_url = decouple_config("REDIS_URL", default=None)
+            if redis_url is None:
+                logger.info("Redis not configured, using in_memory")
+                self.memory_store = InMemoryStore()
+            else:
+                self.memory_store = RedisMemoryStore(redis_url=redis_url)
         elif memory_store_type == "mongodb":
-            uri = decouple_config("MONGODB_URI", default="mongodb://localhost:27017/")
-            db_name = decouple_config("MONGODB_DB_NAME", default="mcpomni_connect")
-            collection = decouple_config("MONGODB_COLLECTION", default="messages")
-            self.memory_store = MongoDb(uri=uri, db_name=db_name, collection=collection)
+            uri = decouple_config("MONGODB_URI", default=None)
+            if uri is None:
+                logger.info("MongoDB not configured, using in_memory")
+                self.memory_store = InMemoryStore()
+            else:
+                db_name = decouple_config("MONGODB_DB_NAME", default="omniagent")
+                collection = decouple_config("MONGODB_COLLECTION", default="messages")
+                self.memory_store = MongoDb(
+                    uri=uri, db_name=db_name, collection=collection
+                )
         else:
             raise ValueError(f"Invalid memory store type: {memory_store_type}")
 
