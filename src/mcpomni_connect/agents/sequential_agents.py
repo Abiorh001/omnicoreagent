@@ -15,10 +15,13 @@ class SequentialAgent(BaseReactAgent):
         self.agent_config = config
 
         super().__init__(
-            config.agent_name,
-            config.max_steps,
-            config.tool_call_timeout,
-            config.mcp_enabled,
+            agent_name=config.agent_name,
+            max_steps=config.max_steps,
+            tool_call_timeout=config.tool_call_timeout,
+            request_limit=config.request_limit,
+            total_tokens_limit=config.total_tokens_limit,
+            memory_results_limit=config.memory_results_limit,
+            memory_similarity_threshold=config.memory_similarity_threshold,
         )
 
     async def run_agent(

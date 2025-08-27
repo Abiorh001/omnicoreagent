@@ -1,14 +1,6 @@
-import threading
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Optional, Dict, Any
-from datetime import datetime, timezone
-import json
-import os
-from pathlib import Path
-import uuid
-import tempfile
-import logging
+from typing import Callable, List, Dict, Any
 from mcpomni_connect.memory_store.memory_management.memory_manager import MemoryManager
 from mcpomni_connect.memory_store.memory_router import MemoryRouter
 from mcpomni_connect.utils import logger
@@ -64,6 +56,7 @@ class BackgroundMemoryManager:
             agent_name=self.agent_name,
             memory_type=memory_type,
             is_background=True,
+            llm_connection=self.llm_connection,
         )
 
         if not memory_manager.vector_db or not memory_manager.vector_db.enabled:

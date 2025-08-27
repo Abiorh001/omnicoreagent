@@ -1,24 +1,23 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Callable, Optional, Tuple
-from mcpomni_connect.utils import logger, is_vector_db_enabled
+from typing import List, Any, Callable, Optional, Tuple
+from mcpomni_connect.utils import (
+    logger,
+    is_vector_db_enabled,
+    is_embedding_requirements_met,
+)
 from decouple import config
-import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from mcpomni_connect.memory_store.memory_management.system_prompts import (
     episodic_memory_constructor_system_prompt,
     long_term_memory_constructor_system_prompt,
 )
-from mcpomni_connect.memory_store.memory_management.shared_embedding import (
-    load_embed_model,
-)
-from mcpomni_connect.utils import logger, utc_now_str
 
 
 # Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
-_CACHE_TTL = 60  # 10 minutes
+_CACHE_TTL = 1800  # 30 minutes TTL
 _CACHE_LOCK = threading.RLock()
 
 
@@ -47,18 +46,26 @@ _initialize_memory_system()
 class MemoryManager:
     """Memory management operations ."""
 
-    def __init__(self, agent_name: str, memory_type: str, is_background: bool = False):
+    def __init__(
+        self,
+        agent_name: str,
+        memory_type: str,
+        is_background: bool = False,
+        llm_connection: Callable = None,
+    ):
         """Initialize memory manager with automatic backend selection.
 
         Args:
             agent_name: Name of the agent
             memory_type: Type of memory (episodic, long_term)
             is_background: Whether this is for background processing
+            llm_connection: LLM connection for embeddings (optional)
         """
 
         self.agent_name = agent_name
         self.memory_type = memory_type
         self.is_background = is_background
+        self.llm_connection = llm_connection
         self.collection_name = f"{self.agent_name}_{self.memory_type}"
         # Check if vector database is enabled
         if not is_vector_db_enabled():
@@ -66,8 +73,25 @@ class MemoryManager:
             self.vector_db = None
             return
 
-        # Load embedding model once (shared across all instances)
-        load_embed_model()
+        # Check if embedding requirements are met
+        if not is_embedding_requirements_met():
+            logger.error(
+                "Vector database is enabled but no embedding API key is set. Please set EMBEDDING_API_KEY environment variable."
+            )
+            self.vector_db = None
+            return
+
+        # Verify LLM connection is provided
+        if not self.llm_connection:
+            logger.error(
+                "LLM connection is required for vector database operations. Please provide llm_connection parameter."
+            )
+            self.vector_db = None
+            return
+
+        logger.debug(
+            "Embedding requirements met - using LLM-based embeddings via LiteLLM"
+        )
 
         # Determine provider from config
         provider = config("OMNI_MEMORY_PROVIDER", default=None)
@@ -89,6 +113,7 @@ class MemoryManager:
                     self.collection_name,
                     memory_type=memory_type,
                     is_background=self.is_background,
+                    llm_connection=self.llm_connection,
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using Qdrant for {memory_type} memory")
@@ -109,6 +134,7 @@ class MemoryManager:
                     self.collection_name,
                     memory_type=memory_type,
                     is_background=self.is_background,
+                    llm_connection=self.llm_connection,
                 )
                 if self.vector_db.enabled:
                     logger.debug(f"Using MongoDB for {memory_type} memory")
@@ -138,6 +164,7 @@ class MemoryManager:
                     self.collection_name,
                     memory_type=memory_type,
                     client_type=client_type,
+                    llm_connection=self.llm_connection,
                 )
                 if self.vector_db.enabled:
                     logger.debug(
@@ -398,12 +425,12 @@ class MemoryManager:
 
             if not messages_to_summarize:
                 return
-            # count message to ensure min is 10 before summarizing or return
-            # if len(messages_to_summarize) < 5:
-            #     logger.debug(
-            #         f"Only {len(messages_to_summarize)} new messages since last summary, skipping summarization"
-            #     )
-            #     return
+            # count message to ensure min is 15 before summarizing or return
+            if len(messages_to_summarize) < 15:
+                logger.debug(
+                    f"Only {len(messages_to_summarize)} new messages since last summary, skipping summarization"
+                )
+                return
             # Summarize and store
             conversation_text = self._format_conversation(messages_to_summarize)
 
@@ -435,7 +462,7 @@ class MemoryManager:
                 doc_id=doc_id,
             )
 
-            logger.debug(f"💾 Successfully stored memory document with ID: {doc_id}")
+            logger.debug(f"Successfully stored memory document with ID: {doc_id}")
             # Update last processed message timestamp
             await add_last_processed_messages(
                 session_id=session_id,
@@ -470,7 +497,7 @@ class MemoryManager:
                 similarity_threshold=similarity_threshold,
             )
 
-            #  logger.debug(f"QUERY RESULTS HERE: {results}")
+            # logger.info(f"QUERY RESULTS HERE: {results}")
             if isinstance(results, dict) and "documents" in results:
                 documents = results["documents"]
                 return documents
@@ -489,13 +516,20 @@ class MemoryManagerFactory:
     @staticmethod
     def create_both_memory_managers(
         agent_name: str,
+        llm_connection: Callable = None,
     ) -> Tuple[Optional[MemoryManager], Optional[MemoryManager]]:
         """Create both episodic and long-term memory managers."""
         if not is_vector_db_enabled():
             logger.debug("Vector database disabled - skipping memory manager creation")
             return None, None
-        episodic = MemoryManager(agent_name=agent_name, memory_type="episodic")
-        long_term = MemoryManager(agent_name=agent_name, memory_type="long_term")
+        episodic = MemoryManager(
+            agent_name=agent_name, memory_type="episodic", llm_connection=llm_connection
+        )
+        long_term = MemoryManager(
+            agent_name=agent_name,
+            memory_type="long_term",
+            llm_connection=llm_connection,
+        )
         return episodic, long_term
 
 

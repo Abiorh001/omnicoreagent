@@ -13,6 +13,8 @@ class ReactAgent(BaseReactAgent):
             tool_call_timeout=config.tool_call_timeout,
             request_limit=config.request_limit,
             total_tokens_limit=config.total_tokens_limit,
+            memory_results_limit=config.memory_results_limit,
+            memory_similarity_threshold=config.memory_similarity_threshold,
         )
 
     async def _run(

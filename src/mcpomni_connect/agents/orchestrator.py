@@ -12,7 +12,7 @@ from mcpomni_connect.agents.token_usage import (
 from mcpomni_connect.agents.types import AgentConfig, ParsedResponse
 from mcpomni_connect.constants import AGENTS_REGISTRY
 from mcpomni_connect.system_prompts import generate_react_agent_prompt_template
-from mcpomni_connect.utils import logger, track, OPIK_AVAILABLE
+from mcpomni_connect.utils import logger, track
 import json
 import re
 from mcpomni_connect.events.base import (
@@ -41,6 +41,8 @@ class OrchestratorAgent(BaseReactAgent):
             tool_call_timeout=config.tool_call_timeout,
             request_limit=config.request_limit,
             total_tokens_limit=config.total_tokens_limit,
+            memory_results_limit=config.memory_results_limit,
+            memory_similarity_threshold=config.memory_similarity_threshold,
         )
         self.agents_registry = agents_registry
         self.current_date_time = current_date_time
@@ -367,7 +369,8 @@ class OrchestratorAgent(BaseReactAgent):
         current_steps = 0
         while current_steps < self.max_steps:
             current_steps += 1
-            self.usage_limits.check_before_request(usage=usage)
+            if self._limits_enabled:
+                self.usage_limits.check_before_request(usage=usage)
             try:
                 if self.debug:
                     logger.info(

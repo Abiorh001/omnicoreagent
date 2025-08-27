@@ -34,6 +34,7 @@ class OmniAgent:
         mcp_tools: List[Union[Dict[str, Any], MCPToolConfig]] = None,
         local_tools: Optional[Any] = None,  # LocalToolsIntegration instance
         agent_config: Optional[Union[Dict[str, Any], AgentConfig]] = None,
+        embedding_config: Optional[Dict[str, Any]] = None,
         memory_store: Optional[MemoryRouter] = None,
         event_router: Optional[EventRouter] = None,
         debug: bool = False,
@@ -48,6 +49,7 @@ class OmniAgent:
             mcp_tools: List of MCP tool configurations (optional)
             local_tools: LocalToolsIntegration instance (optional)
             agent_config: Optional agent configuration
+            embedding_config: Optional embedding configuration
             memory_store: Optional memory store (MemoryRouter)
             event_router: Optional event router (EventRouter)
             debug: Enable debug logging
@@ -59,6 +61,8 @@ class OmniAgent:
         self.mcp_tools = mcp_tools or []
         self.local_tools = local_tools
         self.agent_config = agent_config
+        self.embedding_config = embedding_config or {}
+
         self.debug = debug
         self.memory_store = memory_store or MemoryRouter(memory_store_type="in_memory")
         self.event_router = event_router or EventRouter(event_store_type="in_memory")
@@ -84,6 +88,7 @@ class OmniAgent:
             model_config=self.model_config,
             mcp_tools=self.mcp_tools,
             agent_config=agent_config_with_name,
+            embedding_config=self.embedding_config,
         )
 
         # Save to hidden location
@@ -108,8 +113,8 @@ class OmniAgent:
                 "agent_name": self.name,
                 "tool_call_timeout": 30,
                 "max_steps": 15,
-                "request_limit": 5000,
-                "total_tokens_limit": 40000000,
+                "request_limit": 0,
+                "total_tokens_limit": 0,
                 "memory_config": {"mode": "token_budget", "value": 30000},
             }
 

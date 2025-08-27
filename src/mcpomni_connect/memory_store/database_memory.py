@@ -1,6 +1,5 @@
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from mcpomni_connect.database.database_message_store import DatabaseMessageStore
-from urllib.parse import urlparse
 
 
 class DatabaseMemory(AbstractMemoryStore):

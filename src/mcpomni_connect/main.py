@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -96,8 +95,10 @@ def check_config_exists():
             "AgentConfig": {
                 "tool_call_timeout": 30,
                 "max_steps": 15,
-                "request_limit": 1000,
-                "total_tokens_limit": 100000,
+                "request_limit": 0,
+                "total_tokens_limit": 0,
+                "memory_results_limit": 5,
+                "memory_similarity_threshold": 0.5,
             },
             "LLM": {
                 "provider": "provider_namer",
@@ -173,6 +174,12 @@ async def async_main():
         client = MCPClient(config, config_filename=str(config_path))
         # Use the LLMConnection from MCPClient to avoid duplication
         llm_connection = client.llm_connection
+        if llm_connection is None:
+            logger.error(
+                "LLM configuration is required but not available. Please check your LLM configuration in servers_config.json"
+            )
+            return
+
         cli = MCPClientCLI(client, llm_connection)
 
         await client.connect_to_servers()

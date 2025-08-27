@@ -1,10 +1,7 @@
-from pymongo.mongo_client import MongoClient
-from pymongo.server_api import ServerApi
 from pymongo.operations import SearchIndexModel
 from bson.binary import Binary, BinaryVectorDtype
 from mcpomni_connect.utils import logger
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from typing import Dict, Any
 from decouple import config
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase
 from mcpomni_connect.memory_store.memory_management.connection_manager import (
@@ -29,9 +26,37 @@ class MongoDBVectorDB(VectorDBBase):
 
         # MongoDB Atlas Vector Search specific settings
         self.similarity = "dotProduct"  # Default similarity metric
-        self.dimensions = self._vector_size  # Use the shared embedding model size
+        self.dimensions = self._get_embedding_dimensions()  # Get dimensions from config
         self.quantization = "scalar"
 
+        # Initialize MongoDB connection
+        self.__init_connection()
+
+    def _get_embedding_dimensions(self) -> int:
+        """Get embedding dimensions from configuration - STRICT MODE."""
+        if not self.llm_connection:
+            raise ValueError("LLM connection is required to get embedding dimensions")
+
+        if not hasattr(self.llm_connection, "embedding_config"):
+            raise ValueError("LLM connection does not have embedding configuration")
+
+        embedding_config = self.llm_connection.embedding_config
+        if not embedding_config:
+            raise ValueError("Embedding configuration is not available")
+
+        if "dimensions" not in embedding_config:
+            raise ValueError("Embedding configuration is missing 'dimensions' field")
+
+        dimensions = embedding_config["dimensions"]
+        if not isinstance(dimensions, int) or dimensions <= 0:
+            raise ValueError(
+                f"Invalid dimensions value: {dimensions}. Must be a positive integer."
+            )
+
+        return dimensions
+
+    def __init_connection(self):
+        """Initialize MongoDB connection and collection."""
         if self.mongodb_uri:
             try:
                 if self.is_background:
@@ -48,7 +73,7 @@ class MongoDBVectorDB(VectorDBBase):
                         None  # No connection manager for background
                     )
                     logger.debug(
-                        f"Background MongoDBVectorDB created fresh connection for: {collection_name}"
+                        f"Background MongoDBVectorDB created fresh connection for: {self.collection_name}"
                     )
                 else:
                     # Main thread gets pooled connections
@@ -61,7 +86,7 @@ class MongoDBVectorDB(VectorDBBase):
                     if self.client is not None and self.db is not None:
                         self.collection = self.db[self.collection_name]
                         logger.debug(
-                            f"MongoDBVectorDB using pooled connection for: {collection_name}"
+                            f"MongoDBVectorDB using pooled connection for: {self.collection_name}"
                         )
                     else:
                         logger.warning("Failed to get MongoDB connection from pool")

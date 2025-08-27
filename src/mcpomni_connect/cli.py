@@ -44,7 +44,7 @@ from mcpomni_connect.system_prompts import (
 from mcpomni_connect.tools import list_tools
 from mcpomni_connect.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
 
-CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "_")
+CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "ab")
 
 
 class CommandType(Enum):
@@ -376,6 +376,11 @@ class MCPClientCLI:
         self.llm_connection = llm_connection
 
         # Use the already-loaded configuration from LLMConnection to avoid duplication
+        if llm_connection is None:
+            raise ValueError(
+                "LLM connection is required but not available. Please check your LLM configuration."
+            )
+
         config = llm_connection.get_loaded_config()
         self.agent_config = config["AgentConfig"]
         self.MAX_CONTEXT_TOKENS = config["LLM"]["max_context_length"]
@@ -795,11 +800,15 @@ class MCPClientCLI:
             transient=True,
         ) as progress:
             progress.add_task("Loading resource...", total=None)
+            # Use LLM call if available, otherwise provide a no-op function
+            llm_call_func = (
+                self.llm_connection.llm_call if self.llm_connection else None
+            )
             content = await read_resource(
                 uri=uri,
                 sessions=self.client.sessions,
                 available_resources=self.client.available_resources,
-                llm_call=self.llm_connection.llm_call,
+                llm_call=llm_call_func,
                 debug=self.client.debug,
                 request_limit=self.agent_config["request_limit"],
                 total_tokens_limit=self.agent_config["total_tokens_limit"],
@@ -863,9 +872,11 @@ class MCPClientCLI:
             name, arguments = self.parse_prompt_command(input_text)
 
             # Check if current LLM supports tools
-            supported_tools = LLMToolSupport.check_tool_support(
-                self.llm_connection.llm_config
-            )
+            supported_tools = False
+            if self.llm_connection and self.llm_connection.llm_config:
+                supported_tools = LLMToolSupport.check_tool_support(
+                    self.llm_connection.llm_config
+                )
 
             if supported_tools:
                 # Generate system prompt for tool-supporting LLMs
@@ -874,10 +885,14 @@ class MCPClientCLI:
                     available_tools=self.client.available_tools,
                     llm_connection=self.llm_connection,
                 )
+                # Use LLM call if available
+                llm_call_func = (
+                    self.llm_connection.llm_call if self.llm_connection else None
+                )
                 content = await get_prompt(
                     sessions=self.client.sessions,
                     system_prompt=system_prompt,
-                    llm_call=self.llm_connection.llm_call,
+                    llm_call=llm_call_func,
                     add_message_to_history=self.memory_router.store_message,
                     debug=self.client.debug,
                     available_prompts=self.client.available_prompts,
@@ -930,7 +945,14 @@ class MCPClientCLI:
                     max_steps=self.agent_config.get("max_steps"),
                     request_limit=self.agent_config.get("request_limit"),
                     total_tokens_limit=self.agent_config.get("total_tokens_limit"),
+                    memory_similarity_threshold=self.agent_config.get(
+                        "memory_similarity_threshold", 0.5
+                    ),
+                    memory_results_limit=self.agent_config.get(
+                        "memory_results_limit", 5
+                    ),
                 )
+                # Generate ReAct agent prompt
                 react_agent_prompt = generate_react_agent_prompt(
                     current_date_time=date_time_func["format_date"]()
                 )
