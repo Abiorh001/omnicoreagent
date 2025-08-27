@@ -2,7 +2,6 @@ import asyncio
 import json
 import re
 import uuid
-import os
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -34,7 +33,6 @@ from mcpomni_connect.utils import (
     logger,
     show_tool_response,
     track,
-    OPIK_AVAILABLE,
     is_vector_db_enabled,
 )
 from mcpomni_connect.events.base import (
@@ -48,7 +46,6 @@ from mcpomni_connect.events.base import (
     UserMessagePayload,
 )
 import traceback
-from decouple import config
 
 
 # Import memory system first to ensure initialization
@@ -56,7 +53,6 @@ if is_vector_db_enabled():
     logger.info("Vector database is enabled")
     try:
         # Import memory system to trigger initialization
-        from mcpomni_connect.memory_store.memory_management import shared_embedding
         from mcpomni_connect.memory_store.memory_management.memory_manager import (
             MemoryManagerFactory,
         )
@@ -78,8 +74,10 @@ class BaseReactAgent:
         agent_name: str,
         max_steps: int,
         tool_call_timeout: int,
-        request_limit: int,
-        total_tokens_limit: int,
+        request_limit: int = 0,
+        total_tokens_limit: int = 0,
+        memory_results_limit: int = 5,
+        memory_similarity_threshold: float = 0.5,
     ):
         self.agent_name = agent_name
         # Enforce minimum 5 steps to allow proper tool usage and reasoning
@@ -89,8 +87,22 @@ class BaseReactAgent:
                 f"Agent {agent_name}: max_steps increased from {max_steps} to 5 (minimum required for tool usage)"
             )
         self.tool_call_timeout = tool_call_timeout
+
+        # Production-ready limits: 0 means unlimited (skip checks)
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
+        self._limits_enabled = request_limit > 0 or total_tokens_limit > 0
+
+        if self._limits_enabled:
+            logger.info(
+                f"Usage limits enabled: {request_limit} requests, {total_tokens_limit} tokens"
+            )
+        else:
+            logger.info("Usage limits disabled (production mode)")
+
+        # Memory retrieval configuration with sensible defaults
+        self.memory_results_limit = memory_results_limit
+        self.memory_similarity_threshold = memory_similarity_threshold
 
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
@@ -103,36 +115,58 @@ class BaseReactAgent:
         )
 
     @track("memory_retrieval")
-    async def get_long_episodic_memory(self, query: str, session_id: str):
-        """Get long-term and episodic memory for a given query and session ID using optimized single query"""
+    async def get_long_episodic_memory(
+        self,
+        query: str,
+        session_id: str,
+        llm_connection: Callable = None,
+    ):
+        """Get long-term and episodic memory for a given query and session ID using optimized single query
+
+        Args:
+            query: The search query for memory retrieval
+            session_id: The session ID to search within
+            llm_connection: LLM connection for vector operations
+            results_limit: Number of results to retrieve (overrides default if provided)
+            similarity_threshold: Similarity threshold for filtering (overrides default if provided)
+        """
         try:
             # Check if vector database is enabled
             if not is_vector_db_enabled():
                 logger.debug("Vector database disabled - skipping memory retrieval")
                 return [], []
 
+            limit = self.memory_results_limit
+            threshold = self.memory_similarity_threshold
+
+            logger.debug(f"Memory retrieval: limit={limit}, threshold={threshold}")
+
             try:
                 # Vector DB is enabled - load memory functions and use them
                 episodic_manager, long_term_manager = (
                     MemoryManagerFactory.create_both_memory_managers(
-                        agent_name=self.agent_name
+                        agent_name=self.agent_name, llm_connection=llm_connection
                     )
                 )
 
                 async def run_queries():
-                    start_time = asyncio.get_event_loop().time()
                     long_term_results, episodic_results = await asyncio.gather(
                         asyncio.to_thread(
-                            long_term_manager.query_memory, query, session_id, 5, 0.5
+                            long_term_manager.query_memory,
+                            query,
+                            session_id,
+                            limit,
+                            threshold,
                         ),
                         asyncio.to_thread(
-                            episodic_manager.query_memory, query, session_id, 5, 0.5
+                            episodic_manager.query_memory,
+                            query,
+                            session_id,
+                            limit,
+                            threshold,
                         ),
                     )
-                    end_time = asyncio.get_event_loop().time()
-                    # logger.info(
-                    #     f"Memory queries took {end_time - start_time:.2f} seconds"
-                    # )
+
                     return long_term_results, episodic_results
 
                 # Enforce timeout (10 seconds)
@@ -853,7 +887,7 @@ class BaseReactAgent:
             @track("memory_retrieval_step")
             async def get_memory():
                 return await self.get_long_episodic_memory(
-                    query=query, session_id=session_id
+                    query=query, session_id=session_id, llm_connection=llm_connection
                 )
 
             long_term_memory, episodic_memory = await get_memory()
@@ -919,7 +953,8 @@ class BaseReactAgent:
                         f"Sending {len(self.messages[self.agent_name])} messages to LLM"
                     )
                 current_steps += 1
-                self.usage_limits.check_before_request(usage=usage)
+                if self._limits_enabled:
+                    self.usage_limits.check_before_request(usage=usage)
 
                 try:
 
@@ -947,7 +982,7 @@ class BaseReactAgent:
 
                         await handle_agent_event()
 
-                        # check if it has usage
+                        # check if it has usage - always record, but only enforce limits when enabled
                         if hasattr(response, "usage"):
                             request_usage = Usage(
                                 requests=current_steps,
@@ -956,34 +991,48 @@ class BaseReactAgent:
                                 total_tokens=response.usage.total_tokens,
                             )
                             usage.incr(request_usage)
-                            # Check if we've exceeded token limits
-                            self.usage_limits.check_tokens(usage)
-                            # Show remaining resources
-                            remaining_tokens = self.usage_limits.remaining_tokens(usage)
-                            used_tokens = usage.total_tokens
-                            used_requests = usage.requests
-                            remaining_requests = self.request_limit - used_requests
-                            session_stats.update(
-                                {
-                                    "used_requests": used_requests,
-                                    "used_tokens": used_tokens,
-                                    "remaining_requests": remaining_requests,
-                                    "remaining_tokens": remaining_tokens,
-                                    "request_tokens": request_usage.request_tokens,
-                                    "response_tokens": request_usage.response_tokens,
-                                    "total_tokens": request_usage.total_tokens,
-                                }
-                            )
-                            if debug:
-                                logger.info(
-                                    f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
-                                    f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
-                                    f"Request Tokens: {request_usage.request_tokens}, "
-                                    f"Response Tokens: {request_usage.response_tokens}, "
-                                    f"Total Tokens: {request_usage.total_tokens}, "
-                                    f"Remaining Requests: {remaining_requests}, "
-                                    f"Remaining Tokens: {remaining_tokens}"
+
+                            # Only enforce limits if they're enabled
+                            if self._limits_enabled:
+                                # Check if we've exceeded token limits
+                                self.usage_limits.check_tokens(usage)
+                                # Show remaining resources
+                                remaining_tokens = self.usage_limits.remaining_tokens(
+                                    usage
                                 )
+                                used_tokens = usage.total_tokens
+                                used_requests = usage.requests
+                                remaining_requests = self.request_limit - used_requests
+                                session_stats.update(
+                                    {
+                                        "used_requests": used_requests,
+                                        "used_tokens": used_tokens,
+                                        "remaining_requests": remaining_requests,
+                                        "remaining_tokens": remaining_tokens,
+                                        "request_tokens": request_usage.request_tokens,
+                                        "response_tokens": request_usage.response_tokens,
+                                        "total_tokens": request_usage.total_tokens,
+                                    }
+                                )
+                                if debug:
+                                    logger.info(
+                                        f"API Call Stats - Requests: {used_requests}/{self.request_limit}, "
+                                        f"Tokens: {used_tokens}/{self.usage_limits.total_tokens_limit}, "
+                                        f"Request Tokens: {request_usage.request_tokens}, "
+                                        f"Response Tokens: {request_usage.response_tokens}, "
+                                        f"Total Tokens: {request_usage.total_tokens}, "
+                                        f"Remaining Requests: {remaining_requests}, "
+                                        f"Remaining Tokens: {remaining_tokens}"
+                                    )
+                            else:
+                                # Just log usage without limits
+                                if debug:
+                                    logger.info(
+                                        f"Usage recorded (limits disabled): "
+                                        f"Request Tokens: {request_usage.request_tokens}, "
+                                        f"Response Tokens: {request_usage.response_tokens}, "
+                                        f"Total Tokens: {request_usage.total_tokens}"
+                                    )
 
                         if hasattr(response, "choices"):
                             response = response.choices[0].message.content.strip()

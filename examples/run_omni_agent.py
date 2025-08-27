@@ -312,8 +312,8 @@ Patterns Found:"""
             name="comprehensive_demo_agent",
             system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
-                "provider": "openai",
-                "model": "gpt-4.1",
+                "provider": "gemini",
+                "model": "gemini-2.5-pro",
                 "temperature": 0.3,
                 "max_context_length": 5000,
             },
@@ -332,8 +332,15 @@ Patterns Found:"""
             agent_config={
                 "max_steps": 15,
                 "tool_call_timeout": 60,
-                "request_limit": 1000,
+                # "request_limit": 0,
+                # "total_tokens_limit": 10000,
                 "memory_config": {"mode": "sliding_window", "value": 100},
+            },
+            embedding_config={
+                "provider": "gemini",
+                "model": "text-embedding-004",
+                "dimensions": 768,
+                "encoding_format": "float",
             },
             memory_store=self.memory_router,
             event_router=self.event_router,
@@ -729,7 +736,7 @@ Patterns Found:"""
                 "agent_config": {
                     "max_steps": 10,
                     "tool_call_timeout": 30,
-                    "request_limit": 1000,
+                    "request_limit": 3,
                     "memory_config": {"mode": "token_budget", "value": 5000},
                 },
                 "interval": 30,

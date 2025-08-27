@@ -100,8 +100,8 @@ class UsageLimits:
 
     def __post_init__(self) -> None:
         """Validate limits upon initialization."""
-        if self.request_limit is not None and self.request_limit <= 0:
-            raise ValueError("request_limit must be positive if specified")
+        if self.request_limit is not None and self.request_limit < 0:
+            raise ValueError("request_limit must be non-negative if specified")
 
         for limit_name in (
             "request_tokens_limit",
@@ -109,8 +109,8 @@ class UsageLimits:
             "total_tokens_limit",
         ):
             limit_value = getattr(self, limit_name)
-            if limit_value is not None and limit_value <= 0:
-                raise ValueError(f"{limit_name} must be positive if specified")
+            if limit_value is not None and limit_value < 0:
+                raise ValueError(f"{limit_name} must be non-negative if specified")
 
     def has_token_limits(self) -> bool:
         """Returns `True` if this instance places any limits on token counts.
@@ -121,7 +121,7 @@ class UsageLimits:
         If there are no limits, we can skip that processing in the streaming response iterator.
         """
         return any(
-            limit is not None
+            limit is not None and limit > 0
             for limit in (
                 self.request_tokens_limit,
                 self.response_tokens_limit,
@@ -163,6 +163,10 @@ class UsageLimits:
         Raises:
             UsageLimitExceeded: If the next request would exceed the request_limit
         """
+        # Skip check if request_limit is 0 (unlimited)
+        if self.request_limit == 0:
+            return
+
         if self.request_limit is not None and usage.requests >= self.request_limit:
             raise UsageLimitExceeded(
                 f"The next request would exceed the request_limit of {self.request_limit}. "
@@ -204,6 +208,7 @@ class UsageLimits:
         total_tokens = usage.total_tokens or 0
         if (
             self.total_tokens_limit is not None
+            and self.total_tokens_limit > 0
             and total_tokens > self.total_tokens_limit
         ):
             raise UsageLimitExceeded(

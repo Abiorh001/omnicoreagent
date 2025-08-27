@@ -448,8 +448,10 @@ async def main():
             agent_config={
                 "max_steps": 15,
                 "tool_call_timeout": 60,
-                "request_limit": 1000,
-                "memory_config": {"mode": "token_budget", "value": 10000},
+                "request_limit": 0,  # 0 = unlimited (production mode)
+                "total_tokens_limit": 0,  # 0 = unlimited (production mode)
+                "memory_results_limit": 5,  # Number of memory results to retrieve
+                "memory_similarity_threshold": 0.5,  # Similarity threshold for memory filtering
             },
             memory_store=memory_store,
             event_router=event_router,

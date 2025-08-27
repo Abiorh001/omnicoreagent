@@ -7,9 +7,8 @@ thread safety and isolation for background processing.
 """
 
 import threading
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any
 from contextlib import contextmanager
-from decouple import config
 from mcpomni_connect.utils import logger
 
 

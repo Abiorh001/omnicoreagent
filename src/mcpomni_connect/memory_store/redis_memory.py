@@ -1,12 +1,11 @@
 import json
-import time
 from typing import Any, List, Optional
 import redis.asyncio as redis
 from decouple import config
 import threading
 
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
-from mcpomni_connect.utils import logger, utc_now_str
+from mcpomni_connect.utils import logger
 from datetime import datetime, timezone
 
 REDIS_URL = config("REDIS_URL", default=None)
@@ -408,7 +407,7 @@ class RedisMemoryStore(AbstractMemoryStore):
         keys = await client.keys(pattern)
 
         if not keys:
-            logger.debug(f"No session keys found")
+            logger.debug("No session keys found")
             return
 
         total_removed = 0

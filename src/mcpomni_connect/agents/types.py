@@ -2,17 +2,37 @@
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
-from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AgentConfig(BaseModel):
     agent_name: str
-    request_limit: int
-    total_tokens_limit: int
+    request_limit: int = Field(default=0, description="0 = unlimited (production mode)")
+    total_tokens_limit: int = Field(
+        default=0, description="0 = unlimited (production mode)"
+    )
     max_steps: int = Field(gt=0, le=1000)
     tool_call_timeout: int = Field(gt=1, le=1000)
     memory_config: dict = {"mode": "sliding_window", "value": 10000}
+    memory_results_limit: int = Field(
+        default=5, ge=1, le=100, description="Number of memory results to retrieve"
+    )
+    memory_similarity_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Similarity threshold for memory filtering",
+    )
+
+    @field_validator("request_limit", "total_tokens_limit", mode="before")
+    @classmethod
+    def convert_none_to_zero(cls, v):
+        return 0 if v is None else v
+
+    @field_validator("request_limit", "total_tokens_limit", mode="before")
+    @classmethod
+    def convert_none_to_zero(cls, v):
+        return 0 if v is None else v
 
 
 class AgentState(str, Enum):

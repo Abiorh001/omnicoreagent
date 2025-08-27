@@ -13,7 +13,8 @@ def agent():
         tool_call_timeout=10,
         request_limit=5,
         total_tokens_limit=1000,
-        mcp_enabled=False,
+        memory_results_limit=5,
+        memory_similarity_threshold=0.5,
     )
 
 

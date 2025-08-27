@@ -158,14 +158,18 @@ class Configuration:
     """Manages configuration and environment variables for the MCP client."""
 
     llm_api_key: str = field(init=False)
+    embedding_api_key: str = field(init=False)
 
     def __post_init__(self) -> None:
         """Initialize configuration with environment variables."""
         self.load_env()
         self.llm_api_key = decouple_config("LLM_API_KEY", default=None)
+        self.embedding_api_key = decouple_config("EMBEDDING_API_KEY", default=None)
 
         if not self.llm_api_key:
             raise ValueError("LLM_API_KEY not found in environment variables")
+
+        # Note: embedding_api_key is not enforced here - only when calling embedding methods
 
     @staticmethod
     def load_env() -> None:
@@ -216,7 +220,21 @@ class MCPClient:
         self.added_servers_names = {}  # this to map the name used in the config and the actual server name gotten after initialization
         self.debug = debug
         self.system_prompt = None
-        self.llm_connection = LLMConnection(self.config, self.config_filename)
+        # Create LLM connection only if LLM configuration is available
+        self.llm_connection = None
+        if self.config and hasattr(self.config, "llm_api_key"):
+            try:
+                self.llm_connection = LLMConnection(self.config, self.config_filename)
+                if self.llm_connection and self.llm_connection.llm_config:
+                    logger.debug("LLM connection initialized successfully")
+                else:
+                    logger.debug(
+                        "LLM configuration not available, LLM features will be disabled"
+                    )
+                    self.llm_connection = None
+            except Exception as e:
+                logger.warning(f"Failed to initialize LLM connection: {e}")
+                self.llm_connection = None
         self.sampling_callback = samplingCallback()
         self.tasks = {}
         self.server_count = 0

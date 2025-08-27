@@ -19,7 +19,7 @@ from mcpomni_connect.events.base import (
     UserMessagePayload,
     ToolCallErrorPayload,
 )
-from mcpomni_connect.utils import logger, track, OPIK_AVAILABLE
+from mcpomni_connect.utils import logger, track
 
 
 class ToolCallingAgent:

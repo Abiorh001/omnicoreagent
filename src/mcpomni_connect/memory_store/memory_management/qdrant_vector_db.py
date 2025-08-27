@@ -1,9 +1,7 @@
-from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from qdrant_client.models import VectorParams, Distance
 from mcpomni_connect.utils import logger
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from typing import Dict, Any
 from qdrant_client import models
 from decouple import config
 from mcpomni_connect.memory_store.memory_management.vector_db_base import VectorDBBase

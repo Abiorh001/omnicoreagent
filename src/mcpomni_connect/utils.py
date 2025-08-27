@@ -24,11 +24,18 @@ logger.setLevel(logging.INFO)
 
 # Vector database feature flag
 ENABLE_VECTOR_DB = decouple_config("ENABLE_VECTOR_DB", default=False, cast=bool)
+# Embedding API key for LLM-based embeddings
+EMBEDDING_API_KEY = decouple_config("EMBEDDING_API_KEY", default=None)
 
 
 def is_vector_db_enabled() -> bool:
     """Check if vector database features are enabled."""
     return ENABLE_VECTOR_DB
+
+
+def is_embedding_requirements_met() -> bool:
+    """Check if embedding requirements are met (both vector DB and API key are set)."""
+    return ENABLE_VECTOR_DB and EMBEDDING_API_KEY is not None
 
 
 # Remove any existing handlers
@@ -571,6 +578,10 @@ try:
                     return func
 
                 return decorator
+
+            return decorator
+
+            return decorator
 except ImportError:
     # No-op decorator if Opik is not available
     def track(name_or_func=None):

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 import threading
 from mcpomni_connect.memory_store.base import AbstractMemoryStore
 from mcpomni_connect.utils import logger, utc_now_str

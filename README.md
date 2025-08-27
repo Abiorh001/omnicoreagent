@@ -450,6 +450,18 @@ LLM_API_KEY=your_openai_api_key_here
 #### **⚡ OPTIONAL: Advanced Features**
 ```bash
 # ===============================================
+# Embeddings (OPTIONAL) - NEW!
+# ===============================================
+# For generating text embeddings (vector representations)
+# Choose one provider - same key works for all embedding models
+EMBEDDING_API_KEY=your_embedding_api_key_here
+# OR for other providers:
+# EMBEDDING_API_KEY=your_cohere_api_key_here
+# EMBEDDING_API_KEY=your_huggingface_api_key_here
+# EMBEDDING_API_KEY=your_mistral_api_key_here
+# See docs/EMBEDDING_README.md for all provider configs
+
+# ===============================================
 # Tracing & Observability (OPTIONAL) - NEW!
 # ===============================================
 # For advanced monitoring and performance optimization
@@ -1255,8 +1267,10 @@ async def get_tools():
   "AgentConfig": {
     "tool_call_timeout": 30,
     "max_steps": 15,
-    "request_limit": 1000,
-    "total_tokens_limit": 100000
+    "request_limit": 0,          // 0 = unlimited (production mode), set > 0 to enable limits
+    "total_tokens_limit": 0,     // 0 = unlimited (production mode), set > 0 to enable limits
+    "memory_results_limit": 5,   // Number of memory results to retrieve (1-100, default: 5)
+    "memory_similarity_threshold": 0.5  // Similarity threshold for memory filtering (0.0-1.0, default: 0.5)
   },
   "LLM": {
     "provider": "openai",
@@ -1648,8 +1662,10 @@ You can configure these in your `servers_config.json` under the `AgentConfig` se
 "AgentConfig": {
     "tool_call_timeout": 30,        // Tool call timeout in seconds
     "max_steps": 15,                // Max number of steps before termination
-    "request_limit": 1000,          // Max number of requests allowed
-    "total_tokens_limit": 100000    // Max number of tokens allowed
+    "request_limit": 0,          // 0 = unlimited (production mode), set > 0 to enable limits
+    "total_tokens_limit": 0,     // 0 = unlimited (production mode), set > 0 to enable limits
+    "memory_results_limit": 5,   // Number of memory results to retrieve (1-100, default: 5)
+    "memory_similarity_threshold": 0.5  // Similarity threshold for memory filtering (0.0-1.0, default: 0.5)
 }
 ```
 
