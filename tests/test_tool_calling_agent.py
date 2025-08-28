@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from mcpomni_connect.agents.tool_calling_agent import ToolCallingAgent
-from mcpomni_connect.agents.types import AgentConfig
+from omnicoreagent.core.agents.tool_calling_agent import ToolCallingAgent
+from omnicoreagent.core.agents.types import AgentConfig
 
 
 @pytest.fixture

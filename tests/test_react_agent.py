@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mcpomni_connect.agents.react_agent import ReactAgent
-from mcpomni_connect.agents.types import AgentConfig
+from omnicoreagent.core.agents.react_agent import ReactAgent
+from omnicoreagent.core.agents.types import AgentConfig
 
 
 @pytest.fixture

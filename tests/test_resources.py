@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mcpomni_connect.resources import (
+from omnicoreagent.mcp_omni_connect.resources import (
     find_resource_server,
     list_resources,
     read_resource,

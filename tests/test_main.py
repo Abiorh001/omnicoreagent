@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from mcpomni_connect.main import async_main, check_config_exists
+from omnicoreagent.mcp_omni_connect.main import async_main, check_config_exists
 
 
 @pytest.fixture
@@ -151,7 +151,7 @@ async def test_async_main_error():
 @pytest.mark.OpenAIIntegration
 def test_main():
     """Test main function"""
-    from mcpomni_connect.main import main
+    from omnicoreagent.mcp_omni_connect.main import main
 
     with patch(
         "mcpomni_connect.main.async_main", new_callable=AsyncMock

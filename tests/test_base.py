@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mcpomni_connect.agents.base import BaseReactAgent
+from omnicoreagent.core.agents.base import BaseReactAgent
 
 
 @pytest.fixture

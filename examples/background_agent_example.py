@@ -4,21 +4,26 @@ Background Agent Example - Demonstrates the new standardized TaskRegistry approa
 """
 
 import asyncio
-import sys
 import os
 
 
-# Add src to path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
-
-from mcpomni_connect.omni_agent.background_agent.background_agent_manager import (
+# TOP-LEVEL IMPORTS (Recommended for most use cases)
+from omnicoreagent import (
     BackgroundAgentManager,
+    MemoryRouter,
+    EventRouter,
+    ToolRegistry,
+    logger,
 )
 
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.events.event_router import EventRouter
-from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
-from mcpomni_connect.utils import logger
+# LOW-LEVEL IMPORTS (Alternative approach for advanced users)
+# from omnicoreagent.omni_agent.background_agent.background_agent_manager import (
+#     BackgroundAgentManager,
+# )
+# from omnicoreagent.core.memory_store.memory_router import MemoryRouter
+# from omnicoreagent.core.events.event_router import EventRouter
+# from omnicoreagent.core.tools.local_tools_registry import ToolRegistry
+# from omnicoreagent.core.utils import logger
 
 
 async def create_tool_registry() -> ToolRegistry:
@@ -29,7 +34,6 @@ async def create_tool_registry() -> ToolRegistry:
     @tool_registry.register_tool("file_monitor")
     def monitor_files(directory: str = "/tmp") -> str:
         """Monitor files in a directory."""
-        import os
 
         try:
             if not os.path.exists(directory):
@@ -129,7 +133,6 @@ Patterns Found:"""
     @tool_registry.register_tool("directory_info")
     def get_directory_info(directory: str = "/tmp") -> str:
         """Get detailed information about a directory."""
-        import os
         import time
 
         try:
@@ -584,7 +587,7 @@ async def main():
         logger.info("\n📦 Initializing Components...")
 
         # Create memory and event routers
-        memory_store = MemoryRouter(memory_store_type="in_memory")
+        memory_router = MemoryRouter(memory_store_type="in_memory")
         event_router = EventRouter(event_store_type="in_memory")
 
         # Create tool registry
@@ -592,7 +595,7 @@ async def main():
 
         # Create background agent manager
         manager = BackgroundAgentManager(
-            memory_store=memory_store, event_router=event_router
+            memory_router=memory_router, event_router=event_router
         )
 
         logger.info("✅ Components initialized")

@@ -6,13 +6,10 @@ Runs independently to avoid event loop conflicts
 
 import asyncio
 import json
-import sys
 import os
 from datetime import datetime
 from typing import AsyncGenerator
 
-# Add src to path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -21,16 +18,20 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from mcpomni_connect.omni_agent import OmniAgent
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.events.event_router import EventRouter
-from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
-from mcpomni_connect.utils import logger
+# TOP-LEVEL IMPORTS (Recommended for most use cases)
+from omnicoreagent import OmniAgent, MemoryRouter, EventRouter, ToolRegistry, logger
+
+# LOW-LEVEL IMPORTS (Alternative approach for advanced users)
+# from omnicoreagent.omni_agent import OmniAgent
+# from omnicoreagent.core.memory_store.memory_router import MemoryRouter
+# from omnicoreagent.core.events.event_router import EventRouter
+# from omnicoreagent.core.tools.local_tools_registry import ToolRegistry
+# from omnicoreagent.core.utils import logger
 
 
 class OmniAgentWebServer:
     def __init__(self):
-        self.app = FastAPI(title="OmniAgent Interface", version="1.0.0")
+        self.app = FastAPI(title="OmniAgent Interface", version="0.0.22")
         self.agent = None
         self.setup_middleware()
         self.setup_routes()
@@ -306,7 +307,6 @@ class OmniAgentWebServer:
         @tool_registry.register_tool("list_directory")
         def list_directory(path: str = ".") -> str:
             """List contents of a directory."""
-            import os
 
             try:
                 if not os.path.exists(path):

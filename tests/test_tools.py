@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from mcpomni_connect.tools import list_tools
+from omnicoreagent.mcp_omni_connect.tools import list_tools
 
 # Mock data for testing
 MOCK_TOOLS = {
