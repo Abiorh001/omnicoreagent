@@ -1,4 +1,4 @@
-from mcpomni_connect.llm_support import LLMToolSupport
+from omnicoreagent.core.llm_support import LLMToolSupport
 
 
 class TestLLMToolSupport:

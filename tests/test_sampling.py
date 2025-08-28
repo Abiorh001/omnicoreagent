@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mcpomni_connect.sampling import samplingCallback
-from mcpomni_connect.types import ContextInclusion
+from omnicoreagent.mcp_omni_connect.sampling import samplingCallback
+from omnicoreagent.core.types import ContextInclusion
 
 
 @pytest.mark.asyncio

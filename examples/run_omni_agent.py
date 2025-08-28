@@ -8,21 +8,27 @@ import asyncio
 import argparse
 import sys
 import subprocess
-from pathlib import Path
 from typing import Optional
 
-# Add the src directory to the path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from mcpomni_connect.omni_agent.agent import OmniAgent
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.events.event_router import EventRouter
-from mcpomni_connect.omni_agent.background_agent.background_agent_manager import (
+# TOP-LEVEL IMPORTS (Recommended for most use cases)
+from omnicoreagent import (
+    OmniAgent,
+    MemoryRouter,
+    EventRouter,
     BackgroundAgentManager,
+    ToolRegistry,
 )
 
-from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
-from mcpomni_connect.utils import logger
+# LOW-LEVEL IMPORTS (Alternative approach for advanced users)
+# from omnicoreagent.omni_agent.agent import OmniAgent
+# from omnicoreagent.core.memory_store.memory_router import MemoryRouter
+# from omnicoreagent.core.events.event_router import EventRouter
+# from omnicoreagent.omni_agent.background_agent.background_agent_manager import (
+#     BackgroundAgentManager,
+# )
+# from omnicoreagent.core.tools.local_tools_registry import ToolRegistry
+# from omnicoreagent.core.utils import logger
 
 # instantiate the tool registry
 tool_registry = ToolRegistry()
@@ -312,8 +318,8 @@ Patterns Found:"""
             name="comprehensive_demo_agent",
             system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
             model_config={
-                "provider": "gemini",
-                "model": "gemini-2.5-pro",
+                "provider": "openai",
+                "model": "gpt-4.1",
                 "temperature": 0.3,
                 "max_context_length": 5000,
             },
@@ -342,14 +348,14 @@ Patterns Found:"""
                 "dimensions": 768,
                 "encoding_format": "float",
             },
-            memory_store=self.memory_router,
+            memory_router=self.memory_router,
             event_router=self.event_router,
             debug=True,
         )
 
         # Initialize background agent manager
         self.background_manager = BackgroundAgentManager(
-            memory_store=self.memory_router, event_router=self.event_router
+            memory_router=self.memory_router, event_router=self.event_router
         )
 
         print("✅ OmniAgent CLI initialized successfully")

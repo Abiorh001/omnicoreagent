@@ -1,6 +1,6 @@
 from unittest.mock import Mock, patch, AsyncMock
 import pytest
-from mcpomni_connect.llm import LLMConnection
+from omnicoreagent.core.llm import LLMConnection
 
 
 # Shared mock config loader

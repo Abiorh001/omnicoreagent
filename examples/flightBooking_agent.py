@@ -4,11 +4,15 @@ import json
 import os
 from typing import Optional
 
-from mcpomni_connect.omni_agent.agent import OmniAgent
-from mcpomni_connect.memory_store.memory_router import MemoryRouter
-from mcpomni_connect.events.event_router import EventRouter
-from mcpomni_connect.agents.tools.local_tools_registry import ToolRegistry
-from mcpomni_connect.utils import logger
+# TOP-LEVEL IMPORTS (Recommended for most use cases)
+from omnicoreagent import OmniAgent, MemoryRouter, EventRouter, ToolRegistry, logger
+
+# LOW-LEVEL IMPORTS (Alternative approach for advanced users)
+# from omnicoreagent.omni_agent.agent import OmniAgent
+# from omnicoreagent.core.memory_store.memory_router import MemoryRouter
+# from omnicoreagent.core.events.event_router import EventRouter
+# from omnicoreagent.core.tools.local_tools_registry import ToolRegistry
+# from omnicoreagent.core.utils import logger
 
 # ------------------ Config / CRM bootstrap ------------------ #
 CRM_FILE = "crm.json"

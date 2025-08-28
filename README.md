@@ -9,6 +9,10 @@
 [![Open Issues](https://img.shields.io/github/issues/Abiorh001/mcp_omni_connect)](https://github.com/Abiorh001/mcp_omni_connect/issues)
 [![Pull Requests](https://img.shields.io/github/issues-pr/Abiorh001/mcp_omni_connect)](https://github.com/Abiorh001/mcp_omni_connect/pulls)
 
+<p align="center">
+  <img src="Gemini_Generated_Image_pfgm65pfgm65pfgmcopy.png" alt="OmniCoreAgent Logo" width="250"/>
+</p>
+
 **MCPOmni Connect** is the complete AI platform that evolved from a world-class MCP client into a revolutionary ecosystem. It now includes **OmniAgent** - the ultimate AI agent builder born from MCPOmni Connect's powerful foundation. Build production-ready AI agents, use the advanced MCP CLI, or combine both for maximum power.
 
 ## 📋 Table of Contents
@@ -38,10 +42,6 @@
 - [🔍 Troubleshooting](#-troubleshooting)
 - [🤝 Contributing](#-contributing)
 - [📖 Documentation](#-documentation)
-
----
-
-## 🚀 Quick Start (2 minutes)
 
 **New to MCPOmni Connect?** Get started in 2 minutes:
 

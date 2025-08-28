@@ -3,7 +3,7 @@ import tempfile
 
 import pytest
 
-from mcpomni_connect.memory import (
+from omnicoreagent.core.memory_store.in_memory import (
     InMemoryStore,
 )
 

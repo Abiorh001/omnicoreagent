@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 import asyncio
 
-from mcpomni_connect.main import main
-from mcpomni_connect.utils import logger
+# TOP-LEVEL IMPORTS (Recommended for most use cases)
+from omnicoreagent import main, logger
+
+# LOW-LEVEL IMPORTS (Alternative approach for advanced users)
+# from omnicoreagent.mcp_omni_connect.main import main
+# from omnicoreagent.core.utils import logger
 
 if __name__ == "__main__":
     try:

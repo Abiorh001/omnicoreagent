@@ -1,12 +1,12 @@
 import os
 from unittest.mock import AsyncMock, Mock, patch
 
-from mcpomni_connect.client import Configuration  # noqa: E402
-from mcpomni_connect.llm import LLMConnection  # noqa: E402
-from mcpomni_connect.refresh_server_capabilities import (
+from omnicoreagent.mcp_omni_connect.client import Configuration  # noqa: E402
+from omnicoreagent.core.llm import LLMConnection  # noqa: E402
+from omnicoreagent.mcp_omni_connect.refresh_server_capabilities import (
     refresh_capabilities,  # noqa: E402
 )
-from mcpomni_connect.system_prompts import (
+from omnicoreagent.core.system_prompts import (
     generate_react_agent_role_prompt,  # noqa: E402
 )
 import pytest
