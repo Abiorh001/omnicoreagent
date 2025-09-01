@@ -169,9 +169,10 @@ class VectorDBBase(ABC):
         elif hasattr(embedding_data, "embedding"):
             embedding = embedding_data.embedding
         else:
-            logger.error(f"Embedding data structure: {embedding_data}")
             raise RuntimeError("LLM embedding response missing embedding field")
 
+        # If embedding is a string (base64), decode it
+        if isinstance(embedding, str):
             try:
                 import base64
                 import numpy as np
@@ -181,7 +182,6 @@ class VectorDBBase(ABC):
                 logger.debug(
                     f"Converted base64 embedding to {len(embedding)} float values"
                 )
-
             except Exception as e:
                 logger.error(f"Failed to decode base64 embedding: {e}")
                 raise RuntimeError(f"Failed to decode base64 embedding: {e}")
