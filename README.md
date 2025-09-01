@@ -16,7 +16,6 @@
 > All imports and CLI commands now use `omnicoreagent`.  
 > Update your code and scripts accordingly.
 
-[![PyPI Downloads](...)](https://...)
 ...
 
 [![PyPI Downloads](https://static.pepy.tech/badge/omnicoreagent)](https://pepy.tech/projects/omnicoreagent)
