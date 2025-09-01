@@ -51,7 +51,7 @@ class BackgroundAgentManager:
 
         logger.info("Initialized BackgroundAgentManager")
 
-    def create_agent(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_agent(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create a new background agent.
 
@@ -85,6 +85,9 @@ class BackgroundAgentManager:
                 event_router=self.event_router,
                 task_registry=self.task_registry,  # Pass TaskRegistry to agent
             )
+            mcp_tools = config.get("mcp_tools", False)
+            if mcp_tools:
+                await agent.connect_mcp_servers()
 
             # Store agent and config
             self.agents[agent_id] = agent
@@ -347,6 +350,46 @@ class BackgroundAgentManager:
 
         except Exception as e:
             logger.error(f"Failed to resume agent {agent_id}: {e}")
+            raise
+
+    def stop_agent(self, agent_id: str):
+        """Stop a specific agent: unschedule and cleanup its resources."""
+        if agent_id not in self.agents:
+            raise ValueError(f"Agent {agent_id} not found")
+
+        try:
+            # Remove scheduled task if any
+            if self.scheduler.is_task_scheduled(agent_id):
+                self.scheduler.remove_task(agent_id)
+
+            # Trigger agent cleanup (non-blocking)
+            agent = self.agents[agent_id]
+            asyncio.create_task(agent.cleanup())
+            logger.info(f"Stopped agent {agent_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to stop agent {agent_id}: {e}")
+            raise
+
+    def start_agent(self, agent_id: str):
+        """Start (schedule) a specific agent. Ensures manager/scheduler is running."""
+        if agent_id not in self.agents:
+            raise ValueError(f"Agent {agent_id} not found")
+
+        try:
+            if not self.is_running:
+                self.start()
+
+            agent = self.agents[agent_id]
+            # Re-schedule the agent explicitly
+            # Remove any previous schedule to avoid duplication
+            if self.scheduler.is_task_scheduled(agent_id):
+                self.scheduler.remove_task(agent_id)
+            self._schedule_agent(agent_id, agent)
+            logger.info(f"Started (scheduled) agent {agent_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to start agent {agent_id}: {e}")
             raise
 
     async def update_agent_config(self, agent_id: str, new_config: Dict[str, Any]):

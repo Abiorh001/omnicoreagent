@@ -89,6 +89,11 @@ class BackgroundOmniAgent(OmniAgent):
             f"Initialized BackgroundOmniAgent: {self.agent_id} with session_id: {self.session_id}"
         )
 
+    async def connect_mcp_servers(self):
+        """Connect to MCP servers if not already connected."""
+        await super().connect_mcp_servers()
+        logger.info(f"BackgroundOmniAgent {self.agent_id} connected to MCP servers")
+
     def get_session_id(self) -> str:
         """Get the persistent session ID for this background agent."""
         return self.session_id

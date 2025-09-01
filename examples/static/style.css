@@ -150,6 +150,13 @@ body {
     align-self: flex-start;
 }
 
+.message.streaming {
+    background: var(--warning-color);
+    color: var(--text-dark);
+    align-self: flex-start;
+    font-style: italic;
+}
+
 .chat-input {
     display: flex;
     gap: 10px;
@@ -307,6 +314,118 @@ body {
     line-height: 1.5;
 }
 
+/* Notification styles */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    z-index: 1000;
+    animation: slideIn 0.3s ease;
+}
+
+.notification-success {
+    background: var(--success-color);
+}
+
+.notification-error {
+    background: var(--error-color);
+}
+
+.notification-info {
+    background: var(--accent-color);
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* Background agents list styles */
+.background-agent-item {
+    background: var(--bg-light);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-left: 4px solid var(--accent-color);
+}
+
+.background-agent-item h4 {
+    color: var(--accent-color);
+    margin-bottom: 5px;
+}
+
+.background-agent-item p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.background-agent-item .actions {
+    display: flex;
+    gap: 10px;
+}
+
+.background-agent-item .actions button {
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+/* Events list styles */
+.event-item {
+    background: var(--bg-light);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-left: 4px solid var(--success-color);
+}
+
+.event-item h4 {
+    color: var(--success-color);
+    margin-bottom: 5px;
+}
+
+.event-item p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.event-item small {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+}
+
+/* System info styles */
+.system-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.system-info-item {
+    background: var(--bg-light);
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+}
+
+.system-info-item h4 {
+    color: var(--accent-color);
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.system-info-item .value {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--success-color);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .container {
@@ -319,6 +438,10 @@ body {
     }
     
     .tool-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .system-info-grid {
         grid-template-columns: 1fr;
     }
 }

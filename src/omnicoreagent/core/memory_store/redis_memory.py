@@ -161,7 +161,7 @@ class RedisMemoryStore(AbstractMemoryStore):
             client = await self._get_client()
             metadata = metadata or {}
 
-            key = f"mcp_memory:{session_id}"
+            key = f"omnicoreagent_memory:{session_id}"
 
             dt = datetime.now(timezone.utc)  # timezone-aware UTC
             timestamp_iso = dt.isoformat()
@@ -199,7 +199,7 @@ class RedisMemoryStore(AbstractMemoryStore):
         client = None
         try:
             client = await self._get_client()
-            key = f"mcp_memory:{session_id}"
+            key = f"omnicoreagent_memory:{session_id}"
 
             # Get all messages for the session
             raw_messages = await client.zrange(key, 0, -1)

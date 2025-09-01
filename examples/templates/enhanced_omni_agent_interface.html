@@ -82,7 +82,7 @@
                             </div>
                             <div class="form-group">
                                 <label for="agent-schedule">Schedule (Optional):</label>
-                                <input type="text" id="agent-schedule" placeholder="e.g., 'every 5 minutes' or leave empty for immediate">
+                                <input type="text" id="agent-schedule" placeholder="Examples: every 5 minutes | 300 | 10s | 2h (leave empty for immediate)">
                             </div>
                             <button type="submit" class="btn btn-primary">Create Background Agent</button>
                         </form>
@@ -101,6 +101,12 @@
                             </div>
                             <button type="submit" class="btn btn-secondary">Update Task</button>
                         </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>📈 Background Manager Status</h3>
+                        <div id="background-status"><p>Loading...</p></div>
+                        <button id="refresh-bg-status" class="btn btn-secondary" style="margin-top:10px;">Refresh Status</button>
                     </div>
 
                     <div class="card">
@@ -127,6 +133,10 @@
                     <div class="card">
                         <h3>📡 Real-time Event Stream</h3>
                         <p>Live updates from the system and background agents:</p>
+                        <div class="form-group" style="margin-top:10px;">
+                            <button id="events-start" class="btn btn-primary">Start Stream</button>
+                            <button id="events-stop" class="btn btn-secondary">Stop Stream</button>
+                        </div>
                         <div id="events-list">
                             <p>Loading events...</p>
                         </div>
@@ -154,6 +164,28 @@
                         <div id="memory-info">
                             <p>Loading memory information...</p>
                         </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>🧰 Backend Switch</h3>
+                        <div class="form-group">
+                            <label for="memory-backend">Memory Backend</label>
+                            <select id="memory-backend">
+                                <option value="in_memory">in_memory</option>
+                                <option value="redis">redis</option>
+                                <option value="database">database</option>
+                                <option value="mongodb">mongodb</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="event-backend">Event Backend</label>
+                            <select id="event-backend">
+                                <option value="in_memory">in_memory</option>
+                                <option value="redis_stream">redis_stream</option>
+                            </select>
+                        </div>
+                        <button id="apply-backend" class="btn btn-secondary">Apply Backends</button>
+                        <div id="backend-status" style="margin-top:10px;"></div>
                     </div>
                 </div>
             </div>

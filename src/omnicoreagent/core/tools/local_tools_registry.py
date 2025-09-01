@@ -76,12 +76,18 @@ class ToolRegistry:
     ):
         def decorator(func: Callable):
             tool_name = name or func.__name__.lower()
-            final_description = description or (func.__doc__ or "")
+
+            # Prefer explicit description, else docstring, else fallback
+            final_description = description or (
+                func.__doc__ or "No description provided."
+            )
+
+            # Prefer explicit schema, else infer from signature + docstring
             final_schema = inputSchema or self._infer_schema(func)
 
             tool = Tool(
                 name=tool_name,
-                description=final_description,
+                description=final_description.strip(),
                 inputSchema=final_schema,
                 function=func,
             )
@@ -129,13 +135,59 @@ class ToolRegistry:
 
         return await tool.execute(parameters)
 
+    # def _infer_schema(self, func: Callable) -> dict[str, Any]:
+    #     sig = inspect.signature(func)
+    #     props = {}
+    #     required = []
+
+    #     for param_name, param in sig.parameters.items():
+    #         # Skip 'self' parameter for methods
+    #         if param_name == "self":
+    #             continue
+
+    #         param_type = (
+    #             param.annotation
+    #             if param.annotation is not inspect.Parameter.empty
+    #             else str
+    #         )
+
+    #         props[param_name] = {"type": self._map_type(param_type)}
+
+    #         # Add description if available from docstring
+    #         if func.__doc__:
+    #             # Simple docstring parsing for parameter descriptions
+    #             doc_lines = func.__doc__.split("\n")
+    #             for line in doc_lines:
+    #                 if line.strip().startswith(f"{param_name}:"):
+    #                     props[param_name]["description"] = line.split(":", 1)[1].strip()
+    #                     break
+
+    #         if param.default is inspect.Parameter.empty:
+    #             required.append(param_name)
+
+    #     return {
+    #         "type": "object",
+    #         "properties": props,
+    #         "required": required,
+    #         "additionalProperties": False,
+    #     }
+
     def _infer_schema(self, func: Callable) -> dict[str, Any]:
         sig = inspect.signature(func)
         props = {}
         required = []
 
+        # Extract docstring lines for parameter descriptions
+        docstring = func.__doc__ or ""
+        doc_lines = [line.strip() for line in docstring.split("\n") if ":" in line]
+
+        param_docs = {}
+        for line in doc_lines:
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                param_docs[parts[0].strip()] = parts[1].strip()
+
         for param_name, param in sig.parameters.items():
-            # Skip 'self' parameter for methods
             if param_name == "self":
                 continue
 
@@ -144,17 +196,13 @@ class ToolRegistry:
                 if param.annotation is not inspect.Parameter.empty
                 else str
             )
+            schema = {"type": self._map_type(param_type)}
 
-            props[param_name] = {"type": self._map_type(param_type)}
+            # Attach description if found in docstring
+            if param_name in param_docs:
+                schema["description"] = param_docs[param_name]
 
-            # Add description if available from docstring
-            if func.__doc__:
-                # Simple docstring parsing for parameter descriptions
-                doc_lines = func.__doc__.split("\n")
-                for line in doc_lines:
-                    if line.strip().startswith(f"{param_name}:"):
-                        props[param_name]["description"] = line.split(":", 1)[1].strip()
-                        break
+            props[param_name] = schema
 
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)

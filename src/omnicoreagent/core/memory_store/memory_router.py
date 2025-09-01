@@ -6,28 +6,44 @@ from omnicoreagent.core.memory_store.redis_memory import RedisMemoryStore
 from omnicoreagent.core.utils import logger
 from omnicoreagent.core.utils import normalize_metadata
 from omnicoreagent.core.database.mongodb import MongoDb
+from omnicoreagent.core.memory_store.base import AbstractMemoryStore
 
 
 class MemoryRouter:
     def __init__(self, memory_store_type: str):
         self.memory_store_type = memory_store_type
-        if memory_store_type == "in_memory":
+        self.memory_store: Optional[AbstractMemoryStore] = None
+        self.initialize_memory_store()
+
+    def __str__(self):
+        """Return a readable string representation of the MemoryRouter."""
+        return f"MemoryRouter(type={self.memory_store_type}, store={type(self.memory_store).__name__})"
+
+    def __repr__(self):
+        """Return a detailed representation of the MemoryRouter."""
+        return self.__str__()
+
+    def set_memory_config(self, mode: str, value: int = None) -> None:
+        self.memory_store.set_memory_config(mode, value)
+
+    def initialize_memory_store(self):
+        if self.memory_store_type == "in_memory":
             self.memory_store = InMemoryStore()
-        elif memory_store_type == "database":
+        elif self.memory_store_type == "database":
             db_url = decouple_config("DATABASE_URL", default=None)
             if db_url is None:
                 logger.info("Database not configured, using in_memory")
                 self.memory_store = InMemoryStore()
             else:
                 self.memory_store = DatabaseMemory(db_url=db_url)
-        elif memory_store_type == "redis":
+        elif self.memory_store_type == "redis":
             redis_url = decouple_config("REDIS_URL", default=None)
             if redis_url is None:
                 logger.info("Redis not configured, using in_memory")
                 self.memory_store = InMemoryStore()
             else:
                 self.memory_store = RedisMemoryStore(redis_url=redis_url)
-        elif memory_store_type == "mongodb":
+        elif self.memory_store_type == "mongodb":
             uri = decouple_config("MONGODB_URI", default=None)
             if uri is None:
                 logger.info("MongoDB not configured, using in_memory")
@@ -41,16 +57,13 @@ class MemoryRouter:
         else:
             raise ValueError(f"Invalid memory store type: {memory_store_type}")
 
-    def __str__(self):
-        """Return a readable string representation of the MemoryRouter."""
-        return f"MemoryRouter(type={self.memory_store_type}, store={type(self.memory_store).__name__})"
-
-    def __repr__(self):
-        """Return a detailed representation of the MemoryRouter."""
-        return self.__str__()
-
-    def set_memory_config(self, mode: str, value: int = None) -> None:
-        self.memory_store.set_memory_config(mode, value)
+    def swith_memory_store(self, memory_store_type: str):
+        if memory_store_type != self.memory_store_type:
+            self.memory_store_type = memory_store_type
+            self.initialize_memory_store()
+            logger.info(f"Switched memory store to {memory_store_type}")
+        else:
+            logger.info(f"Memory store already set to {memory_store_type}")
 
     async def store_message(
         self,

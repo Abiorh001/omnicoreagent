@@ -220,6 +220,36 @@ class OmniAgent:
 
         return {"response": response, "session_id": session_id, "agent_name": self.name}
 
+    async def list_all_available_tools(self):
+        """List all available tools (MCP and local)"""
+        available_tools = []
+
+        if self.mcp_client:
+            for _, tools in self.mcp_client.available_tools.items():
+                for tool in tools:
+                    # check the type if dict or pydancit model
+                    if isinstance(tool, dict):
+                        available_tools.append(
+                            {
+                                "name": tool.get("name", ""),
+                                "description": tool.get("description", ""),
+                                "inputSchema": tool.get("inputSchema", {}),
+                                "type": "mcp",
+                            }
+                        )
+                    else:
+                        available_tools.append(
+                            {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "inputSchema": tool.inputSchema,
+                                "type": "mcp",
+                            }
+                        )
+        if self.local_tools:
+            available_tools.extend(self.local_tools.get_available_tools())
+        return available_tools
+
     async def get_session_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Get session history for a specific session ID"""
         if not self.memory_router:
@@ -264,6 +294,14 @@ class OmniAgent:
     def switch_event_store(self, event_store_type: str):
         """Switch to a different event store type."""
         self.event_router.switch_event_store(event_store_type)
+
+    def get_memory_store_type(self) -> str:
+        """Get the current memory store type."""
+        return self.memory_router.memory_store_type
+
+    def swith_memory_store(self, memory_store_type: str):
+        """Switch to a different memory store type."""
+        self.memory_router.swith_memory_store(memory_store_type)
 
     async def cleanup(self):
         """Clean up resources"""

@@ -13,7 +13,10 @@ class OmniAgentInterface {
         this.loadTools();
         this.loadBackgroundAgents();
         this.loadEvents();
+        this.loadSystemInfo();
         this.connectWebSocket();
+        // Begin event streaming as soon as app loads; will attach once session id is known
+        this.startEventStream();
     }
 
     setupEventListeners() {
@@ -52,6 +55,46 @@ class OmniAgentInterface {
             taskUpdateForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.updateTask();
+            });
+        }
+
+        // Backend switch controls
+        const applyBackendBtn = document.getElementById('apply-backend');
+        if (applyBackendBtn) {
+            applyBackendBtn.addEventListener('click', async () => {
+                const mem = document.getElementById('memory-backend').value;
+                const evt = document.getElementById('event-backend').value;
+                const status = document.getElementById('backend-status');
+                try {
+                    await fetch('/api/switch-backend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'memory', backend: mem }) });
+                    await fetch('/api/switch-backend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'event', backend: evt }) });
+                    status.innerHTML = '<span class="success">Backends applied.</span>';
+                    this.loadSystemInfo();
+                } catch (err) {
+                    status.innerHTML = `<span class="error">Failed: ${err.message}</span>`;
+                }
+            });
+        }
+
+        // Background manager status
+        const refreshBgBtn = document.getElementById('refresh-bg-status');
+        if (refreshBgBtn) {
+            refreshBgBtn.addEventListener('click', () => this.loadBackgroundStatus());
+        }
+
+        // Events tab controls
+        const eventsStart = document.getElementById('events-start');
+        const eventsStop = document.getElementById('events-stop');
+        if (eventsStart) {
+            eventsStart.addEventListener('click', () => this.startEventStream());
+        }
+        if (eventsStop) {
+            eventsStop.addEventListener('click', () => {
+                if (this._eventSource) {
+                    this._eventSource.close();
+                    this._eventSource = null;
+                    this.showNotification('Event stream stopped', 'info');
+                }
             });
         }
     }
@@ -135,6 +178,7 @@ class OmniAgentInterface {
                                 this.currentSessionId = data.session_id;
                                 this.updateMessage(streamingId, fullResponse);
                                 this.loadEvents(); // Refresh events
+                                this.startEventStream(); // Attach live stream for this session
                             } else if (data.type === 'error') {
                                 this.isStreaming = false;
                                 this.updateMessage(streamingId, `Error: ${data.content}`, 'error');
@@ -200,117 +244,30 @@ class OmniAgentInterface {
                 body: JSON.stringify({
                     agent_id: agentId,
                     query: query,
-                    schedule: schedule || null
+                    schedule: schedule
                 })
             });
 
-            if (response.ok) {
-                const result = await response.json();
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
                 this.showNotification('Background agent created successfully!', 'success');
-                this.loadBackgroundAgents();
-                document.getElementById('bg-agent-form').reset();
+                this.loadBackgroundAgents(); // Refresh the list
+                this.loadSystemInfo(); // Update background agents count
+                
+                // Clear the form
+                document.getElementById('agent-id').value = '';
+                document.getElementById('agent-query').value = '';
+                document.getElementById('agent-schedule').value = '';
             } else {
-                const error = await response.json();
-                this.showNotification(`Error: ${error.detail}`, 'error');
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
             }
         } catch (error) {
             console.error('Error creating background agent:', error);
-            this.showNotification(`Error: ${error.message}`, 'error');
-        }
-    }
-
-    async loadBackgroundAgents() {
-        try {
-            const response = await fetch('/api/background/list');
-            if (response.ok) {
-                const result = await response.json();
-                this.displayBackgroundAgents(result.agents || []);
-            }
-        } catch (error) {
-            console.error('Error loading background agents:', error);
-        }
-    }
-
-    displayBackgroundAgents(agents) {
-        const container = document.getElementById('background-agents-list');
-        if (!container) return;
-
-        if (agents.length === 0) {
-            container.innerHTML = '<p>No background agents running</p>';
-            return;
-        }
-
-        const html = agents.map(agent => `
-            <div class="card">
-                <h4>${agent.agent_id}</h4>
-                <p><strong>Query:</strong> ${agent.query}</p>
-                <p><strong>Status:</strong> 
-                    <span class="status-indicator status-${agent.status || 'pending'}"></span>
-                    ${agent.status || 'pending'}
-                </p>
-                <p><strong>Created:</strong> ${new Date(agent.created_at).toLocaleString()}</p>
-                <div class="btn-group">
-                    <button class="btn btn-primary" onclick="omniInterface.startBackgroundAgent('${agent.agent_id}')">
-                        Start
-                    </button>
-                    <button class="btn btn-danger" onclick="omniInterface.stopBackgroundAgent('${agent.agent_id}')">
-                        Stop
-                    </button>
-                </div>
-            </div>
-        `).join('');
-
-        container.innerHTML = html;
-    }
-
-    async startBackgroundAgent(agentId) {
-        try {
-            const response = await fetch('/api/background/start', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    agent_id: agentId,
-                    query: ''
-                })
-            });
-
-            if (response.ok) {
-                this.showNotification('Background agent started!', 'success');
-                this.loadBackgroundAgents();
-            } else {
-                const error = await response.json();
-                this.showNotification(`Error: ${error.detail}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error starting background agent:', error);
-            this.showNotification(`Error: ${error.message}`, 'error');
-        }
-    }
-
-    async stopBackgroundAgent(agentId) {
-        try {
-            const response = await fetch('/api/background/stop', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    agent_id: agentId,
-                    query: ''
-                })
-            });
-
-            if (response.ok) {
-                this.showNotification('Background agent stopped!', 'success');
-                this.loadBackgroundAgents();
-            } else {
-                const error = await response.json();
-                this.showNotification(`Error: ${error.detail}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error stopping background agent:', error);
             this.showNotification(`Error: ${error.message}`, 'error');
         }
     }
@@ -336,13 +293,22 @@ class OmniAgentInterface {
                 })
             });
 
-            if (response.ok) {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
                 this.showNotification('Task updated successfully!', 'success');
-                this.loadBackgroundAgents();
-                document.getElementById('task-update-form').reset();
+                this.loadBackgroundAgents(); // Refresh the list
+                this.loadSystemInfo();
+                
+                // Clear the form
+                document.getElementById('update-agent-id').value = '';
+                document.getElementById('update-query').value = '';
             } else {
-                const error = await response.json();
-                this.showNotification(`Error: ${error.detail}`, 'error');
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
             }
         } catch (error) {
             console.error('Error updating task:', error);
@@ -353,9 +319,17 @@ class OmniAgentInterface {
     async loadTools() {
         try {
             const response = await fetch('/api/tools');
-            if (response.ok) {
-                const result = await response.json();
-                this.displayTools(result.tools || []);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.displayTools(result.tools);
+                this.updateToolsSummary(result.tools);
+            } else {
+                console.error('Failed to load tools:', result.message);
             }
         } catch (error) {
             console.error('Error loading tools:', error);
@@ -366,52 +340,424 @@ class OmniAgentInterface {
         const container = document.getElementById('tools-grid');
         if (!container) return;
 
-        if (tools.length === 0) {
+        if (!tools || tools.length === 0) {
             container.innerHTML = '<p>No tools available</p>';
             return;
         }
 
         const html = tools.map(tool => `
             <div class="tool-card">
-                <h4>${tool.name}</h4>
+                <h4>${tool.name || 'Unnamed Tool'}</h4>
                 <p>${tool.description || 'No description available'}</p>
-                <p><strong>Parameters:</strong> ${tool.parameters ? Object.keys(tool.parameters).join(', ') : 'None'}</p>
             </div>
         `).join('');
 
         container.innerHTML = html;
     }
 
+    updateToolsSummary(tools) {
+        const container = document.getElementById('tools-summary');
+        if (!container) return;
+
+        const count = tools ? tools.length : 0;
+        container.innerHTML = `
+            <p><strong>${count}</strong> tools available</p>
+            <p>Mathematical, text processing, system analysis, and data analysis tools</p>
+        `;
+    }
+
+    async loadBackgroundAgents() {
+        try {
+            const response = await fetch('/api/background/list');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.displayBackgroundAgents(result.agents);
+            } else {
+                console.error('Failed to load background agents:', result.message);
+            }
+        } catch (error) {
+            console.error('Error loading background agents:', error);
+        }
+    }
+
+    async loadBackgroundStatus() {
+        try {
+            const response = await fetch('/api/background/status');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const result = await response.json();
+            const container = document.getElementById('background-status');
+            if (result.status === 'success' && container) {
+                const m = result.manager || {};
+                container.innerHTML = `
+                    <div class="system-info-grid">
+                        <div class="system-info-item"><h4>Running</h4><div class="value">${m.manager_running ? 'Yes' : 'No'}</div></div>
+                        <div class="system-info-item"><h4>Total Agents</h4><div class="value">${m.total_agents || 0}</div></div>
+                        <div class="system-info-item"><h4>Scheduled</h4><div class="value">${m.running_agents || 0}</div></div>
+                        <div class="system-info-item"><h4>Tasks</h4><div class="value">${m.total_tasks || 0}</div></div>
+                        <div class="system-info-item"><h4>Scheduler</h4><div class="value">${m.scheduler_running ? 'Up' : 'Down'}</div></div>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            console.error('Error loading background status:', e);
+        }
+    }
+
+    displayBackgroundAgents(agents) {
+        const container = document.getElementById('background-agents-list');
+        if (!container) return;
+
+        if (!agents || agents.length === 0) {
+            container.innerHTML = '<p>No background agents running</p>';
+            return;
+        }
+
+        const html = agents.map(agent => {
+            const interval = agent.interval;
+            const schedule = agent.schedule;
+            let humanInterval = '';
+            if (typeof interval === 'number' && !isNaN(interval) && interval > 0) {
+                if (interval % 3600 === 0) humanInterval = `${interval/3600}h`;
+                else if (interval % 60 === 0) humanInterval = `${interval/60}m`;
+                else humanInterval = `${interval}s`;
+            }
+            const scheduleLine = (schedule || humanInterval) ? `<small>Schedule: ${schedule || ''} ${humanInterval ? `(${humanInterval})` : ''}</small>` : '';
+            const streamBtn = agent.session_id ? `<button class="btn btn-secondary" onclick="window.omniInterface.streamBackground('${agent.session_id}')">View Events</button>` : '';
+            return `
+            <div class="background-agent-item">
+                <h4>${agent.agent_id || 'Unknown Agent'}</h4>
+                <p>${agent.query || 'No task description'}</p>
+                ${scheduleLine}
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="window.omniInterface.startAgent('${agent.agent_id}')">Start</button>
+                    <button class="btn btn-secondary" onclick="window.omniInterface.pauseAgent('${agent.agent_id}')">Pause</button>
+                    <button class="btn btn-secondary" onclick="window.omniInterface.resumeAgent('${agent.agent_id}')">Resume</button>
+                    <button class="btn btn-secondary" onclick="window.omniInterface.stopAgent('${agent.agent_id}')">Stop</button>
+                    <button class="btn btn-danger" onclick="window.omniInterface.removeAgent('${agent.agent_id}')">Remove</button>
+                    ${streamBtn}
+                </div>
+            </div>`;
+        }).join('');
+
+        container.innerHTML = html;
+    }
+
+    async startAgent(agentId) {
+        try {
+            const response = await fetch('/api/background/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    agent_id: agentId,
+                    query: ''
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.showNotification(`Agent ${agentId} started successfully!`, 'success');
+                this.loadBackgroundAgents(); // Refresh the list
+                this.loadSystemInfo();
+            } else {
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error starting agent:', error);
+            this.showNotification(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async stopAgent(agentId) {
+        try {
+            const response = await fetch('/api/background/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    agent_id: agentId,
+                    query: ''
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.showNotification(`Agent ${agentId} stopped successfully!`, 'success');
+                this.loadBackgroundAgents(); // Refresh the list
+                this.loadSystemInfo();
+            } else {
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error stopping agent:', error);
+            this.showNotification(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    async pauseAgent(agentId) {
+        try {
+            const response = await fetch('/api/background/pause', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agent_id: agentId })
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+            if (result.status === 'success') {
+                this.showNotification(`Agent ${agentId} paused.`, 'info');
+                this.loadBackgroundAgents();
+                this.loadSystemInfo();
+            } else {
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
+            }
+        } catch (e) {
+            console.error('Error pausing agent:', e);
+            this.showNotification(`Error: ${e.message}`, 'error');
+        }
+    }
+
+    async resumeAgent(agentId) {
+        try {
+            const response = await fetch('/api/background/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agent_id: agentId })
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+            if (result.status === 'success') {
+                this.showNotification(`Agent ${agentId} resumed.`, 'success');
+                this.loadBackgroundAgents();
+                this.loadSystemInfo();
+            } else {
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
+            }
+        } catch (e) {
+            console.error('Error resuming agent:', e);
+            this.showNotification(`Error: ${e.message}`, 'error');
+        }
+    }
+
+    async removeAgent(agentId) {
+        try {
+            const response = await fetch(`/api/task/remove/${agentId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.showNotification(`Agent ${agentId} removed successfully!`, 'success');
+                this.loadBackgroundAgents(); // Refresh the list
+                this.loadSystemInfo();
+            } else {
+                this.showNotification(`Error: ${result.message || 'Unknown error'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error removing agent:', error);
+            this.showNotification(`Error: ${error.message}`, 'error');
+        }
+    }
+
     async loadEvents() {
         try {
-            const response = await fetch('/api/events');
-            if (response.ok) {
-                const result = await response.json();
+            const qs = this.currentSessionId ? `?session_id=${encodeURIComponent(this.currentSessionId)}` : '';
+            const response = await fetch(`/api/events${qs}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
                 this.displayEvents(result.events || []);
+            } else {
+                console.error('Failed to load events:', result.message);
             }
         } catch (error) {
             console.error('Error loading events:', error);
         }
     }
 
+    startEventStream() {
+        if (!this.currentSessionId) return;
+        if (this._eventSource) {
+            this._eventSource.close();
+        }
+        const source = new EventSource(`/api/events/stream/${encodeURIComponent(this.currentSessionId)}`);
+        const eventsContainer = document.getElementById('events-list');
+        source.onmessage = (evt) => {
+            try {
+                const data = JSON.parse(evt.data);
+                if (data.type === 'event' && eventsContainer) {
+                    const ev = data.event || {};
+                    const type = ev.type || 'event';
+                    const agent = ev.agent_name ? ` • ${ev.agent_name}` : '';
+                    const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : new Date().toLocaleString();
+                    let body = '';
+                    if (ev.payload && typeof ev.payload === 'object' && 'message' in ev.payload) {
+                        body = ev.payload.message;
+                    } else if (ev.payload !== undefined) {
+                        try { body = typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload); } catch { body = String(ev.payload); }
+                    } else if (ev.message) {
+                        body = ev.message;
+                    } else {
+                        try { body = JSON.stringify(ev); } catch { body = String(ev); }
+                    }
+                    const div = document.createElement('div');
+                    div.className = 'event-item';
+                    div.innerHTML = `<h4>${type}${agent}</h4><p>${body}</p><small>${ts}</small>`;
+                    eventsContainer.prepend(div);
+                }
+            } catch {}
+        };
+        source.onerror = () => { source.close(); };
+        this._eventSource = source;
+    }
+
+    streamBackground(sessionId) {
+        this.currentSessionId = sessionId;
+        this.loadEvents();
+        this.startEventStream();
+        this.showNotification(`Streaming events for ${sessionId}`, 'info');
+        // Switch to events tab if available
+        const evTab = document.querySelector('.tab[data-target="events-tab"]');
+        if (evTab) evTab.click();
+    }
+
     displayEvents(events) {
         const container = document.getElementById('events-list');
         if (!container) return;
 
-        if (events.length === 0) {
+        if (!events || events.length === 0) {
             container.innerHTML = '<p>No recent events</p>';
             return;
         }
 
-        const html = events.slice(0, 10).map(event => `
-            <div class="card">
-                <p><strong>${event.type || 'Unknown'}</strong></p>
-                <p>${event.message || 'No message'}</p>
-                <small>${new Date(event.timestamp).toLocaleString()}</small>
-            </div>
-        `).join('');
+        const html = events.slice(0, 10).map(ev => {
+            const type = ev.type || 'event';
+            const timestamp = ev.timestamp ? new Date(ev.timestamp).toLocaleString() : new Date().toLocaleString();
+            const agent = ev.agent_name ? ` • ${ev.agent_name}` : '';
+            let body = '';
+            if (ev.payload && typeof ev.payload === 'object' && 'message' in ev.payload) {
+                body = ev.payload.message;
+            } else if (ev.payload !== undefined) {
+                try { body = typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload); } catch { body = String(ev.payload); }
+            } else if (ev.message) {
+                body = ev.message;
+            } else {
+                try { body = JSON.stringify(ev); } catch { body = String(ev); }
+            }
+            return `
+            <div class="event-item">
+                <h4>${type}${agent}</h4>
+                <p>${body}</p>
+                <small>${timestamp}</small>
+            </div>`;
+        }).join('');
 
         container.innerHTML = html;
+    }
+
+    async loadSystemInfo() {
+        try {
+            const response = await fetch('/api/agent/info');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                this.displaySystemInfo(result.info);
+                this.updateQuickStats(result.info);
+                // Prefill backend selectors if present
+                const memSel = document.getElementById('memory-backend');
+                const evtSel = document.getElementById('event-backend');
+                if (memSel && result.info.memory_backend) {
+                    memSel.value = result.info.memory_backend;
+                }
+                if (evtSel && result.info.event_backend) {
+                    evtSel.value = result.info.event_backend;
+                }
+            } else {
+                console.error('Failed to load system info:', result.message);
+            }
+        } catch (error) {
+            console.error('Error loading system info:', error);
+        }
+    }
+
+    displaySystemInfo(info) {
+        const container = document.getElementById('system-info');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="system-info-grid">
+                <div class="system-info-item">
+                    <h4>Agent Name</h4>
+                    <div class="value">${info.name || 'Unknown'}</div>
+                </div>
+                <div class="system-info-item">
+                    <h4>Status</h4>
+                    <div class="value">${info.status || 'Unknown'}</div>
+                </div>
+                <div class="system-info-item">
+                    <h4>Memory Store</h4>
+                    <div class="value">${info.memory_store || 'Unknown'}</div>
+                </div>
+                <div class="system-info-item">
+                    <h4>Event Store</h4>
+                    <div class="value">${info.event_store || 'Unknown'}</div>
+                </div>
+                <div class="system-info-item">
+                    <h4>Background Agents</h4>
+                    <div class="value">${info.background_agents || 0}</div>
+                </div>
+                <div class="system-info-item">
+                    <h4>Memory Backend</h4>
+                    <div class="value">${info.memory_backend || 'Unknown'}</div>
+                </div>
+                <div class="system-info-item">
+                    <h4>Event Backend</h4>
+                    <div class="value">${info.event_backend || 'Unknown'}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    updateQuickStats(info) {
+        const container = document.getElementById('quick-stats');
+        if (!container) return;
+
+        container.innerHTML = `
+            <p><strong>Status:</strong> ${info.status || 'Unknown'}</p>
+            <p><strong>Background Agents:</strong> ${info.background_agents || 0}</p>
+            <p><strong>Memory:</strong> ${info.memory_store || 'Unknown'}</p>
+        `;
     }
 
     connectWebSocket() {
@@ -453,30 +799,6 @@ class OmniAgentInterface {
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.textContent = message;
-        
-        // Add styles
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 600;
-            z-index: 1000;
-            animation: slideIn 0.3s ease;
-            background: ${type === 'success' ? '#4facfe' : type === 'error' ? '#ff6b6b' : '#f093fb'};
-        `;
-        
-        // Add animation styles
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-        `;
-        document.head.appendChild(style);
         
         document.body.appendChild(notification);
         
