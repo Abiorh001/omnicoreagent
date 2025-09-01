@@ -16,8 +16,6 @@
 > All imports and CLI commands now use `omnicoreagent`.  
 > Update your code and scripts accordingly.
 
-...
-
 [![PyPI Downloads](https://static.pepy.tech/badge/omnicoreagent)](https://pepy.tech/projects/omnicoreagent)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -44,6 +42,7 @@
 ### 🤖 **OmniAgent System**
 - [✨ OmniAgent Features](#-omniagent---revolutionary-ai-agent-builder)
 - [🔥 Local Tools System](#-local-tools-system---create-custom-ai-tools)
+- [🚁 Background Agent System](#-background-agent-system---autonomous-task-automation)
 - [🛠️ Building Custom Agents](#-building-custom-agents)
 - [📚 OmniAgent Examples](#-omniagent-examples)
 
@@ -93,11 +92,13 @@ echo "LLM_API_KEY=your_openai_api_key_here" > .env
 ### Step 3: Run Examples
 ```bash
 # Try OmniAgent with custom tools
-python examples/run_omni_agent.py
+python examples/omni_agent_example.py
 
 # Try MCPOmni Connect (MCP client)
-python examples/run.py
+python examples/run_mcp.py
 
+# Try the integrated platform
+python examples/run_omni_agent.py
 ```
 
 ### What Can You Build?
@@ -145,27 +146,26 @@ python examples/omni_agent_example.py
 # Advanced OmniAgent patterns - Study 12+ tool examples
 python examples/run_omni_agent.py
 
-# Self-flying background agents - Autonomous task execution
+# Self-flying background agents - Autonomous task execution with Background Agent Manager
 python examples/background_agent_example.py
+
 
 # Web server with UI - Interactive interface for OmniAgent
 python examples/web_server.py
 # Open http://localhost:8000 for web interface
 
-# enhanced_web_server.py - Advanced web patterns
-python examples/enhanced_web_server.py
-
 # FastAPI implementation - Clean API endpoints
 python examples/fast_api_impl.py
+
+# Enhanced web server - Production-ready with advanced features
+python examples/enhanced_web_server.py
 ```
 
 ### 🔌 **MCPOmni Connect System** *(Connect to MCP Servers)*
 ```bash
-# Basic MCP client usage - Simple connection patterns
-python examples/basic_mcp.py
+# Basic MCP client usage
+python examples/run_mcp.py
 
-# Advanced MCP CLI - Full-featured client interface  
-python examples/run.py
 ```
 
 ### 🔧 **LLM Provider Configuration** *(Multiple Providers)*
@@ -198,10 +198,11 @@ Perfect for: Custom applications, automation, web apps
 ```bash
 # Study the examples to learn patterns:
 python examples/basic.py                    # Simple introduction
-python examples/run_omni_agent.py     # Complete OmniAgent demo
+python examples/omni_agent_example.py       # Complete OmniAgent demo
 python examples/background_agent_example.py # Self-flying agents
 python examples/web_server.py              # Web interface
-python examples/enhanced_web_server.py    # Advanced patterns
+python examples/fast_api_impl.py           # FastAPI integration
+python examples/enhanced_web_server.py    # Production-ready web server
 
 # Then build your own using the patterns!
 ```
@@ -209,11 +210,9 @@ python examples/enhanced_web_server.py    # Advanced patterns
 ### **Path 2: 🔌 Advanced MCP Client (MCPOmni Connect)**
 Perfect for: Daily workflow, server management, debugging
 ```bash
-# Basic MCP client - Simple connection patterns
-python examples/basic_mcp.py
+# Basic MCP client
+python examples/run_mcp.py
 
-# World-class MCP client with advanced features
-python examples/run.py
 
 # Features: Connect to MCP servers, agentic modes, advanced memory
 ```
@@ -436,7 +435,725 @@ agent = OmniAgent(
 result = await agent.run("List files in the current directory and analyze the filenames")
 ```
 
-## 📚 OmniAgent Examples
+## 🚁 Background Agent System - Autonomous Task Automation
+
+The Background Agent System is one of OmniAgent's most powerful features, providing fully autonomous task execution with intelligent lifecycle management. Background agents run independently, executing scheduled tasks without human intervention.
+
+### ✨ Background Agent Features
+
+- **🔄 Autonomous Execution** - Agents run independently in the background
+- **⏰ Flexible Scheduling** - Time-based, interval-based, and cron-style scheduling
+- **🧠 Full OmniAgent Capabilities** - Access to all local tools and MCP servers
+- **📊 Lifecycle Management** - Create, update, pause, resume, and delete agents
+- **🔧 Background Agent Manager** - Central control system for all background agents
+- **📡 Real-Time Monitoring** - Track agent status and execution results
+- **🛠️ Task Management** - Update tasks, schedules, and configurations dynamically
+
+### 🔧 Background Agent Manager
+
+The Background Agent Manager handles the complete lifecycle of background agents:
+
+#### **Core Capabilities:**
+- **Create New Agents** - Deploy autonomous agents with custom tasks
+- **Update Agent Tasks** - Modify agent instructions and capabilities dynamically
+- **Schedule Management** - Update timing, intervals, and execution schedules
+- **Agent Control** - Start, stop, pause, and resume agents
+- **Health Monitoring** - Track agent status and performance
+- **Resource Management** - Manage agent memory and computational resources
+
+#### **Scheduler Support:**
+- **APScheduler** *(Current)* - Advanced Python task scheduling
+  - Cron-style scheduling
+  - Interval-based execution
+  - Date-based scheduling
+  - Timezone support
+- **Future Roadmap**:
+  - **RabbitMQ** - Message queue-based task distribution
+  - **Redis Pub/Sub** - Event-driven agent communication
+  - **Celery** - Distributed task execution
+  - **Kubernetes Jobs** - Container-based agent deployment
+
+### 🎯 Background Agent Usage Examples
+
+#### **1. Basic Background Agent Creation**
+
+```python
+from omnicoreagent import (
+    OmniAgent,
+    MemoryRouter,
+    EventRouter,
+    BackgroundAgentManager,
+    ToolRegistry,
+    logger,
+)
+
+# Initialize the background agent service
+memory_router = MemoryRouter(memory_store_type="redis")
+event_router = EventRouter(event_store_type="redis_stream")
+bg_service = BackgroundAgentService(memory_router, event_router)
+
+# Start the background agent manager
+bg_service.start_manager()
+
+# Create tool registry for the background agent
+tool_registry = ToolRegistry()
+
+@tool_registry.register_tool("monitor_system")
+def monitor_system() -> str:
+    """Monitor system resources and status."""
+    import psutil
+    cpu = psutil.cpu_percent()
+    memory = psutil.virtual_memory().percent
+    return f"System Status - CPU: {cpu}%, Memory: {memory}%"
+
+# Configure the background agent
+agent_config = {
+    "agent_id": "system_monitor",
+    "system_instruction": "You are a system monitoring agent. Check system resources and send alerts when thresholds are exceeded.",
+    "model_config": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.3
+    },
+    "agent_config": {
+        "max_steps": 10,
+        "tool_call_timeout": 60
+    },
+    "interval": 300,  # 5 minutes in seconds
+    "task_config": {
+        "query": "Monitor system resources and send alerts if CPU > 80% or Memory > 90%",
+        "schedule": "every 5 minutes",
+        "interval": 300,
+        "max_retries": 2,
+        "retry_delay": 30
+    },
+    "local_tools": tool_registry
+}
+
+# Create and deploy background agent
+result = await bg_service.create(agent_config)
+print(f"Background agent '{agent_config['agent_id']}' created successfully!")
+print(f"Details: {result}")
+```
+
+#### **4. Web Application Integration**
+
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+# Request models for API
+class BackgroundAgentRequest(BaseModel):
+    agent_id: str
+    query: str = None
+    schedule: str = None
+
+class TaskUpdateRequest(BaseModel):
+    agent_id: str
+    query: str
+
+# FastAPI integration
+app = FastAPI()
+
+# Initialize background service
+@app.on_event("startup")
+async def startup():
+    memory_router = MemoryRouter(memory_store_type="redis")
+    event_router = EventRouter(event_store_type="redis_stream")
+    app.state.bg_service = BackgroundAgentService(memory_router, event_router)
+    app.state.bg_service.start_manager()
+
+@app.on_event("shutdown")
+async def shutdown():
+    app.state.bg_service.shutdown_manager()
+
+# API endpoints (same as shown in REST API section above)
+@app.post("/api/background/create")
+async def create_background_agent(payload: BackgroundAgentRequest):
+    # Parse schedule to interval seconds
+    def parse_schedule(schedule_str: str) -> int:
+        import re
+        if not schedule_str:
+            return 3600  # Default 1 hour
+        
+        # Try parsing as raw number
+        try:
+            return max(1, int(schedule_str))
+        except:
+            pass
+        
+        # Parse text patterns
+        text = schedule_str.lower().strip()
+        
+        # Match patterns like "5 minutes", "every 30 seconds", etc.
+        patterns = [
+            (r"(\d+)(?:\s*)(second|sec|s)s?", 1),
+            (r"(\d+)(?:\s*)(minute|min|m)s?", 60),
+            (r"(\d+)(?:\s*)(hour|hr|h)s?", 3600),
+            (r"every\s+(\d+)\s+(second|sec|s)s?", 1),
+            (r"every\s+(\d+)\s+(minute|min|m)s?", 60),
+            (r"every\s+(\d+)\s+(hour|hr|h)s?", 3600)
+        ]
+        
+        for pattern, multiplier in patterns:
+            match = re.search(pattern, text)
+            if match:
+                value = int(match.group(1))
+                return max(1, value * multiplier)
+        
+        return 3600  # Default fallback
+
+    interval_seconds = parse_schedule(payload.schedule)
+    
+    agent_config = {
+        "agent_id": payload.agent_id,
+        "system_instruction": f"You are a background agent that performs: {payload.query}",
+        "model_config": {
+            "provider": "openai", 
+            "model": "gpt-4o-mini", 
+            "temperature": 0.3
+        },
+        "agent_config": {
+            "max_steps": 10, 
+            "tool_call_timeout": 60
+        },
+        "interval": interval_seconds,
+        "task_config": {
+            "query": payload.query,
+            "schedule": payload.schedule or "immediate",
+            "interval": interval_seconds,
+            "max_retries": 2,
+            "retry_delay": 30
+        },
+        "local_tools": build_tool_registry()  # Your custom tools
+    }
+    
+    details = await app.state.bg_service.create(agent_config)
+    app.state.bg_service.start_manager()
+    
+    return {
+        "status": "success",
+        "agent_id": payload.agent_id,
+        "message": "Background agent created",
+        "details": details
+    }
+```
+
+#### **3. Agent Lifecycle Management**
+
+```python
+# List all background agents
+agent_ids = bg_service.list()
+print(f"Active agents: {len(agent_ids)}")
+print(f"Agent IDs: {agent_ids}")
+
+# Get detailed agent information
+for agent_id in agent_ids:
+    status = bg_service.get_agent_status(agent_id)
+    print(f"""
+Agent: {agent_id}
+├── Running: {status.get('is_running', False)}
+├── Scheduled: {status.get('scheduled', False)}
+├── Query: {status.get('task_config', {}).get('query', 'N/A')}
+├── Schedule: {status.get('task_config', {}).get('schedule', 'N/A')}
+├── Interval: {status.get('task_config', {}).get('interval', 'N/A')}s
+└── Session ID: {bg_service.manager.get_agent_session_id(agent_id)}
+""")
+
+# Update agent task
+success = bg_service.update_task_config(
+    agent_id="system_monitor",
+    task_config={
+        "query": "Monitor system resources and also check disk space. Alert if disk usage > 85%",
+        "max_retries": 3,
+        "retry_delay": 60
+    }
+)
+print(f"Task update success: {success}")
+
+# Agent control operations
+bg_service.pause_agent("system_monitor")   # Pause scheduling
+print("Agent paused")
+
+bg_service.resume_agent("system_monitor")  # Resume scheduling
+print("Agent resumed")
+
+bg_service.stop_agent("system_monitor")    # Stop execution
+print("Agent stopped")
+
+bg_service.start_agent("system_monitor")   # Start execution
+print("Agent started")
+
+# Remove agent task permanently
+success = bg_service.remove_task("system_monitor")
+print(f"Task removal success: {success}")
+
+# Get manager status
+manager_status = bg_service.get_manager_status()
+print(f"Manager status: {manager_status}")
+
+# Connect MCP servers for agent (if configured)
+await bg_service.connect_mcp("system_monitor")
+print("MCP servers connected")
+
+# Shutdown entire manager
+bg_service.shutdown_manager()
+print("Background agent manager shutdown")
+```
+
+#### **4. Background Agent with MCP Integration**
+
+```python
+# Background agent with both local tools and MCP servers
+web_scraper_agent = await manager.create_agent(
+    agent_id="web_scraper",
+    task="Scrape news websites hourly, analyze sentiment, and store results",
+    schedule={
+        "type": "interval",
+        "hours": 1
+    },
+    local_tools=tool_registry,  # Your custom tools
+    mcp_tools=[  # MCP server connections
+        {
+            "name": "web_scraper",
+            "transport_type": "stdio",
+            "command": "npx",
+            "args": ["-y", "@mcp/server-web-scraper"]
+        },
+        {
+            "name": "database",
+            "transport_type": "streamable_http",
+            "url": "http://localhost:8080/mcp",
+            "headers": {"Authorization": "Bearer db-token"}
+        }
+    ],
+    system_instruction="You are a web scraping agent. Scrape news sites, analyze sentiment, and store results in the database."
+)
+```
+
+### 🛠️ Background Agent Manager API
+
+The BackgroundAgentService provides a comprehensive API for managing background agents:
+
+#### **Agent Creation & Configuration**
+```python
+# Create new background agent
+result = await bg_service.create(agent_config: dict)
+
+# Agent configuration structure
+agent_config = {
+    "agent_id": "unique_agent_id",
+    "system_instruction": "Agent role and behavior description",
+    "model_config": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.3
+    },
+    "agent_config": {
+        "max_steps": 10,
+        "tool_call_timeout": 60
+    },
+    "interval": 300,  # Execution interval in seconds
+    "task_config": {
+        "query": "Main task description",
+        "schedule": "human-readable schedule (e.g., 'every 5 minutes')",
+        "interval": 300,
+        "max_retries": 2,
+        "retry_delay": 30
+    },
+    "local_tools": tool_registry,  # Optional custom tools
+    "mcp_tools": mcp_server_configs  # Optional MCP server connections
+}
+```
+
+#### **Agent Lifecycle Management**
+```python
+# Start the background agent manager
+bg_service.start_manager()
+
+# Agent control operations
+bg_service.start_agent(agent_id: str)      # Start agent execution
+bg_service.stop_agent(agent_id: str)       # Stop agent execution
+bg_service.pause_agent(agent_id: str)      # Pause agent scheduling
+bg_service.resume_agent(agent_id: str)     # Resume agent scheduling
+
+# Shutdown manager (stops all agents)
+bg_service.shutdown_manager()
+```
+
+#### **Agent Monitoring & Status**
+```python
+# List all agents
+agent_ids = bg_service.list()  # Returns list of agent IDs
+
+# Get specific agent status
+status = bg_service.get_agent_status(agent_id: str)
+# Returns: {
+#     "is_running": bool,
+#     "scheduled": bool,
+#     "task_config": dict,
+#     "session_id": str,
+#     # ... other status info
+# }
+
+# Get manager status
+manager_status = bg_service.get_manager_status()
+```
+
+#### **Task Management**
+```python
+# Update agent task configuration
+success = bg_service.update_task_config(
+    agent_id: str, 
+    task_config: dict
+)
+
+# Remove agent task completely
+success = bg_service.remove_task(agent_id: str)
+```
+
+#### **MCP Server Management**
+```python
+# Connect MCP servers for specific agent
+await bg_service.connect_mcp(agent_id: str)
+```
+
+### 🌐 REST API Endpoints
+
+The Background Agent system can be integrated into web applications with these REST endpoints:
+
+#### **Agent Management Endpoints**
+```bash
+# Create new background agent
+POST /api/background/create
+{
+    "agent_id": "system_monitor",
+    "query": "Monitor system resources and alert on high usage",
+    "schedule": "every 5 minutes"
+}
+
+# List all background agents
+GET /api/background/list
+# Returns: {
+#   "status": "success",
+#   "agents": [
+#     {
+#       "agent_id": "system_monitor",
+#       "query": "Monitor system resources...",
+#       "is_running": true,
+#       "scheduled": true,
+#       "schedule": "every 5 minutes",
+#       "interval": 300,
+#       "session_id": "session_123"
+#     }
+#   ]
+# }
+```
+
+#### **Agent Control Endpoints**
+```bash
+# Start agent
+POST /api/background/start
+{"agent_id": "system_monitor"}
+
+# Stop agent
+POST /api/background/stop
+{"agent_id": "system_monitor"}
+
+# Pause agent
+POST /api/background/pause
+{"agent_id": "system_monitor"}
+
+# Resume agent
+POST /api/background/resume
+{"agent_id": "system_monitor"}
+```
+
+#### **Task Management Endpoints**
+```bash
+# Update agent task
+POST /api/task/update
+{
+    "agent_id": "system_monitor",
+    "query": "Updated task description"
+}
+
+# Remove agent task
+DELETE /api/task/remove/{agent_id}
+```
+
+#### **Status & Monitoring Endpoints**
+```bash
+# Get manager status
+GET /api/background/status
+
+# Get specific agent status
+GET /api/background/status/{agent_id}
+
+# Connect MCP servers for agent
+POST /api/background/mcp/connect
+{"agent_id": "system_monitor"}
+```
+
+#### **Event Streaming Endpoints**
+```bash
+# Get events for session
+GET /api/events?session_id=session_123
+
+# Stream real-time events
+GET /api/events/stream/{session_id}
+# Returns Server-Sent Events stream
+```
+
+### 📋 Schedule Parsing
+
+The Background Agent system includes intelligent schedule parsing:
+
+```python
+# Flexible schedule input formats:
+"300"                    # 300 seconds
+"5 minutes"             # 5 minutes
+"2 hours"               # 2 hours
+"every 30 seconds"      # Every 30 seconds
+"every 10 minutes"      # Every 10 minutes
+"every 2 hours"         # Every 2 hours
+
+# All converted to interval seconds automatically
+# Minimum interval: 1 second
+```
+
+### 📅 Scheduling Configuration
+
+The Background Agent system currently supports interval-based scheduling with intelligent parsing:
+
+#### **Interval-Based Scheduling (Current Implementation)**
+```python
+# Schedule configuration in agent_config
+agent_config = {
+    "interval": 300,  # Execution interval in seconds
+    "task_config": {
+        "schedule": "every 5 minutes",  # Human-readable description
+        "interval": 300,               # Same value in seconds
+        "max_retries": 2,
+        "retry_delay": 30
+    }
+}
+
+# Flexible schedule input formats supported:
+"300"                    # 300 seconds
+"5 minutes"             # 5 minutes → 300 seconds
+"2 hours"               # 2 hours → 7200 seconds
+"30 seconds"            # 30 seconds
+"every 30 seconds"      # Every 30 seconds
+"every 10 minutes"      # Every 10 minutes → 600 seconds
+"every 2 hours"         # Every 2 hours → 7200 seconds
+
+# All automatically converted to interval seconds
+# Minimum interval: 1 second
+```
+
+#### **Schedule Parsing Logic**
+The system intelligently parses various schedule formats:
+- **Raw numbers**: `"300"` → 300 seconds
+- **Unit expressions**: `"5 minutes"` → 300 seconds
+- **Every patterns**: `"every 10 minutes"` → 600 seconds
+- **Supported units**: seconds (s/sec), minutes (m/min), hours (h/hr)
+
+#### **Future Scheduling Features (Planned)**
+```python
+# Coming with future scheduler backends:
+schedule = {
+    "type": "cron",
+    "cron": "0 9 * * 1-5",    # Weekdays at 9 AM
+    "timezone": "UTC"
+}
+
+schedule = {
+    "type": "date",
+    "run_date": "2024-03-15 14:30:00",
+    "timezone": "UTC"
+}
+```
+
+### 🔄 Background Agent States
+
+Background agents can be in different states managed by the Background Agent Manager:
+
+- **`CREATED`** - Agent created but not yet started
+- **`RUNNING`** - Agent is active and executing according to schedule
+- **`PAUSED`** - Agent is temporarily stopped but retains configuration
+- **`STOPPED`** - Agent execution stopped but agent still exists
+- **`ERROR`** - Agent encountered an error during execution
+- **`DELETED`** - Agent permanently removed
+
+### 📊 Monitoring & Observability
+
+#### **Real-Time Status Monitoring**
+```python
+# Get comprehensive agent status
+status = await manager.get_agent_status("system_monitor")
+
+print(f"""
+Agent Status Report:
+├── ID: {status['agent_id']}
+├── Name: {status['name']}
+├── State: {status['state']}
+├── Last Run: {status['last_run']}
+├── Next Run: {status['next_run']}
+├── Success Rate: {status['success_rate']}%
+├── Total Executions: {status['total_runs']}
+├── Failed Executions: {status['failed_runs']}
+└── Average Duration: {status['avg_duration']}s
+""")
+```
+
+#### **Execution History**
+```python
+# Get detailed execution history
+history = await manager.get_execution_history("system_monitor", limit=5)
+
+for execution in history:
+    print(f"""
+Execution {execution['execution_id']}:
+├── Start Time: {execution['start_time']}
+├── Duration: {execution['duration']}s
+├── Status: {execution['status']}
+├── Result: {execution['result'][:100]}...
+└── Tools Used: {execution['tools_used']}
+""")
+```
+
+### 🚀 Future Scheduler Support
+
+The Background Agent Manager is designed to support multiple scheduling backends:
+
+#### **Current Support**
+- **APScheduler** - Full-featured Python task scheduling
+  - In-memory scheduler
+  - Persistent job storage
+  - Multiple trigger types
+  - Timezone support
+
+#### **Planned Future Support**
+- **RabbitMQ** - Message queue-based task distribution
+  - Distributed agent execution
+  - Load balancing across workers
+  - Reliable message delivery
+  - Dead letter queues for failed tasks
+
+- **Redis Pub/Sub** - Event-driven agent communication
+  - Real-time event processing
+  - Agent-to-agent communication
+  - Scalable event distribution
+  - Pattern-based subscriptions
+
+- **Celery** - Distributed task queue
+  - Horizontal scaling
+  - Result backends
+  - Task routing and priority
+  - Monitoring and management tools
+
+- **Kubernetes Jobs** - Container-based agent deployment
+  - Cloud-native scaling
+  - Resource management
+  - Job persistence and recovery
+  - Integration with CI/CD pipelines
+
+### 📋 Background Agent Configuration
+
+#### **Complete Configuration Example**
+```python
+# Comprehensive background agent setup
+background_agent = await manager.create_agent(
+    agent_id="comprehensive_agent",
+    name="Comprehensive Background Agent",
+    task="Monitor APIs, process data, and generate reports",
+    
+    # Scheduling configuration
+    schedule={
+        "type": "cron",
+        "cron": "0 */6 * * *",  # Every 6 hours
+        "timezone": "UTC"
+    },
+    
+    # AI model configuration
+    model_config={
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "temperature": 0.3,
+        "max_tokens": 2000
+    },
+    
+    # Agent behavior configuration
+    agent_config={
+        "tool_call_timeout": 60,
+        "max_steps": 20,
+        "request_limit": 100,
+        "total_tokens_limit": 10000,
+        "memory_results_limit": 10,
+        "memory_similarity_threshold": 0.7
+    },
+    
+    # Custom tools
+    local_tools=tool_registry,
+    
+    # MCP server connections
+    mcp_tools=[
+        {
+            "name": "api_monitor",
+            "transport_type": "streamable_http",
+            "url": "http://localhost:8080/mcp",
+            "headers": {"Authorization": "Bearer api-token"}
+        }
+    ],
+    
+    # Agent personality
+    system_instruction="You are an autonomous monitoring agent. Execute tasks efficiently and report any issues.",
+    
+    # Memory and events
+    memory_store=MemoryRouter(memory_store_type="redis"),
+    event_router=EventRouter(event_store_type="redis_stream")
+)
+```
+
+### 🔄 Error Handling & Recovery
+
+Background agents include robust error handling:
+
+```python
+# Automatic retry configuration
+agent_config = {
+    "max_retries": 3,           # Retry failed executions
+    "retry_delay": 60,          # Wait 60 seconds between retries
+    "failure_threshold": 5,     # Pause agent after 5 consecutive failures
+    "recovery_mode": "auto"     # Auto-resume after successful execution
+}
+
+# Error monitoring
+try:
+    result = await agent.execute_task()
+except BackgroundAgentException as e:
+    # Handle agent-specific errors
+    await manager.handle_agent_error(agent_id, e)
+```
+
+### 📡 Event Integration
+
+Background agents integrate with the event system for real-time monitoring:
+
+```python
+# Subscribe to background agent events
+event_router = EventRouter(event_store_type="redis_stream")
+
+# Listen for agent events
+async for event in event_router.subscribe("background_agent.*"):
+    if event.type == "agent_started":
+        print(f"Agent {event.data['agent_id']} started execution")
+    elif event.type == "agent_completed":
+        print(f"Agent {event.data['agent_id']} completed task")
+    elif event.type == "agent_failed":
+        print(f"Agent {event.data['agent_id']} failed: {event.data['error']}")
+```
 
 ### Basic Agent Usage
 ```bash
@@ -686,7 +1403,7 @@ python examples/basic_mcp.py
 ### Advanced MCP CLI
 ```bash
 # Launch the advanced MCP CLI
-python examples/advanced_mcp.py
+python examples/run_mcp.py
 
 # Core MCP client commands:
 /tools                                    # List all available tools
@@ -773,11 +1490,11 @@ python examples/advanced_mcp.py
   - **Semantic Search**: Intelligent context retrieval across conversations  
   - **Long-term & Episodic Memory**: Enable with `ENABLE_VECTOR_DB=true`
   
-- **Real-Time Event Streaming**
+- **Real-Time Event Streaming** *(NEW!)*
   - **In-Memory Events**: Fast development event processing
   - **Redis Streams**: Persistent event storage and streaming
   - Runtime switching: `/event_store:redis_stream`, `/event_store:in_memory`
-- **Advanced Tracing & Observability**
+- **Advanced Tracing & Observability** *(LATEST!)*
   - **Opik Integration**: Production-grade tracing and monitoring
     - **Real-time Performance Tracking**: Monitor LLM calls, tool executions, and agent performance
     - **Detailed Call Traces**: See exactly where time is spent in your AI workflows
@@ -840,7 +1557,12 @@ python examples/advanced_mcp.py
 OmniCoreAgent Platform
 ├── 🤖 OmniAgent System (Revolutionary Agent Builder)
 │   ├── Local Tools Registry
-│   ├── Background Agent Manager  
+│   ├── Background Agent Manager (Lifecycle Management)
+│   │   ├── Agent Creation & Deployment
+│   │   ├── Task & Schedule Updates
+│   │   ├── Agent Control (Start/Stop/Pause/Resume)
+│   │   ├── Health Monitoring & Status Tracking
+│   │   └── Scheduler Integration (APScheduler + Future: RabbitMQ, Redis Pub/Sub)
 │   ├── Custom Agent Creation
 │   └── Agent Orchestration Engine
 ├── 🔌 MCPOmni Connect System (World-Class MCP Client)
@@ -850,13 +1572,14 @@ OmniCoreAgent Platform
 │   └── Connection Lifecycle Management
 ├── 🧠 Shared Memory System (Both Systems)
 │   ├── Multi-Backend Storage (Redis, DB, In-Memory)
-│   ├── Vector Database Integration (ChromaDB, Qdrant)
+│   ├── Vector Database Integration (ChromaDB, Qdrant, MongoDB)
 │   ├── Memory Strategies (Sliding Window, Token Budget)
 │   └── Session Management
 ├── 📡 Event System (Both Systems)
 │   ├── In-Memory Event Processing
 │   ├── Redis Streams for Persistence
-│   └── Real-Time Event Monitoring
+│   ├── Real-Time Event Monitoring
+│   └── Background Agent Event Broadcasting
 ├── 🛠️ Tool Management (Both Systems)
 │   ├── Dynamic Tool Discovery
 │   ├── Cross-Server Tool Routing
@@ -954,12 +1677,13 @@ OPIK_WORKSPACE=your_opik_workspace_name
 # ===============================================
 # Vector Database (OPTIONAL) - Smart Memory
 # ===============================================
-
+# ⚠️ Warning: 30-60s startup time for sentence transformer
+# ⚠️ IMPORTANT: You MUST choose a provider - no local fallback
 ENABLE_VECTOR_DB=true # Default: false
 
 # Choose ONE provider (required if ENABLE_VECTOR_DB=true):
 
-# Option 1: Qdrant Remote
+# Option 1: Qdrant Remote (RECOMMENDED)
 OMNI_MEMORY_PROVIDER=qdrant-remote
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
@@ -994,8 +1718,8 @@ QDRANT_PORT=6333
 # DATABASE_URL=mysql://user:password@localhost:3306/omnicoreagent
 
 # Mongodb - for memory_store_type="mongodb" (defaults to: mongodb://localhost:27017/omnicoreagent)
-# MONGODB_URI="your_mongodb_connection_string"
-# MONGODB_DB_NAME="db name"
+MONGODB_URI="your_mongodb_connection_string"
+MONGODB_DB_NAME="db name"
 ```
 
 > **💡 Quick Start**: Just set `LLM_API_KEY` and you're ready to go! Add other variables only when you need advanced features.
@@ -1947,7 +2671,7 @@ We welcome contributions to OmniCoreAgent! Here's how you can help:
 
 ```bash
 # Fork and clone the repository
-git clone https://github.com/yourusername/omnicoreagent.git
+git clone https://github.com/abiorh001/omnicoreagent.git
 cd omnicoreagent
 
 # Set up development environment

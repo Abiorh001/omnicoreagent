@@ -176,6 +176,7 @@ class MainAgentService:
             ),
             model_config={"provider": "openai", "model": "gpt-4.1", "temperature": 0.3},
             agent_config={"max_steps": 15, "tool_call_timeout": 60},
+            embedding_config={"provider": "voyage", "model": "voyage-3.5", "dimensions": 1024, "encoding_format": "base64"},
             mcp_tools=MCP_TOOLS,
             local_tools=self.local_tools,
             memory_router=self.memory_router,
@@ -314,7 +315,7 @@ async def index(request: Request):
 async def chat_endpoint(payload: ChatRequest, request: Request):
     if not hasattr(request.app.state, "main_service"):
         raise HTTPException(status_code=503, detail="Service not initialized")
-    session_id = payload.session_id or f"web_session_{uuid.uuid4().hex[:8]}"
+    session_id = payload.session_id or f"web_session_001"
 
     async def generate_response() -> AsyncGenerator[str, None]:
         try:
