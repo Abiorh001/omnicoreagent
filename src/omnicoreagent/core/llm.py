@@ -16,6 +16,32 @@ warnings.filterwarnings(
 load_dotenv()
 
 
+import logging
+import os
+
+# Environment variable
+os.environ["LITELLM_LOG"] = "False"
+
+# Disable verbose mode
+litellm.set_verbose = False
+
+# Disable all callbacks
+litellm.callbacks = []
+litellm.success_callback = []
+litellm.failure_callback = []
+
+# Disable loggers
+logging.getLogger("LiteLLM").disabled = True
+logging.getLogger("litellm").disabled = True
+logging.getLogger("litellm.proxy").disabled = True
+
+# Set log levels to critical
+for logger_name in ["LiteLLM", "litellm", "litellm.proxy"]:
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.CRITICAL)
+    logger.propagate = False
+
+
 def retry_with_backoff(max_retries=3, base_delay=1, max_delay=60, backoff_factor=2):
     """Retry decorator with exponential backoff and jitter.
 

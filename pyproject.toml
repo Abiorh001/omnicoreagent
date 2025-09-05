@@ -60,6 +60,7 @@ dependencies = [
     "opik>=1.8.19",
     "pymongo[srv]>=4.14.1",
     "cryptography>=45.0.6",
+    "twine>=6.1.0",
 ]
 
 [project.scripts]

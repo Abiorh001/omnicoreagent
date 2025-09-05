@@ -34,6 +34,7 @@ from omnicoreagent.core.utils import (
     show_tool_response,
     track,
     is_vector_db_enabled,
+    normalize_tool_args,
 )
 from omnicoreagent.core.events.base import (
     Event,
@@ -492,7 +493,7 @@ class BaseReactAgent:
             return ToolCallResult(
                 tool_executor=tool_executor,
                 tool_name=tool_data.get("tool_name"),
-                tool_args=tool_data.get("tool_args"),
+                tool_args=normalize_tool_args(tool_data.get("tool_args")),
             )
         except Exception as e:
             logger.error(f"Error resolving tool call request: {e}")
@@ -935,7 +936,6 @@ class BaseReactAgent:
         # check if the agent is in a valid state to run
         if self.state not in [
             AgentState.IDLE,
-            AgentState.STUCK,
             AgentState.ERROR,
         ]:
             raise RuntimeError(f"Agent is not in a valid state to run: {self.state}")
@@ -945,7 +945,7 @@ class BaseReactAgent:
             current_steps = 0
             last_valid_response = None  # Track last valid response
             while (
-                self.state not in [AgentState.FINISHED, AgentState.STUCK]
+                self.state not in [AgentState.FINISHED]
                 and current_steps < self.max_steps
             ):
                 if debug:
