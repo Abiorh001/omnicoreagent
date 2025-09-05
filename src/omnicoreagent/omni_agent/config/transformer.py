@@ -2,7 +2,7 @@ import json
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, asdict, field
 from enum import Enum
-
+import uuid
 from omnicoreagent.core.utils import logger
 from decouple import config
 
@@ -45,7 +45,7 @@ class EmbeddingConfig:
 class MCPToolConfig:
     """User-friendly MCP tool configuration"""
 
-    name: str = "mcp_tool"
+    name: Optional[str] = None
     transport_type: TransportType = TransportType.STDIO
     url: Optional[str] = None
     command: Optional[str] = None
@@ -56,12 +56,17 @@ class MCPToolConfig:
     sse_read_timeout: Optional[int] = 120
     auth: Optional[Dict[str, Any]] = None
 
+    def __post_init__(self):
+        if not self.name:
+            base = self.command or self.url or "mcp_tool"
+            self.name = f"{base}_{uuid.uuid4().hex[:6]}"
+
 
 @dataclass
 class AgentConfig:
     """User-friendly agent configuration"""
 
-    agent_name: str = "agent"
+    agent_name: str = "OmniAgent"
     mcp_enabled: bool = False
     tool_call_timeout: int = 30
     max_steps: int = 15

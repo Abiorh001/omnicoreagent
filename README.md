@@ -40,8 +40,10 @@
 - [🎯 Choose Your Path](#-choose-your-path)
 
 ### 🤖 **OmniAgent System**
+
 - [✨ OmniAgent Features](#-omniagent---revolutionary-ai-agent-builder)
 - [🔥 Local Tools System](#-local-tools-system---create-custom-ai-tools)
+- [🧩 OmniAgent Workflow System](#-omniagent-workflow-system--multi-agent-orchestration)
 - [🚁 Background Agent System](#-background-agent-system---autonomous-task-automation)
 - [🛠️ Building Custom Agents](#-building-custom-agents)
 - [📚 OmniAgent Examples](#-omniagent-examples)
@@ -434,6 +436,160 @@ agent = OmniAgent(
 # Use in your app - gets both MCP tools AND your custom tools!
 result = await agent.run("List files in the current directory and analyze the filenames")
 ```
+
+## 🧩 **OmniAgent Workflow System** – Multi Agent Orchestration
+
+OmniCoreAgent now includes a powerful **workflow system** for orchestrating multiple agents in your application.  
+You can choose from three workflow agents, each designed for different orchestration patterns:
+
+- **SequentialAgent** – Chain agents step-by-step, passing output from one to the next.
+- **ParallelAgent** – Run multiple agents concurrently, each with its own task.
+- **RouterAgent** – Use an intelligent router agent to select the best sub-agent for a given task.
+
+All three workflow agents are available in the `omni_agent/workflow/` directory, and usage examples are provided in the `examples/` folder.
+
+---
+
+### 🤖 **SequentialAgent** – Step-by-Step Agent Chaining
+
+**Purpose:**  
+Run a list of agents in sequence, passing the output of each agent as the input to the next.  
+This is ideal for multi-stage processing pipelines, where each agent performs a specific transformation or analysis.
+
+**How it works:**
+
+- You provide a list of `OmniAgent` instances.
+- The first agent receives the initial query (or uses its system instruction if no query is provided).
+- Each agent’s output is passed as the input to the next agent.
+- The same session ID is used for all agents, ensuring shared context and memory.
+
+**Example Usage:**
+
+```python
+from omnicoreagent.omni_agent.workflow.sequential_agent import SequentialAgent
+
+# Create your agents (see examples/ for full setup)
+agents = [agent1, agent2, agent3]
+
+seq_agent = SequentialAgent(sub_agents=agents)
+await seq_agent.initialize()
+result = await seq_agent.run(initial_task="Analyze this data and summarize results")
+print(result)
+```
+
+**Typical Use Cases:**
+
+- Data preprocessing → analysis → reporting
+- Multi-step document processing
+- Chained reasoning tasks
+
+---
+
+### ⚡ **ParallelAgent** – Concurrent Agent Execution
+
+**Purpose:**  
+Run multiple agents at the same time, each with its own task or system instruction.  
+This is perfect for scenarios where you want to gather results from several agents independently and quickly.
+
+**How it works:**
+
+- You provide a list of `OmniAgent` instances.
+- Optionally, you can specify a dictionary of tasks for each agent (`agent_name: task`). If no task is provided, the agent uses its system instruction.
+- All agents are run concurrently, sharing the same session ID for context.
+- Results are returned as a dictionary mapping agent names to their outputs.
+
+**Example Usage:**
+
+```python
+from omnicoreagent.omni_agent.workflow.parallel_agent import ParallelAgent
+
+agents = [agent1, agent2, agent3]
+tasks = {
+    "agent1": "Summarize this article",
+    "agent2": "Extract keywords",
+    "agent3": None  # Uses system instruction
+}
+
+par_agent = ParallelAgent(sub_agents=agents)
+await par_agent.initialize()
+results = await par_agent.run(agent_tasks=tasks)
+print(results)
+```
+
+**Typical Use Cases:**
+
+- Running multiple analyses on the same data
+- Gathering different perspectives or answers in parallel
+- Batch processing with independent agents
+
+---
+
+### 🧠 **RouterAgent** – Intelligent Task Routing
+
+**Purpose:**  
+Automatically select the most suitable agent for a given task using LLM-powered reasoning and XML-based decision making.  
+The RouterAgent analyzes the user’s query and agent capabilities, then routes the task to the best-fit agent.
+
+**How it works:**
+
+- You provide a list of `OmniAgent` instances and configuration for the router.
+- The RouterAgent builds a registry of agent capabilities (using system instructions and available tools).
+- When a task is received, the RouterAgent uses its internal LLM to select the best agent and forwards the task.
+- The selected agent executes the task and returns the result.
+
+**Example Usage:**
+
+```python
+from omnicoreagent.omni_agent.workflow.router_agent import RouterAgent
+
+agents = [agent1, agent2, agent3]
+router = RouterAgent(
+    sub_agents=agents,
+    model_config={...},
+    agent_config={...},
+    memory_router=...,
+    event_router=...,
+    debug=True
+)
+await router.initialize()
+result = await router.run(task="Find and summarize recent news about AI")
+print(result)
+```
+
+**Typical Use Cases:**
+
+- Dynamic agent selection based on user query
+- Multi-domain assistants (e.g., code, data, research)
+- Intelligent orchestration in complex workflows
+
+---
+
+### 📚 **Workflow Agent Examples**
+
+See the `examples/` directory for ready-to-run demos of each workflow agent:
+
+- `examples/sequential_agent.py`
+- `examples/parallel_agent.py`
+- `examples/router_agent.py`
+
+Each example shows how to set up agents, configure workflows, and process results.
+
+---
+
+### 🛠️ **How to Choose?**
+
+| Workflow Agent   | Best For                                      |
+|------------------|-----------------------------------------------|
+| SequentialAgent  | Multi-stage pipelines, step-by-step tasks     |
+| ParallelAgent    | Fast batch processing, independent analyses   |
+| RouterAgent      | Smart routing, dynamic agent selection        |
+
+You can combine these workflow agents for advanced orchestration patterns in your AI applications.
+
+---
+
+**Ready to build?**  
+Explore the examples, study the API, and start orchestrating powerful multi-agent workflows with OmniCoreAgent!
 
 ## 🚁 Background Agent System - Autonomous Task Automation
 

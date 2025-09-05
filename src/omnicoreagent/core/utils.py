@@ -502,6 +502,51 @@ def show_tool_response(agent_name, tool_name, tool_args, observation):
     console.print(panel)
 
 
+def normalize_tool_args(args: dict) -> dict:
+    """
+    Normalize tool arguments:
+    - Convert stringified booleans into proper bool
+    - Convert stringified numbers into int/float
+    - Convert "null"/"none" into None
+    - Handle nested dicts, lists, and tuples recursively
+    """
+
+    def _normalize(value):
+        if isinstance(value, str):
+            lower_val = value.strip().lower()
+
+            # Handle null / none
+            if lower_val in ("null", "none"):
+                return None
+
+            # Handle booleans
+            if lower_val in ("true", "false"):
+                return lower_val == "true"
+
+            # Handle int
+            if value.isdigit():
+                return int(value)
+
+            # Handle float
+            try:
+                return float(value)
+            except ValueError:
+                return value  # keep as string if not numeric
+
+        elif isinstance(value, dict):
+            return {k: _normalize(v) for k, v in value.items()}
+
+        elif isinstance(value, list):
+            return [_normalize(v) for v in value]
+
+        elif isinstance(value, tuple):
+            return tuple(_normalize(v) for v in value)
+
+        return value
+
+    return {k: _normalize(v) for k, v in args.items()}
+
+
 def get_mac_address() -> str:
     """Get the MAC address of the client machine.
 

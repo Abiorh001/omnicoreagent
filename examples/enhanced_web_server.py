@@ -145,6 +145,7 @@ def build_tool_registry() -> ToolRegistry:
 
 MCP_TOOLS = [
     {
+        "name": "filesystem",
         "command": "npx",
         "args": [
             "-y",
@@ -176,7 +177,12 @@ class MainAgentService:
             ),
             model_config={"provider": "openai", "model": "gpt-4.1", "temperature": 0.3},
             agent_config={"max_steps": 15, "tool_call_timeout": 60},
-            embedding_config={"provider": "voyage", "model": "voyage-3.5", "dimensions": 1024, "encoding_format": "base64"},
+            embedding_config={
+                "provider": "voyage",
+                "model": "voyage-3.5",
+                "dimensions": 1024,
+                "encoding_format": "base64",
+            },
             mcp_tools=MCP_TOOLS,
             local_tools=self.local_tools,
             memory_router=self.memory_router,
@@ -638,11 +644,11 @@ def main():
     print("🚀 Starting Enhanced OmniAgent Web Server...")
     print(f"📁 Static files directory: {STATIC_DIR}")
     print(f"📁 Templates directory: {TEMPLATES_DIR}")
-    print("📖 API Documentation: http://localhost:8000/docs")
-    print("🔍 Interactive API: http://localhost:8000/redoc")
-    print("🌐 Web Interface: http://localhost:8000")
+    print("📖 API Documentation: http://localhost:8001/docs")
+    print("🔍 Interactive API: http://localhost:8001/redoc")
+    print("🌐 Web Interface: http://localhost:8001")
     print("💡 Press Ctrl+C to stop")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
 
 
 if __name__ == "__main__":
