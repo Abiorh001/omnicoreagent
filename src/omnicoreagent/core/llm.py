@@ -20,7 +20,7 @@ import logging
 import os
 
 # Environment variable
-os.environ["LITELLM_LOG"] = "False"
+os.environ["LITELLM_LOG"] = "CRITICAL"
 
 # Disable verbose mode
 litellm.set_verbose = False
