@@ -178,6 +178,29 @@ class LastProcessedMessage(Base):
     )
 
 
+class StoredTool(Base):
+    __tablename__ = "stored_tools"
+
+    id: Mapped[str] = mapped_column(
+        String(DEFAULT_MAX_KEY_LENGTH),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+    )
+    tool_name: Mapped[str] = mapped_column(
+        String(DEFAULT_MAX_VARCHAR_LENGTH), index=True
+    )
+    mcp_server_name: Mapped[str] = mapped_column(
+        String(DEFAULT_MAX_VARCHAR_LENGTH), index=True
+    )
+    raw_tool: Mapped[dict[str, Any]] = mapped_column(
+        MutableDict.as_mutable(DynamicJSON), default={}
+    )
+    enriched_tool: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class DatabaseMessageStore:
     """
     Database-backed message store for storing, retrieving, and clearing messages by session.
@@ -414,6 +437,73 @@ class DatabaseMessageStore:
 
                 except Exception as e:
                     logger.warning(f"Error closing fresh session: {e}")
+
+    async def store_tool(
+        self,
+        tool_name: str,
+        mcp_server_name: str,
+        raw_tool: dict,
+        enriched_tool: dict,
+    ) -> None:
+        session = None
+        try:
+            session = self._get_session(fresh_for_background=False)
+
+            # check if exists first
+            existing = (
+                session.query(StoredTool)
+                .filter(
+                    StoredTool.tool_name == tool_name,
+                    StoredTool.mcp_server_name == mcp_server_name,
+                )
+                .first()
+            )
+            if existing:
+                logger.debug(
+                    f"Tool {tool_name} already stored for {mcp_server_name}, skipping insert"
+                )
+                return
+
+            tool = StoredTool(
+                tool_name=tool_name,
+                mcp_server_name=mcp_server_name,
+                raw_tool=raw_tool,
+                enriched_tool=enriched_tool,
+            )
+            session.add(tool)
+            session.commit()
+            logger.debug(f"Stored tool {tool_name} for server {mcp_server_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to store tool {tool_name}: {e}")
+        finally:
+            self._release_session(session)
+
+    async def tool_exists(self, tool_name: str, mcp_server_name: str) -> dict | None:
+        session = None
+        try:
+            session = self._get_session(fresh_for_background=False)
+            tool = (
+                session.query(StoredTool)
+                .filter(
+                    StoredTool.tool_name == tool_name,
+                    StoredTool.mcp_server_name == mcp_server_name,
+                )
+                .first()
+            )
+            if tool:
+                return {
+                    "tool_name": tool.tool_name,
+                    "mcp_server_name": tool.mcp_server_name,
+                    "raw_tool": tool.raw_tool,
+                    "enriched_tool": tool.enriched_tool,
+                }
+            return None
+        except Exception as e:
+            logger.error(f"Failed to check if tool exists {tool_name}: {e}")
+            return None
+        finally:
+            self._release_session(session)
 
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None

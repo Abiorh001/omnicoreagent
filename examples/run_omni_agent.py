@@ -33,6 +33,450 @@ from omnicoreagent import (
 # instantiate the tool registry
 tool_registry = ToolRegistry()
 
+MCP_TOOLS = [
+    {
+        "name": "mysql",
+        "command": "uv",
+        "args": [
+            "--directory",
+            "/home/abiorh/ai/mcp_servers/mysql_mcp_server",
+            "run",
+            "mysql_mcp_server",
+        ],
+        "env": {
+            "MYSQL_HOST": "localhost",
+            "MYSQL_PORT": "3306",
+            "MYSQL_USER": "root",
+            "MYSQL_PASSWORD": "Lucifer_001",
+            "MYSQL_DATABASE": "mcp_learning",
+        },
+    },
+    {
+        "name": "mcp-pinecone",
+        "command": "uv",
+        "args": [
+            "--directory",
+            "/home/abiorh/ai/mcp_servers/mcp-pinecone",
+            "run",
+            "mcp-pinecone",
+        ],
+        "env": {
+            "PINECONE_API_KEY": "",
+            "PINECONE_INDEX_NAME": "ocpp-index",
+        },
+    },
+    # {
+    #     "name": "new-mcpserver",
+    #    "transport_type": "streamable_http",
+    #     "url": "http://0.0.0.0:9000/mcp",
+    #     "headers": {
+    #         "Authorization": "Bearer api-key-1234567890"
+    #     }
+    # },
+    {
+        "name": "filesystem",
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-filesystem",
+            "/home/abiorh/Desktop",
+            "/home/abiorh/ai/",
+        ],
+    },
+    # {
+    #     "name": "google-maps",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@modelcontextprotocol/server-google-maps",
+    #     ],
+    #     "env": {
+    #         "GOOGLE_MAPS_API_KEY": "",
+    #     },
+    # },
+    # {
+    #     "name": "graph_memory",
+    #     "command": "docker",
+    #     "args": [
+    #         "run",
+    #         "-i",
+    #         "-v",
+    #         "claude-memory:/app/dist",
+    #         "--rm",
+    #         "mcp/memory",
+    #     ],
+    # },
+    #    {
+    #     "name": "time",
+    #     "command": "uvx",
+    #     "args": [
+    #         "mcp-server-time",
+    #         "--local-timezone=America/New_York"
+    #     ],
+    # },
+    # {
+    #     "name": "edgeone-pages-mcp-server",
+    #     "command": "npx",
+    #     "args": [
+    #         "edgeone-pages-mcp"
+    #     ],
+    # },
+    # {
+    #     "name": "puppeteer",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@modelcontextprotocol/server-puppeteer"
+    #     ],
+    # },
+    # {
+    #     "name": "firecrawl-mcp",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "firecrawl-mcp"
+    #     ],
+    #     "env": {
+    #         "FIRECRAWL_API_KEY": "fc-af1b3ac1a0c2402485402fd0e34da158"
+    #     },
+    # },
+    # {
+    #     "name": "postgres",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@modelcontextprotocol/server-postgres",
+    #         "postgresql://localhost/mydb"
+    #     ],
+    # },
+    # {
+    #     "name": "baidu-map",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@baidumap/mcp-server-baidu-map"
+    #     ],
+    #     "env": {
+    #         "BAIDU_MAP_API_KEY": "xxx"
+    #     },
+    # },
+    # {
+    #     "name": "blender",
+    #     "command": "uvx",
+    #     "args": [
+    #         "blender-mcp"
+    #     ],
+    # },
+    # {
+    #     "name": "figma-developer-mcp",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "figma-developer-mcp",
+    #         "--stdio"
+    #     ],
+    #     "env": {
+    #         "FIGMA_API_KEY": "<your-figma-api-key>"
+    #     },
+    # },
+    # {
+    #     "name": "serper",
+    #     "command": "uvx",
+    #     "args": [
+    #         "serper-mcp-server"
+    #     ],
+    #     "env": {
+    #         "SERPER_API_KEY": "<Your Serper API key>"
+    #     },
+    # },
+    # {
+    #     "name": "qiniu",
+    #     "command": "uvx",
+    #     "args": [
+    #         "qiniu-mcp-server"
+    #     ],
+    #     "env": {
+    #         "QINIU_ACCESS_KEY": "YOUR_ACCESS_KEY",
+    #         "QINIU_SECRET_KEY": "YOUR_SECRET_KEY",
+    #         "QINIU_REGION_NAME": "YOUR_REGION_NAME",
+    #         "QINIU_ENDPOINT_URL": "YOUR_ENDPOINT_URL",
+    #         "QINIU_BUCKETS": ""
+    #     }
+    # },
+    # {
+    #     "name": "github",
+    #     "command": "docker",
+    #     "args": [
+    #         "run",
+    #         "-i",
+    #         "--rm",
+    #         "-e",
+    #         "GITHUB_PERSONAL_ACCESS_TOKEN",
+    #         "mcp/github"
+    #     ],
+    #     "env": {
+    #         "GITHUB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>"
+    #     },
+    # },
+    # {
+    #     "name": "Bucket",
+    #     "command": "npx",
+    #     "args": [
+    #         "mcp-remote@latest",
+    #         "https://app.bucket.co/api/mcp?appId=<YOUR APP ID>"
+    #     ],
+    # },
+    #  {
+    #     "name": "redis",
+    #     "command": "docker",
+    #     "args": [
+    #         "run",
+    #         "-i",
+    #         "--rm",
+    #         "mcp/redis",
+    #         "redis://host.docker.internal:6379"
+    #     ],
+    # },
+    # {
+    #     "name": "gitlab",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@modelcontextprotocol/server-gitlab"
+    #     ],
+    #     "env": {
+    #         "GITLAB_PERSONAL_ACCESS_TOKEN": "<YOUR_TOKEN>",
+    #         "GITLAB_API_URL": "https://gitlab.com/api/v4"
+    #     },
+    # },
+    # {
+    #     "name": "jina-mcp-tools",
+    #     "command": "npx",
+    #     "args": [
+    #         "jina-mcp-tools"
+    #     ],
+    #     "env": {
+    #         "JINA_API_KEY": "your_jina_api_key_here"
+    #     },
+    # },
+    # {
+    #     "name": "howtocook-mcp",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "howtocook-mcp"
+    #     ],
+    # },
+    # {
+    #     "name": "perplexity-ask",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@chatmcp/server-perplexity-ask"
+    #     ],
+    #     "env": {
+    #         "PERPLEXITY_API_KEY": "YOUR_API_KEY_HERE"
+    #     },
+    # },
+    # {
+    #     "name": "mcp-server-flomo",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@chatmcp/mcp-server-flomo"
+    #     ],
+    #     "env": {
+    #         "FLOMO_API_URL": "https://flomoapp.com/iwh/xxx/xxx/"
+    #     },
+    # },
+    # {
+    #     "name": "sequential-thinking",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@modelcontextprotocol/server-sequential-thinking"
+    #     ],
+    # },
+    # {
+    #     "name": "fetch",
+    #     "command": "uvx",
+    #     "args": [
+    #         "mcp-server-fetch"
+    #     ],
+    # },
+    # {
+    #     "name": "302ai-browser-use-mcp",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@302ai/browser-use-mcp"
+    #     ],
+    #     "env": {
+    #         "302AI_API_KEY": "YOUR_API_KEY_HERE"
+    #     },
+    # },
+    # {
+    #     "name": "slack",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@modelcontextprotocol/server-slack"
+    #     ],
+    #     "env": {
+    #         "SLACK_BOT_TOKEN": "xoxb-your-bot-token",
+    #         "SLACK_TEAM_ID": "T01234567",
+    #         "SLACK_CHANNEL_IDS": "C01234567, C76543210"
+    #     },
+    # },
+    # # {
+    # #     "name": "zhipu-web-search-sse",
+    # #     "url": "https://open.bigmodel.cn/api/mcp/web_search/sse?Authorization={you ak/sk}",
+    # #     "transport": "streamable_http"
+    # # },
+    # {
+    #     "name": "sentry",
+    #     "command": "uvx",
+    #     "args": [
+    #         "mcp-server-sentry",
+    #         "--auth-token",
+    #         "YOUR_SENTRY_TOKEN"
+    #     ],
+    # },
+    # {
+    #     "name": "context7",
+    #     "command": "bunx",
+    #     "args": [
+    #         "-y",
+    #         "@upstash/context7-mcp",
+    #         "--api-key",
+    #         "YOUR_API_KEY"
+    #     ],
+    # },
+    # {
+    #     "name": "amap-maps",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@amap/amap-maps-mcp-server"
+    #     ],
+    #     "env": {
+    #         "AMAP_MAPS_API_KEY": "api_key"
+    #     },
+    # },
+    # {
+    #     "name": "search1api",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "search1api-mcp"
+    #     ],
+    #     "env": {
+    #         "SEARCH1API_KEY": "YOUR_SEARCH1API_KEY"
+    #     },
+    # },
+    # {
+    #     "name": "mcpadvisor",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@xiaohui-wang/mcpadvisor"
+    #     ],
+    # },
+    # {
+    #     "name": "neon",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@neondatabase/mcp-server-neon",
+    #         "start",
+    #         "{NEON_API_KEY}"
+    #     ],
+    # },
+    # {
+    #     "name": "mailtrap",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "mcp-mailtrap"
+    #     ],
+    #     "env": {
+    #         "MAILTRAP_API_TOKEN": "your_mailtrap_api_token",
+    #         "DEFAULT_FROM_EMAIL": "your_sender@example.com"
+    #     },
+    # },
+    # {
+    #     "name": "brave-search",
+    #     "command": "docker",
+    #     "args": [
+    #         "run",
+    #         "-i",
+    #         "--rm",
+    #         "-e",
+    #         "BRAVE_API_KEY",
+    #         "mcp/brave-search"
+    #     ],
+    #     "env": {
+    #         "BRAVE_API_KEY": "YOUR_API_KEY_HERE"
+    #     },
+    # },
+    # {
+    #     "name": "tempmail",
+    #     "command": "npx",
+    #     "args": [
+    #         "mcp-server-tempmail"
+    #     ],
+    #     "env": {
+    #         "TEMPMAIL_API_KEY": "your-api-key-here",
+    #         "TEMPMAIL_BASE_URL": "https://chat-tempmail.com"
+    #     },
+    # },
+    # {
+    #     "name": "crawlbase",
+    #     "command": "npx",
+    #     "args": [
+    #         "@crawlbase/mcp@latest"
+    #     ],
+    #     "env": {
+    #         "CRAWLBASE_TOKEN": "your_token_here",
+    #         "CRAWLBASE_JS_TOKEN": "your_js_token_here"
+    #     },
+    # },
+    # {
+    #     "name": "memorious",
+    #     "command": "uvx",
+    #     "args": [
+    #         "memorious-mcp"
+    #     ],
+    # },
+    # {
+    #     "name": "anycrawl-mcp",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "anycrawl-mcp-server"
+    #     ],
+    #     "env": {
+    #         "ANYCRAWL_API_KEY": "<YOUR_TOKEN>",
+    #         "ANYCRAWL_BASE_URL": "https://api.anycrawl.dev",
+    #         "LOG_LEVEL": "info"
+    #     },
+    # },
+    # {
+    #     "name": "supabase-mcp",
+    #     "command": "npx",
+    #     "args": [
+    #         "-y",
+    #         "@smithery/cli@latest",
+    #         "run",
+    #         "@supabase-community/supabase-mcp",
+    #         "--key",
+    #         "c328ca96-70ec-4dd2-885d-4942a561281d",
+    #         "--profile",
+    #         "clinical-sawfish-qODzWU"
+    #     ],
+    # },
+]
+
 
 class OmniAgentCLI:
     """Comprehensive CLI interface for OmniAgent."""
@@ -310,49 +754,59 @@ Patterns Found:"""
         print("🚀 Initializing OmniAgent CLI...")
 
         # Initialize routers
-        self.memory_router = MemoryRouter("redis")
+        self.memory_router = MemoryRouter("database")
         self.event_router = EventRouter("in_memory")
 
         # Initialize agent with exact same config as working example
         self.agent = OmniAgent(
             name="comprehensive_demo_agent",
-            system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
+            # system_instruction="You are a comprehensive AI assistant with access to mathematical, text processing, system information, data analysis, and file system tools. You can perform complex calculations, format text, analyze data, and provide system information. Always use the appropriate tools for the task and provide clear, helpful responses.",
+            system_instruction="""
+You are TutorAgent, an AI assistant specialized in personalized education. 
+You have access to four tools that manage user-specific knowledge and learning progress:
+
+- insert_knowledge: Store new educational content for a user’s knowledge base.
+- knowledge_base_retrieval: Search and retrieve stored knowledge for a given user.
+- update_user_progress: Record or update a user’s performance on topics and activities.
+- get_user_context: Retrieve a user’s complete progress history to guide personalized tutoring.
+
+Always use the most relevant tool when storing, retrieving, or adapting knowledge. 
+Provide clear, supportive, and context-aware responses that help learners grow.
+""",
             model_config={
                 "provider": "openai",
                 "model": "gpt-4.1",
                 "temperature": 0.3,
                 "max_context_length": 5000,
             },
-            mcp_tools=[
-                {
-                    "command": "npx",
-                    "args": [
-                        "-y",
-                        "@modelcontextprotocol/server-filesystem",
-                        "/home/abiorh/Desktop",
-                        "/home/abiorh/ai/",
-                    ],
-                }
-            ],
-            local_tools=tool_registry,
+            mcp_tools=MCP_TOOLS,
+            # local_tools=tool_registry,
             agent_config={
+                "agent_name": "OmniAgent",
                 "max_steps": 15,
                 "tool_call_timeout": 60,
-                # "request_limit": 0,
-                # "total_tokens_limit": 10000,
+                "request_limit": 0,  # 0 = unlimited
+                "total_tokens_limit": 0,  # or 0 for unlimited
+                # --- Memory Retrieval Config ---
                 "memory_config": {"mode": "sliding_window", "value": 100},
+                "memory_results_limit": 5,
+                "memory_similarity_threshold": 0.5,
+                # --- Tool Retrieval Config ---
+                "enable_tools_knowledge_base": False,
+                "tools_results_limit": 10,
+                "tools_similarity_threshold": 0.1,
             },
             embedding_config={
-                "provider": "gemini",
-                "model": "text-embedding-004",
-                "dimensions": 768,
-                "encoding_format": "float",
+                "provider": "voyage",
+                "model": "voyage-3.5",
+                "dimensions": 1024,
+                "encoding_format": "base64",
             },
             memory_router=self.memory_router,
             event_router=self.event_router,
             debug=True,
         )
-
+        await self.agent.connect_mcp_servers()
         # Initialize background agent manager
         self.background_manager = BackgroundAgentManager(
             memory_router=self.memory_router, event_router=self.event_router

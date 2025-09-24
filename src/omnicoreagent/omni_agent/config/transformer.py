@@ -67,11 +67,13 @@ class AgentConfig:
     """User-friendly agent configuration"""
 
     agent_name: str = "OmniAgent"
-    mcp_enabled: bool = False
     tool_call_timeout: int = 30
     max_steps: int = 15
     request_limit: int = 0
     total_tokens_limit: int = 0
+    enable_tools_knowledge_base: bool = False
+    tools_results_limit: int = 10
+    tools_similarity_threshold: float = 0.5
     memory_config: dict = field(
         default_factory=lambda: {"mode": "token_budget", "value": 30000}
     )

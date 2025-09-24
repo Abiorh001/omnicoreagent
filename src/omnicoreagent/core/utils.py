@@ -16,6 +16,12 @@ from rich.pretty import Pretty
 from rich.text import Text
 from datetime import datetime, timezone
 from decouple import config as decouple_config
+import xml.etree.ElementTree as ET
+from omnicoreagent.core.constants import AGENTS_REGISTRY
+from omnicoreagent.core.system_prompts import generate_react_agent_role_prompt
+import asyncio
+from typing import Any, Callable
+
 
 console = Console()
 # Configure logging
@@ -109,6 +115,60 @@ def clean_json_response(json_response):
                 json_response,
                 0,
             )
+
+
+async def generate_react_agent_role_prompt_func(
+    mcp_server_tools: dict[str, Any],
+    llm_connection: Callable,
+) -> str:
+    """Generate the react agent role prompt for a specific server."""
+    react_agent_role_prompt = generate_react_agent_role_prompt(
+        mcp_server_tools=mcp_server_tools,
+    )
+    messages = [
+        {"role": "system", "content": react_agent_role_prompt},
+        {"role": "user", "content": "Generate the agent role prompt"},
+    ]
+    response = await llm_connection.llm_call(messages)
+    if response:
+        if hasattr(response, "choices"):
+            return response.choices[0].message.content.strip()
+        elif hasattr(response, "message"):
+            return response.message.content.strip()
+    return ""
+
+
+async def ensure_agent_registry(
+    available_tools: dict[str, Any],
+    llm_connection: Callable,
+) -> dict[str, str]:
+    """
+    Ensure that agent registry entries exist for all servers in available_tools.
+    Missing entries will be generated concurrently.
+    """
+    tasks = []
+    missing_servers = []
+
+    for server_name in available_tools.keys():
+        if server_name not in AGENTS_REGISTRY:
+            missing_servers.append(server_name)
+            tasks.append(
+                asyncio.create_task(
+                    generate_react_agent_role_prompt_func(
+                        mcp_server_tools=available_tools[server_name],
+                        llm_connection=llm_connection,
+                    )
+                )
+            )
+
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for server_name, result in zip(missing_servers, results):
+            if isinstance(result, Exception):
+                continue
+            AGENTS_REGISTRY[server_name] = result
+
+    return AGENTS_REGISTRY
 
 
 def hash_text(text: str) -> str:
@@ -395,6 +455,116 @@ class RobustLoopDetector:
             itype = sig[0]
             type_counts[itype] = type_counts.get(itype, 0) + 1
         return type_counts
+
+
+def strip_comprehensive_narrative(text):
+    """
+    Removes <comprehensive_narrative> tags. Returns original text if any error occurs.
+    """
+    try:
+        if not isinstance(text, str):
+            return str(text)
+        return re.sub(r"</?comprehensive_narrative>", "", text).strip()
+    except (TypeError, re.error):
+        return str(text)
+
+
+def json_to_smooth_text(content):
+    """
+    Converts LLM content (string or JSON string) into smooth, human-readable text.
+    - If content is JSON in string form, parse and flatten it.
+    - If content is plain text, return as-is.
+    - Safe fallback: returns original content if anything fails.
+    """
+    try:
+        # Step 1: if content is str, try to parse as JSON
+        if isinstance(content, str):
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # Not JSON, treat as plain text
+                return content
+        else:
+            data = content  # already dict/list/scalar
+
+        # Step 2: recursively flatten
+        def _flatten(obj):
+            if isinstance(obj, dict):
+                sentences = []
+                for k, v in obj.items():
+                    pretty_key = k.replace("_", " ").capitalize()
+                    sentences.append(f"{pretty_key}: {_flatten(v)}")
+                return " ".join(sentences)
+            elif isinstance(obj, list):
+                items = [_flatten(v) for v in obj]
+                if len(items) == 1:
+                    return items[0]
+                return ", ".join(items[:-1]) + " and " + items[-1]
+            else:
+                return str(obj)
+
+        return _flatten(data)
+
+    except Exception:
+        # fallback: return original string content
+        return str(content)
+
+
+def normalize_enriched_tool(enriched: str) -> str:
+    """
+    Normalize enriched tool XML (<tool_document>) into a hybrid
+    natural-language + structured format optimized for embedding & retrieval.
+    """
+
+    try:
+        root = ET.fromstring(enriched)
+    except Exception:
+        # fallback: return as plain text if parsing fails
+        return enriched.strip()
+
+    # --- Extract fields ---
+    name = root.findtext("expanded_name", default="Unnamed Tool")
+    description = root.findtext("long_description", default="").strip()
+
+    # --- Build narrative ---
+    parts = [f"Tool: {name}\n{description}"]
+
+    # --- Parameters ---
+    params_root = root.find("argument_schema")
+    if params_root is not None:
+        params = []
+        for param in params_root.findall("parameter"):
+            pname = param.findtext("name", default="unknown")
+            ptype = param.findtext("type", default="unspecified")
+            preq = param.findtext("required", default="false")
+            pdesc = (param.findtext("description") or "").strip()
+            params.append(f"- {pname} ({ptype}, required={preq}): {pdesc}")
+        if params:
+            parts.append("Parameters:\n" + "\n".join(params))
+
+    # --- Example Questions ---
+    questions_root = root.find("synthetic_questions")
+    if questions_root is not None:
+        questions = [
+            f"- {(q.text or '').strip()}"
+            for q in questions_root.findall("question")
+            if (q.text or "").strip()
+        ]
+        if questions:
+            parts.append("Example Questions:\n" + "\n".join(questions))
+
+    # --- Key Topics ---
+    topics_root = root.find("key_topics")
+    if topics_root is not None:
+        topics = [
+            (t.text or "").strip()
+            for t in topics_root.findall("topic")
+            if (t.text or "").strip()
+        ]
+        if topics:
+            parts.append("Key Topics: " + ", ".join(topics))
+
+    return "\n\n".join(parts).strip()
 
 
 def handle_stuck_state(original_system_prompt: str, message_stuck_prompt: bool = False):

@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any
+from omnicoreagent.core.system_prompts import tools_retriever_additonal_prompt
 from omnicoreagent.core.agents.token_usage import (
     Usage,
     UsageLimitExceeded,
@@ -60,6 +61,10 @@ if is_vector_db_enabled():
         from omnicoreagent.core.memory_store.memory_management.background_memory_management import (
             fire_and_forget_memory_processing,
         )
+        from omnicoreagent.core.tools.semantic_tools import SemanticToolManager
+        from omnicoreagent.core.tools.tool_knowledge_base import (
+            tools_retriever_local_tool,
+        )
     except Exception as e:
         logger.warning(f"Failed to import memory manager: {e}")
         pass
@@ -79,6 +84,9 @@ class BaseReactAgent:
         total_tokens_limit: int = 0,
         memory_results_limit: int = 5,
         memory_similarity_threshold: float = 0.5,
+        enable_tools_knowledge_base: bool = False,
+        tools_results_limit: int = 10,
+        tools_similarity_threshold: float = 0.5,
     ):
         self.agent_name = agent_name
         # Enforce minimum 5 steps to allow proper tool usage and reasoning
@@ -93,6 +101,7 @@ class BaseReactAgent:
         self.request_limit = request_limit
         self.total_tokens_limit = total_tokens_limit
         self._limits_enabled = request_limit > 0 or total_tokens_limit > 0
+        self.enable_tools_knowledge_base = enable_tools_knowledge_base
 
         if self._limits_enabled:
             logger.info(
@@ -104,6 +113,9 @@ class BaseReactAgent:
         # Memory retrieval configuration with sensible defaults
         self.memory_results_limit = memory_results_limit
         self.memory_similarity_threshold = memory_similarity_threshold
+
+        self.tools_results_limit = tools_results_limit
+        self.tools_similarity_threshold = tools_similarity_threshold
 
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
@@ -154,17 +166,17 @@ class BaseReactAgent:
                     long_term_results, episodic_results = await asyncio.gather(
                         asyncio.to_thread(
                             long_term_manager.query_memory,
-                            query,
-                            session_id,
-                            limit,
-                            threshold,
+                            query=query,
+                            session_id=session_id,
+                            n_results=limit,
+                            similarity_threshold=threshold,
                         ),
                         asyncio.to_thread(
                             episodic_manager.query_memory,
-                            query,
-                            session_id,
-                            limit,
-                            threshold,
+                            query=query,
+                            session_id=session_id,
+                            n_results=limit,
+                            similarity_threshold=threshold,
                         ),
                     )
 
@@ -432,6 +444,9 @@ class BaseReactAgent:
             local_tools: LocalToolsIntegration instance for local tool execution
         """
         try:
+            if self.enable_tools_knowledge_base:
+                mcp_tools = None
+                local_tools = tools_retriever_local_tool
             action = json.loads(parsed_response.data)
             tool_name = action.get("tool", "").strip()
             tool_args = action.get("parameters", {})
@@ -509,6 +524,7 @@ class BaseReactAgent:
         parsed_response: ParsedResponse,
         response: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
+        llm_connection: Callable,
         system_prompt: str,
         debug: bool = False,
         sessions: dict = None,
@@ -576,13 +592,21 @@ class BaseReactAgent:
 
             try:
                 async with asyncio.timeout(self.tool_call_timeout):
+                    metadata = {
+                        "top_k": self.tools_results_limit,
+                        "similarity_threshold": self.tools_similarity_threshold,
+                    }
+
                     observation = await tool_call_result.tool_executor.execute(
                         agent_name=self.agent_name,
                         tool_args=tool_call_result.tool_args,
                         tool_name=tool_call_result.tool_name,
                         tool_call_id=tool_call_id,
                         add_message_to_history=add_message_to_history,
+                        llm_connection=llm_connection,
+                        mcp_tools=mcp_tools,
                         session_id=session_id,
+                        **metadata,
                     )
                     try:
                         parsed = json.loads(observation)
@@ -767,14 +791,47 @@ class BaseReactAgent:
         finally:
             self.state = previous_state
 
-    @track("get_tools_registry")
     async def get_tools_registry(
         self, mcp_tools: dict = None, local_tools: Any = None
     ) -> str:
         tools_section = []
         try:
+            # Process local tools
+            if self.enable_tools_knowledge_base:
+                local_tools = tools_retriever_local_tool
+            if local_tools:
+                local_tools_list = local_tools.get_available_tools()
+                if local_tools_list:
+                    tools_section.append("## LOCAL TOOLS")
+
+                    # Handle local tool dictionaries
+                    for tool in local_tools_list:
+                        if isinstance(tool, dict):
+                            tool_name = tool.get("name", "Unknown")
+                            tool_description = tool.get("description", "No description")
+
+                            tool_md = f"### `{tool_name}`\n{tool_description}"
+
+                            input_schema = tool.get("inputSchema", {})
+                            if input_schema:
+                                params = input_schema.get("properties", {})
+                                if params:
+                                    tool_md += "\n\n**Parameters:**\n"
+                                    tool_md += "| Name | Type | Description |\n"
+                                    tool_md += "|------|------|-------------|\n"
+                                    for param_name, param_info in params.items():
+                                        param_desc = param_info.get(
+                                            "description", "**No description**"
+                                        )
+                                        param_type = param_info.get("type", "any")
+                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+
+                            tools_section.append(tool_md)
             # Process MCP tools
             if mcp_tools:
+                if self.enable_tools_knowledge_base:
+                    return tools_section
+
                 for server_name, tools in mcp_tools.items():
                     if not tools:
                         continue
@@ -792,36 +849,6 @@ class BaseReactAgent:
 
                             if hasattr(tool, "inputSchema") and tool.inputSchema:
                                 params = tool.inputSchema.get("properties", {})
-                                if params:
-                                    tool_md += "\n\n**Parameters:**\n"
-                                    tool_md += "| Name | Type | Description |\n"
-                                    tool_md += "|------|------|-------------|\n"
-                                    for param_name, param_info in params.items():
-                                        param_desc = param_info.get(
-                                            "description", "**No description**"
-                                        )
-                                        param_type = param_info.get("type", "any")
-                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
-
-                            tools_section.append(tool_md)
-
-            # Process local tools
-            if local_tools:
-                local_tools_list = local_tools.get_available_tools()
-                if local_tools_list:
-                    tools_section.append("## LOCAL TOOLS")
-
-                    # Handle local tool dictionaries
-                    for tool in local_tools_list:
-                        if isinstance(tool, dict):
-                            tool_name = tool.get("name", "Unknown")
-                            tool_description = tool.get("description", "No description")
-
-                            tool_md = f"### `{tool_name}`\n{tool_description}"
-
-                            input_schema = tool.get("inputSchema", {})
-                            if input_schema:
-                                params = input_schema.get("properties", {})
                                 if params:
                                     tool_md += "\n\n**Parameters:**\n"
                                     tool_md += "| Name | Type | Description |\n"
@@ -873,15 +900,6 @@ class BaseReactAgent:
         if event_router:
             await event_router(session_id=session_id, event=event)
 
-        # Initialize messages with system prompt
-        @track("tools_registry_retrieval")
-        async def get_tools():
-            return await self.get_tools_registry(
-                mcp_tools=mcp_tools, local_tools=local_tools
-            )
-
-        tools_section = await get_tools()
-
         # Only get memory if vector DB is enabled
         if is_vector_db_enabled():
 
@@ -902,9 +920,17 @@ class BaseReactAgent:
             # Vector DB disabled - no memory sections
             system_updated_prompt = system_prompt
             long_term_memory, episodic_memory = [], []
+        tools_section = await self.get_tools_registry(
+            mcp_tools=mcp_tools, local_tools=local_tools
+        )
+
+        # check if enable tools knowledge base
+        if self.enable_tools_knowledge_base:
+            system_updated_prompt += tools_retriever_additonal_prompt
 
         #  append the tools section if needed
         system_updated_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
+        # logger.info(f"system prompt: {system_updated_prompt}")
 
         self.messages[self.agent_name] = [
             Message(role="system", content=system_updated_prompt)
@@ -1111,9 +1137,10 @@ class BaseReactAgent:
                             response=response,
                             add_message_to_history=add_message_to_history,
                             system_prompt=system_prompt,
+                            llm_connection=llm_connection,
+                            mcp_tools=mcp_tools,
                             debug=debug,
                             sessions=sessions,
-                            mcp_tools=mcp_tools,
                             local_tools=local_tools,
                             session_id=session_id,
                             event_router=event_router,  # Pass event_router callable

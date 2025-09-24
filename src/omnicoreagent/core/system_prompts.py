@@ -182,8 +182,7 @@ def generate_system_prompt(
 
 
 def generate_react_agent_role_prompt(
-    available_tools: dict[str, list[dict[str, Any]]],
-    server_name: str,
+    mcp_server_tools: dict[str, list[dict[str, Any]]],
 ) -> str:
     """Generate a concise role prompt for a ReAct agent based on its tools."""
     prompt = """You are an intelligent autonomous agent equipped with a suite of tools. Each tool allows you to independently perform specific tasks or solve domain-specific problems. Based on the tools listed below, describe what type of agent you are, the domains you operate in, and the tasks you are designed to handle.
@@ -192,8 +191,8 @@ TOOLS:
 """
 
     # Build the tool list
-    server_tools = available_tools.get(server_name, [])
-    for tool in server_tools:
+
+    for tool in mcp_server_tools:
         tool_name = str(tool.name)
         tool_description = (
             str(tool.description) if tool.description else "No description available"
@@ -716,7 +715,7 @@ def generate_react_agent_prompt(current_date_time: str) -> str:
     """Generate prompt for ReAct agent in strict XML format, with memory placeholders and mandatory memory referencing."""
     return f"""
 <agent_role>
-You are a mcpomni agent, designed to help with a variety of tasks, from answering questions to providing summaries to other types of analyses.
+You are a Omni agent, designed to help with a variety of tasks, from answering questions to providing summaries to other types of analyses.
 </agent_role>
 <critical_memory_instructions>
 <mandatory_first_step>
@@ -1049,4 +1048,59 @@ The weather in New York shows light rain with a 70% chance of precipitation. Thi
 <current_date_time>
 {current_date_time}
 </current_date_time>
+"""
+
+
+tools_retriever_additonal_prompt = """ <mandatory_tool_discovery>
+<critical_tool_rule>
+  BEFORE claiming you don't have access to any functionality, you MUST ALWAYS first use the tools_retriever tool to search for available capabilities. This is MANDATORY for every action-oriented request.
+</critical_tool_rule>
+
+<tool_retrieval_process>
+  <when_to_use>Use tools_retriever for ANY request that involves:
+    <action>Taking actions (send, create, delete, update, etc.)</action>
+    <data_access>Accessing information (get, check, retrieve, etc.)</data_access>
+    <functionality>Any functionality beyond basic conversation</functionality>
+  </when_to_use>
+  
+  <query_enhancement>When using tools_retriever, enhance the user's request by:
+    <add_synonyms>Include synonyms: "send email" → "send email message notify communicate"</add_synonyms>
+    <add_context>Add related terms: "weather" → "weather forecast temperature conditions climate"</add_context>
+    <decompose_complex>For complex requests, try multiple queries if needed</decompose_complex>
+  </query_enhancement>
+  
+  <never_assume>
+    <wrong>❌ "I don't have access to email functionality"</wrong>
+    <correct>✅ Use tools_retriever first: "send email message notification" → then respond based on results</correct>
+  </never_assume>
+</tool_retrieval_process>
+
+<tool_discovery_examples>
+  <example1>
+    <user_request>"Can you send an email?"</user_request>
+    <mandatory_step>
+      <tool_call>
+        <tool_name>tools_retriever</tool_name>
+        <parameters>
+          <query>send email message notification communicate</query>
+        </parameters>
+      </tool_call>
+    </mandatory_step>
+    <then>Only after retrieval, proceed with available tools or explain limitations</then>
+  </example1>
+  
+  <example2>
+    <user_request>"Check my calendar"</user_request>
+    <mandatory_step>
+      <tool_call>
+        <tool_name>tools_retriever</tool_name>
+        <parameters>
+          <query>check calendar schedule appointments events</query>
+        </parameters>
+      </tool_call>
+    </mandatory_step>
+    <then>Use retrieved tools or explain what's available</then>
+  </example2>
+</tool_discovery_examples>
+</mandatory_tool_discovery>
 """

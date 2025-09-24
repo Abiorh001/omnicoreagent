@@ -34,29 +34,6 @@ class MongoDBVectorDB(VectorDBBase):
         # Initialize MongoDB connection
         self.__init_connection()
 
-    def _get_embedding_dimensions(self) -> int:
-        """Get embedding dimensions from configuration - STRICT MODE."""
-        if not self.llm_connection:
-            raise ValueError("LLM connection is required to get embedding dimensions")
-
-        if not hasattr(self.llm_connection, "embedding_config"):
-            raise ValueError("LLM connection does not have embedding configuration")
-
-        embedding_config = self.llm_connection.embedding_config
-        if not embedding_config:
-            raise ValueError("Embedding configuration is not available")
-
-        if "dimensions" not in embedding_config:
-            raise ValueError("Embedding configuration is missing 'dimensions' field")
-
-        dimensions = embedding_config["dimensions"]
-        if not isinstance(dimensions, int) or dimensions <= 0:
-            raise ValueError(
-                f"Invalid dimensions value: {dimensions}. Must be a positive integer."
-            )
-
-        return dimensions
-
     def __init_connection(self):
         """Initialize MongoDB connection and collection."""
         if self.mongodb_uri:
@@ -174,6 +151,10 @@ class MongoDBVectorDB(VectorDBBase):
                             "type": "filter",
                             "path": "session_id",  # Allow filtering by session_id
                         },
+                        {
+                            "type": "filter",
+                            "path": "mcp_server_name",  # Allow filtering by mcp_server_name
+                        },
                     ]
                 },
                 name=index_name,
@@ -220,11 +201,20 @@ class MongoDBVectorDB(VectorDBBase):
         try:
             # Ensure collection exists
             self._ensure_collection()
+            # check the metadata to see if it has mcp_server_name key
+            mcp_server_name = metadata.get("mcp_server_name", None)
+
             metadata["text"] = document
 
-            # Generate embedding using shared model
+            # Generate embedding with error handling
             try:
-                vector = self.embed_text(document)
+                updated_document = None
+                if not mcp_server_name:
+                    updated_document = document
+                else:
+                    updated_document = document["enriched_tool"]
+
+                vector = self.embed_text(updated_document)
             except Exception:
                 return False
 
@@ -247,19 +237,39 @@ class MongoDBVectorDB(VectorDBBase):
             return False
 
     def query_collection(
-        self, query: str, session_id: str, n_results: int, similarity_threshold: float
+        self,
+        query: str,
+        n_results: int,
+        similarity_threshold: float,
+        session_id: str = None,
+        mcp_server_names: list[str] = None,
     ) -> Dict[str, Any]:
-        """for querying collection."""
+        """Query the collection with session_id or MCP server name filtering."""
         if not self.enabled:
             logger.warning("MongoDB is not enabled. Cannot query collection.")
-            return {"documents": []}
+            return {
+                "documents": [],
+                "session_id": [],
+                "distances": [],
+                "metadatas": [],
+                "ids": [],
+            }
+
+        if session_id and mcp_server_names:
+            raise ValueError(
+                "Cannot filter by both session_id and mcp_server_names simultaneously."
+            )
 
         try:
-            # Generate embedding for the search query
             query_embedding = self.embed_text(query)
-
-            # Get the index name
             index_name = f"idx_{self.db_name[:5]}_{self.collection_name[:5]}"
+
+            # Build filter dict
+            filter_dict = {}
+            if session_id:
+                filter_dict["session_id"] = session_id
+            elif mcp_server_names:
+                filter_dict["mcp_server_name"] = {"$in": mcp_server_names}
 
             # Build vector search pipeline
             pipeline = [
@@ -269,8 +279,8 @@ class MongoDBVectorDB(VectorDBBase):
                         "queryVector": query_embedding,
                         "path": "embedding",
                         "limit": n_results,
-                        "exact": True,  # for ENN
-                        "filter": {"session_id": session_id},
+                        "exact": True,
+                        "filter": filter_dict,
                     }
                 },
                 {
@@ -281,6 +291,7 @@ class MongoDBVectorDB(VectorDBBase):
                         "session_id": 1,
                         "timestamp": 1,
                         "memory_type": 1,
+                        "mcp_server_name": 1,
                         "metadata": {
                             "$mergeObjects": [
                                 "$metadata",
@@ -290,6 +301,7 @@ class MongoDBVectorDB(VectorDBBase):
                                     "text": "$text",
                                     "timestamp": "$timestamp",
                                     "memory_type": "$memory_type",
+                                    "mcp_server_name": "$mcp_server_name",
                                 },
                             ]
                         },
@@ -298,43 +310,40 @@ class MongoDBVectorDB(VectorDBBase):
                 {"$sort": {"score": -1}},
             ]
 
-            # Execute the search
             results = list(self.collection.aggregate(pipeline))
-
             if not results:
                 return {
                     "documents": [],
                     "session_id": [],
+                    "mcp_server_name": [],
                     "distances": [],
                     "metadatas": [],
                     "ids": [],
                 }
 
-            # Filter by score similarity threshold
+            # Filter by similarity threshold
             filtered_results = [
-                result for result in results if result["score"] >= similarity_threshold
+                r for r in results if r["score"] >= similarity_threshold
             ]
 
-            if not filtered_results:
-                return {
-                    "documents": [],
-                    "session_id": [],
-                    "distances": [],
-                    "metadatas": [],
-                    "ids": [],
-                }
-
-            # Format results to match expected structure
-            formatted_results = {
-                "documents": [hit["text"] for hit in filtered_results],
-                "session_id": [hit.get("session_id", "") for hit in filtered_results],
-                "scores": [hit["score"] for hit in filtered_results],
-                "metadatas": [hit["metadata"] for hit in filtered_results],
-                "ids": [hit["_id"] for hit in filtered_results],
+            return {
+                "documents": [r["text"] for r in filtered_results],
+                "session_id": [r.get("session_id", "") for r in filtered_results],
+                "mcp_server_name": [
+                    r.get("mcp_server_name", "") for r in filtered_results
+                ],
+                "scores": [r["score"] for r in filtered_results],
+                "metadatas": [r["metadata"] for r in filtered_results],
+                "ids": [r["_id"] for r in filtered_results],
             }
-
-            return formatted_results
 
         except Exception as e:
             logger.error(f"Failed to query MongoDB: {e}")
-            return {"documents": []}
+            return {
+                "documents": [],
+                "session_id": [],
+                "mcp_server_name": [],
+                "distances": [],
+                "metadatas": [],
+                "ids": [],
+            }

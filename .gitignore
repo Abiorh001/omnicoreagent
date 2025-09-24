@@ -19,5 +19,6 @@ site/
 .chroma_db/
 .chroma_warmup/
 ._last_processed.json
+._tools.json
 *.db
 venv/

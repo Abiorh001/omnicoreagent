@@ -169,10 +169,23 @@ class ToolExecutor:
         tool_args: dict[str, Any],
         tool_call_id: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
+        llm_connection: Callable,
+        mcp_tools: dict,
         session_id: str = None,
+        **kwargs,
     ) -> str:
         try:
+            if tool_name.lower().strip() == "tools_retriever":
+                tool_args["llm_connection"] = llm_connection
+                tool_args["mcp_tools"] = mcp_tools
+                tool_args["top_k"] = kwargs.get("top_k")
+                tool_args["similarity_threshold"] = kwargs.get("similarity_threshold")
             result = await self.tool_handler.call(tool_name, tool_args)
+            if tool_name.lower().strip() == "tools_retriever":
+                del tool_args["llm_connection"]
+                del tool_args["mcp_tools"]
+                del tool_args["top_k"]
+                del tool_args["similarity_threshold"]
 
             if isinstance(result, dict):
                 # Handle structured dict responses (local tools)
