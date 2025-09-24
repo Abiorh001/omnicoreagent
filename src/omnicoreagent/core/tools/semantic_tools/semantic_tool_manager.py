@@ -472,7 +472,6 @@ class SemanticToolManager(BaseVectorDBHandler):
             similarity_threshold=similarity_threshold,
             mcp_server_names=mcp_server_names,
         )
-        tools_retrieved = []
         # If semantic search failed, use BM25 fallback
         if not tools_retrieved:
             retriever = ToolFallbackRetriever()
