@@ -238,9 +238,9 @@ class ToolFallbackRetriever:
                     }
                 )
 
-            # logger.info(
-            #     f"Retrieved {len(results)} tools for query '{query}' in {time.time() - start_time:.3f}s"
-            # )
+            logger.info(
+                f"Fallback Retrieved {len(results)} tools for query '{query}' in {time.time() - start_time:.3f}s"
+            )
             return results
 
         except Exception as e:

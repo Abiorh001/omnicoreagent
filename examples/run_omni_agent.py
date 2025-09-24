@@ -792,7 +792,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
                 "memory_results_limit": 5,
                 "memory_similarity_threshold": 0.5,
                 # --- Tool Retrieval Config ---
-                "enable_tools_knowledge_base": False,
+                "enable_tools_knowledge_base": True,
                 "tools_results_limit": 10,
                 "tools_similarity_threshold": 0.1,
             },
