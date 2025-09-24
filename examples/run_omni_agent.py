@@ -61,7 +61,7 @@ MCP_TOOLS = [
             "mcp-pinecone",
         ],
         "env": {
-            "PINECONE_API_KEY": "pcsk_6E2ypu_3ELFuS57dowpDY59PJvjfNyJnwRCiPkniKFvbN6QjXbBkT1GVe1k29EF4ZNK8r2",
+            "PINECONE_API_KEY": "",
             "PINECONE_INDEX_NAME": "ocpp-index",
         },
     },
@@ -91,7 +91,7 @@ MCP_TOOLS = [
     #         "@modelcontextprotocol/server-google-maps",
     #     ],
     #     "env": {
-    #         "GOOGLE_MAPS_API_KEY": "AIzaSyAO0oX9vKgfJFzp3pyA9wKPdDckBAsRDV8",
+    #         "GOOGLE_MAPS_API_KEY": "",
     #     },
     # },
     # {
