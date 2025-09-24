@@ -8,7 +8,7 @@ import json
 
 
 last_processed_file = "._last_processed.json"
-
+tools_file = "._tools.json"
 
 # # Create encoder once (module-level cache)
 # _encoder_cache: dict[str, object] = {}
@@ -44,7 +44,6 @@ class InMemoryStore(AbstractMemoryStore):
         """
         # Changed to session-based storage for database compatibility
         self.sessions_history: dict[str, list[dict[str, Any]]] = {}
-        self.last_processed: dict[tuple[str, str, str], float] = {}
         self.memory_config: dict[str, Any] = {}
         self._lock = threading.RLock()
 
@@ -168,6 +167,51 @@ class InMemoryStore(AbstractMemoryStore):
 
             key = f"{session_id}:{agent_name}:{memory_type}"
             return data.get(key)
+
+    async def tool_exists(self, tool_name: str, mcp_server_name: str) -> Optional[dict]:
+        """Check if a tool exists in persistent storage."""
+        with self._lock:
+            data = {}
+            if os.path.exists(tools_file):
+                try:
+                    with open(tools_file, "r") as f:
+                        data = json.load(f)
+                except json.JSONDecodeError:
+                    data = {}
+            data = data.get(tool_name)
+            # filter the data to ensure the mcp_server_name matches
+            if data and data.get("mcp_server_name") == mcp_server_name:
+                return data if data else None
+            else:
+                return None
+
+    async def store_tool(
+        self,
+        tool_name: str,
+        mcp_server_name: str,
+        raw_tool: dict,
+        enriched_tool: dict,
+    ) -> None:
+        """Store a tool persistently in JSON file"""
+        with self._lock:
+            data = {}
+            if os.path.exists(tools_file):
+                try:
+                    with open(tools_file, "r") as f:
+                        data = json.load(f)
+                except json.JSONDecodeError:
+                    data = {}
+
+            # store tool
+            data[tool_name] = {
+                "tool_name": tool_name,
+                "mcp_server_name": mcp_server_name,
+                "raw_tool": raw_tool,
+                "enriched_tool": enriched_tool,
+            }
+
+            with open(tools_file, "w") as f:
+                json.dump(data, f, indent=2)
 
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None

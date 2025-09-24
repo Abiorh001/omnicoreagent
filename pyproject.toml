@@ -49,8 +49,6 @@ dependencies = [
     "tzlocal>=5.2",
     "psycopg2-binary>=2.9.10",
     "qdrant-client>=1.15.0",
-    "nomic>=3.5.3",
-    "einops>=0.8.1",
     "chromadb>=1.0.15",
     "apscheduler>=3.11.0",
     "psutil>=7.0.0",
@@ -58,8 +56,9 @@ dependencies = [
     "litellm>=1.75.2",
     "fastapi-sso>=0.18.0",
     "opik>=1.8.19",
-    "pymongo[srv]>=4.14.1",
     "cryptography>=45.0.6",
+    "motor>=3.7.1",
+    "pymongo>=4.15.1",
 ]
 
 [project.scripts]

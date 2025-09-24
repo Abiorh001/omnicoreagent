@@ -44,9 +44,16 @@ from omnicoreagent.core.system_prompts import (
     generate_system_prompt,
 )
 from omnicoreagent.mcp_omni_connect.tools import list_tools
-from omnicoreagent.core.utils import CLIENT_MAC_ADDRESS, logger, format_timestamp
+from omnicoreagent.core.utils import (
+    CLIENT_MAC_ADDRESS,
+    logger,
+    format_timestamp,
+    ensure_agent_registry,
+)
+from omnicoreagent.core.tools.semantic_tools import SemanticToolManager
 
-CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "ab")
+
+CLIENT_MAC_ADDRESS = CLIENT_MAC_ADDRESS.replace(":", "_")
 
 
 class CommandType(Enum):
@@ -401,6 +408,25 @@ class MCPClientCLI:
         self.console = Console()
         self.command_help = CommandHelp()
 
+    async def async_init(self):
+        # also connect all the tools to the tools knowledge base if it's enabled
+        enable_tools_knowledge_base = self.agent_config.get(
+            "enable_tools_knowledge_base", False
+        )
+        if enable_tools_knowledge_base:
+            llm_connection = self.llm_connection
+            store_tool = self.memory_router.store_tool
+            tool_exists = self.memory_router.tool_exists
+            mcp_tools = self.client.available_tools
+
+            semantic_tools_manager = SemanticToolManager(llm_connection=llm_connection)
+
+            await semantic_tools_manager.batch_process_all_mcp_servers(
+                mcp_tools=mcp_tools,
+                store_tool=store_tool,
+                tool_exists=tool_exists,
+            )
+
     def parse_command(self, input_text: str) -> tuple[CommandType, str]:
         """Parse input to determine command type and payload"""
         input_text = input_text.strip().lower()
@@ -629,12 +655,33 @@ class MCPClientCLI:
                 "[green]Switched to Auto Mode - Using ReAct Agent for tool execution[/]"
             )
         elif mode.lower() == "orchestrator":
+            # ensure the agent registry is up to date before using the orchestrator mode
+            self.console.print("[green]Switching to Orchestrator Mode...[/]")
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+                console=self.console,
+            ) as progress:
+                task = progress.add_task("Generating agent registry...", start=False)
+                progress.start_task(task)
+                updated_registry = await ensure_agent_registry(
+                    available_tools=self.client.available_tools,
+                    llm_connection=self.llm_connection,
+                )
             self.MODE["orchestrator"] = True
             self.MODE["auto"] = False
             self.MODE["chat"] = False
-            self.console.print(
-                "[green]Switched to Orchestrator Mode - Coordinating multiple tools and agents[/]"
-            )
+
+            if updated_registry:
+                self.console.print(
+                    f"[green]Switched to Orchestrator Mode - Coordinating multiple tools and agents[/]"
+                )
+                for server, _ in updated_registry.items():
+                    self.console.print(f"[blue]Server {server} registry updated[/]")
+            else:
+                self.console.print("[yellow]No agent registry entries generated[/]")
+
         else:
             self.console.print(
                 "[red]Invalid mode. Available modes: chat, auto, orchestrator[/]"
@@ -953,6 +1000,15 @@ class MCPClientCLI:
                     memory_results_limit=self.agent_config.get(
                         "memory_results_limit", 5
                     ),
+                    enable_tools_knowledge_base=self.agent_config.get(
+                        "enable_tools_knowledge_base", False
+                    ),
+                    tools_results_limit=self.agent_config.get(
+                        "tools_results_limit", 10
+                    ),
+                    tools_similarity_threshold=self.agent_config.get(
+                        "tools_similarity_threshold", 0.5
+                    ),
                 )
                 # Generate ReAct agent prompt
                 react_agent_prompt = generate_react_agent_prompt(
@@ -1205,7 +1261,23 @@ class MCPClientCLI:
                         max_steps=self.agent_config.get("max_steps"),
                         request_limit=self.agent_config.get("request_limit"),
                         total_tokens_limit=self.agent_config.get("total_tokens_limit"),
+                        memory_similarity_threshold=self.agent_config.get(
+                            "memory_similarity_threshold", 0.5
+                        ),
+                        memory_results_limit=self.agent_config.get(
+                            "memory_results_limit", 5
+                        ),
+                        enable_tools_knowledge_base=self.agent_config.get(
+                            "enable_tools_knowledge_base", False
+                        ),
+                        tools_results_limit=self.agent_config.get(
+                            "tools_results_limit", 10
+                        ),
+                        tools_similarity_threshold=self.agent_config.get(
+                            "tools_similarity_threshold", 0.5
+                        ),
                     )
+
                     react_agent = ReactAgent(config=agent_config)
                     response = await react_agent._run(
                         system_prompt=react_agent_prompt,
@@ -1413,7 +1485,7 @@ class MCPClientCLI:
             Panel(
                 content,
                 title="[bold blue]⚡ MCPOmni Connect ⚡[/]",
-                subtitle="[bold cyan]v0.1.19[/]",
+                subtitle="[bold cyan]v0.2.4[/]",
                 border_style="blue",
                 box=box.DOUBLE_EDGE,
             )

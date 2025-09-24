@@ -21,8 +21,6 @@ async def handle_notifications(
     available_resources: dict[str, Any] = None,
     available_prompts: dict[str, Any] = None,
     refresh_capabilities: Callable[[], Any] = None,
-    generate_react_agent_role_prompt: Callable[[], Any] = None,
-    llm_connection: Callable[[], Any] = None,
 ):
     """Handle incoming notifications from the server."""
     try:
@@ -42,9 +40,6 @@ async def handle_notifications(
                             available_resources=available_resources,
                             available_prompts=available_prompts,
                             debug=debug,
-                            server_name=server_name,
-                            llm_connection=llm_connection,
-                            generate_react_agent_role_prompt=generate_react_agent_role_prompt,
                         )
                         logger.info(
                             f"Successfully refreshed capabilities after notification from {server_name}"

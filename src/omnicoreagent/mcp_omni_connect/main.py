@@ -181,8 +181,9 @@ async def async_main():
             return
 
         cli = MCPClientCLI(client, llm_connection)
-
         await client.connect_to_servers()
+        # load the mcp tools to knowledge base if its enabled
+        await cli.async_init()
 
         await cli.chat_loop()
     except KeyboardInterrupt:

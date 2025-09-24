@@ -161,8 +161,7 @@ class ChromaDBVectorDB(VectorDBBase):
         """Ensure the collection exists, create if it doesn't."""
         try:
             collection = self.chroma_client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"type": "memory"},
+                name=self.collection_name, metadata={"hnsw:space": "cosine"}
             )
             return collection
         except Exception as e:
@@ -178,11 +177,22 @@ class ChromaDBVectorDB(VectorDBBase):
             return False
 
         try:
+            mcp_server_name = metadata.get("mcp_server_name", None)
+
             metadata["text"] = document
+            updated_document = None
+            if not mcp_server_name:
+                updated_document = document
+            else:
+                updated_document = document["enriched_tool"]
+            vector = self.embed_text(updated_document)
 
             # Add document to ChromaDB
             self.collection.add(
-                documents=[document], metadatas=[metadata], ids=[doc_id]
+                embeddings=[vector],
+                documents=[document],
+                metadatas=[metadata],
+                ids=[doc_id],
             )
 
             return True
@@ -190,61 +200,65 @@ class ChromaDBVectorDB(VectorDBBase):
             return False
 
     def query_collection(
-        self, query: str, session_id: str, n_results: int, similarity_threshold: float
+        self,
+        query: str,
+        n_results: int,
+        similarity_threshold: float,
+        session_id: str = None,
+        mcp_server_names: list[str] = None,
     ) -> Dict[str, Any]:
-        """for querying collection."""
+        """Query ChromaDB collection with optional session_id or MCP server filtering."""
         if not self.enabled:
             logger.warning(
                 "ChromaDB is not available or enabled. Cannot query collection."
             )
-            return {
-                "documents": [],
-                "scores": [],
-                "metadatas": [],
-                "ids": [],
-            }
+            return {"documents": [], "scores": [], "metadatas": [], "ids": []}
+
+        if session_id and mcp_server_names:
+            raise ValueError(
+                "Cannot filter by both session_id and mcp_server_names simultaneously."
+            )
 
         try:
+            # Build filter dict
+            # where_filter = {}
+            # if session_id:
+            #     where_filter["session_id"] = session_id
+            # elif mcp_server_names:
+            #     where_filter["mcp_server_name"] = {"$in": mcp_server_names}
+
             # Query ChromaDB
             results = self.collection.query(
                 query_texts=[query],
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"],
-                where={"session_id": session_id},
             )
 
             if not results["documents"] or not results["documents"][0]:
-                return {
-                    "documents": [],
-                    "distances": [],
-                    "metadatas": [],
-                    "ids": [],
-                }
+                return {"documents": [], "scores": [], "metadatas": [], "ids": []}
 
-            # Filter by distance threshold and format results
             documents = results["documents"][0]
             metadatas = results["metadatas"][0]
             distances = results["distances"][0]
 
+            # Filter by similarity threshold (convert distance -> similarity)
             filtered_results = []
             for doc, meta, dist in zip(documents, metadatas, distances):
-                # Convert distance to similarity score
                 score = 1 - dist
                 if score >= similarity_threshold:
+                    # Ensure mcp_server_name exists in metadata
+                    meta.setdefault("mcp_server_name", None)
                     filtered_results.append(
                         {"document": doc, "metadata": meta, "score": score}
                     )
 
-            results = {
-                "documents": [result["document"] for result in filtered_results],
-                "scores": [result["score"] for result in filtered_results],
-                "metadatas": [result["metadata"] for result in filtered_results],
-                "ids": [
-                    result["metadata"].get("id", "") for result in filtered_results
-                ],
+            return {
+                "documents": [r["document"] for r in filtered_results],
+                "scores": [r["score"] for r in filtered_results],
+                "metadatas": [r["metadata"] for r in filtered_results],
+                "ids": [r["metadata"].get("id", "") for r in filtered_results],
             }
 
-            return results
         except Exception as e:
             logger.error(f"Failed to query ChromaDB: {e}")
-            raise
+            return {"documents": [], "scores": [], "metadatas": [], "ids": []}

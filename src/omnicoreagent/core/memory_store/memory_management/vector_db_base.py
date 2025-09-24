@@ -199,6 +199,29 @@ class VectorDBBase(ABC):
 
         return list(embedding)
 
+    def _get_embedding_dimensions(self) -> int:
+        """Get embedding dimensions from configuration - STRICT MODE."""
+        if not self.llm_connection:
+            raise ValueError("LLM connection is required to get embedding dimensions")
+
+        if not hasattr(self.llm_connection, "embedding_config"):
+            raise ValueError("LLM connection does not have embedding configuration")
+
+        embedding_config = self.llm_connection.embedding_config
+        if not embedding_config:
+            raise ValueError("Embedding configuration is not available")
+
+        if "dimensions" not in embedding_config:
+            raise ValueError("Embedding configuration is missing 'dimensions' field")
+
+        dimensions = embedding_config["dimensions"]
+        if not isinstance(dimensions, int) or dimensions <= 0:
+            raise ValueError(
+                f"Invalid dimensions value: {dimensions}. Must be a positive integer."
+            )
+
+        return dimensions
+
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """Embed multiple texts efficiently with smart chunking for long texts."""
         if not texts:
@@ -227,7 +250,12 @@ class VectorDBBase(ABC):
 
     @abstractmethod
     def query_collection(
-        self, query: str, session_id: str, n_results: int, similarity_threshold: float
+        self,
+        query: str,
+        n_results: int,
+        similarity_threshold: float,
+        session_id: str,
+        mcp_server_names: list[str],
     ) -> Dict[str, Any]:
         """for querying collection."""
         raise NotImplementedError

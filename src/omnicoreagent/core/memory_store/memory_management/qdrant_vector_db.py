@@ -82,14 +82,17 @@ class QdrantVectorDB(VectorDBBase):
         if not self.enabled:
             logger.warning("Qdrant is not enabled. Cannot ensure collection.")
             return
+        actual_vector_size = self._get_embedding_dimensions()
+        if not isinstance(actual_vector_size, int):
+            raise ValueError(
+                f"Vector size must be set before creating a collection. Got: {actual_vector_size}"
+            )
 
         try:
             collections = self.client.get_collections().collections
             collection_names = [collection.name for collection in collections]
 
             if self.collection_name not in collection_names:
-                actual_vector_size = self._vector_size
-
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(
@@ -116,12 +119,19 @@ class QdrantVectorDB(VectorDBBase):
         try:
             # Ensure collection exists
             self._ensure_collection()
+            # check the metadata to see if it has mcp_server_name key
+            mcp_server_name = metadata.get("mcp_server_name", None)
 
             metadata["text"] = document
 
             # Generate embedding with error handling
             try:
-                vector = self.embed_text(document)
+                updated_document = None
+                if not mcp_server_name:
+                    updated_document = document
+                else:
+                    updated_document = document["enriched_tool"]
+                vector = self.embed_text(updated_document)
             except Exception:
                 return False
 
@@ -138,57 +148,57 @@ class QdrantVectorDB(VectorDBBase):
             return False
 
     def query_collection(
-        self, query: str, session_id: str, n_results: int, similarity_threshold: float
-    ) -> Dict[str, Any]:
-        """for querying collection."""
+        self,
+        query: str,
+        n_results: int,
+        similarity_threshold: float,
+        session_id: str = None,
+        mcp_server_names: list[str] = None,
+    ):
         if not self.enabled:
-            logger.warning("Qdrant is not enabled. Cannot query collection.")
             return {"documents": []}
 
         try:
-            # Search for similar documents
-            logger.debug(
-                f"Async querying Qdrant collection: {self.collection_name} with query: {query}"
+            # Build filter conditions
+            must_conditions = []
+
+            if session_id is not None:
+                must_conditions.append(
+                    rest.FieldCondition(
+                        key="session_id", match=rest.MatchValue(value=session_id)
+                    )
+                )
+            elif mcp_server_names:
+                must_conditions.append(
+                    rest.FieldCondition(
+                        key="mcp_server_name",
+                        match=rest.MatchAny(any=mcp_server_names),
+                    )
+                )
+
+            # Only add Filter if there’s at least one condition
+            query_filter = (
+                rest.Filter(must=must_conditions) if must_conditions else None
             )
+
             search_result = self.client.query_points(
                 collection_name=self.collection_name,
                 query=self.embed_text(query),
                 limit=n_results,
                 with_payload=True,
-                query_filter=rest.Filter(
-                    must=[
-                        rest.FieldCondition(
-                            key="session_id", match=rest.MatchValue(value=session_id)
-                        )
-                    ]
-                ),
+                query_filter=query_filter,
             ).points
 
-            logger.debug(f"Found {len(search_result)} raw results from Qdrant")
-
-            if not search_result:
-                return {
-                    "documents": [],
-                    "scores": [],
-                    "metadatas": [],
-                    "ids": [],
-                }
-
-            # Filter by similarity threshold and format results
             filtered_results = [
                 hit for hit in search_result if hit.score >= similarity_threshold
             ]
 
-            logger.debug(f"Found {len(filtered_results)} results after filtering")
-
-            results = {
+            return {
                 "documents": [hit.payload["text"] for hit in filtered_results],
                 "scores": [hit.score for hit in filtered_results],
                 "metadatas": [hit.payload for hit in filtered_results],
                 "ids": [hit.id for hit in filtered_results],
             }
-
-            return results
 
         except Exception as e:
             # Silently handle 404 errors (collection doesn't exist yet)

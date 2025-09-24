@@ -5,15 +5,20 @@ from omnicoreagent.core.utils import (
     logger,
     is_vector_db_enabled,
     is_embedding_requirements_met,
+    json_to_smooth_text,
+    strip_comprehensive_narrative,
 )
 from decouple import config
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from omnicoreagent.core.memory_store.memory_management.system_prompts import (
     episodic_memory_constructor_system_prompt,
     long_term_memory_constructor_system_prompt,
 )
-
+from omnicoreagent.core.memory_store.memory_management.base_vectordb_handler import (
+    BaseVectorDBHandler,
+)
 
 # Cache for recent summaries
 _RECENT_SUMMARY_CACHE = {}
@@ -43,7 +48,7 @@ def _initialize_memory_system():
 _initialize_memory_system()
 
 
-class MemoryManager:
+class MemoryManager(BaseVectorDBHandler):
     """Memory management operations ."""
 
     def __init__(
@@ -62,124 +67,136 @@ class MemoryManager:
             llm_connection: LLM connection for embeddings (optional)
         """
 
+        # self.agent_name = agent_name
+        # self.memory_type = memory_type
+        # self.is_background = is_background
+        # self.llm_connection = llm_connection
+
+        # self.collection_name = collection_name
+
+        collection_name = f"{agent_name}_{memory_type}"
+        # initialize vector DB
+        super().__init__(
+            collection_name=collection_name,
+            memory_type=memory_type,
+            llm_connection=llm_connection,
+            is_background=is_background,
+        )
         self.agent_name = agent_name
-        self.memory_type = memory_type
-        self.is_background = is_background
-        self.llm_connection = llm_connection
-        self.collection_name = f"{self.agent_name}_{self.memory_type}"
-        # Check if vector database is enabled
-        if not is_vector_db_enabled():
-            logger.debug("Vector database is disabled by configuration")
-            self.vector_db = None
-            return
 
-        # Check if embedding requirements are met
-        if not is_embedding_requirements_met():
-            logger.error(
-                "Vector database is enabled but no embedding API key is set. Please set EMBEDDING_API_KEY environment variable."
-            )
-            self.vector_db = None
-            return
+        # # Check if vector database is enabled
+        # if not is_vector_db_enabled():
+        #     logger.debug("Vector database is disabled by configuration")
+        #     self.vector_db = None
+        #     return
 
-        # Verify LLM connection is provided
-        if not self.llm_connection:
-            logger.error(
-                "LLM connection is required for vector database operations. Please provide llm_connection parameter."
-            )
-            self.vector_db = None
-            return
+        # # Check if embedding requirements are met
+        # if not is_embedding_requirements_met():
+        #     logger.error(
+        #         "Vector database is enabled but no embedding API key is set. Please set EMBEDDING_API_KEY environment variable."
+        #     )
+        #     self.vector_db = None
+        #     return
 
-        logger.debug(
-            "Embedding requirements met - using LLM-based embeddings via LiteLLM"
-        )
+        # # Verify LLM connection is provided
+        # if not self.llm_connection:
+        #     logger.error(
+        #         "LLM connection is required for vector database operations. Please provide llm_connection parameter."
+        #     )
+        #     self.vector_db = None
+        #     return
 
-        # Determine provider from config
-        provider = config("OMNI_MEMORY_PROVIDER", default=None)
-        if not provider:
-            logger.error("OMNI_MEMORY_PROVIDER is not set in the environment")
-            self.vector_db = None
-            return
+        # logger.debug(
+        #     "Embedding requirements met - using LLM-based embeddings via LiteLLM"
+        # )
 
-        provider = provider.lower()
+        # # Determine provider from config
+        # provider = config("OMNI_MEMORY_PROVIDER", default=None)
+        # if not provider:
+        #     logger.error("OMNI_MEMORY_PROVIDER is not set in the environment")
+        #     self.vector_db = None
+        #     return
 
-        if provider == "qdrant-remote":
-            try:
-                # Import QdrantVectorDB when needed
-                from omnicoreagent.core.memory_store.memory_management.qdrant_vector_db import (
-                    QdrantVectorDB,
-                )
+        # provider = provider.lower()
 
-                self.vector_db = QdrantVectorDB(
-                    self.collection_name,
-                    memory_type=memory_type,
-                    is_background=self.is_background,
-                    llm_connection=self.llm_connection,
-                )
-                if self.vector_db.enabled:
-                    logger.debug(f"Using Qdrant for {memory_type} memory")
-                    return
-                else:
-                    logger.warning("Qdrant not enabled")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Qdrant (remote): {e}")
+        # if provider == "qdrant-remote":
+        #     try:
+        #         # Import QdrantVectorDB when needed
+        #         from omnicoreagent.core.memory_store.memory_management.qdrant_vector_db import (
+        #             QdrantVectorDB,
+        #         )
 
-        elif provider == "mongodb-remote":
-            try:
-                # Import MongoDBVectorDB when needed
-                from omnicoreagent.core.memory_store.memory_management.mongodb_vector_db import (
-                    MongoDBVectorDB,
-                )
+        #         self.vector_db = QdrantVectorDB(
+        #             self.collection_name,
+        #             memory_type=memory_type,
+        #             is_background=self.is_background,
+        #             llm_connection=self.llm_connection,
+        #         )
+        #         if self.vector_db.enabled:
+        #             logger.debug(f"Using Qdrant for {memory_type} memory")
+        #             return
+        #         else:
+        #             logger.warning("Qdrant not enabled")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to initialize Qdrant (remote): {e}")
 
-                self.vector_db = MongoDBVectorDB(
-                    self.collection_name,
-                    memory_type=memory_type,
-                    is_background=self.is_background,
-                    llm_connection=self.llm_connection,
-                )
-                if self.vector_db.enabled:
-                    logger.debug(f"Using MongoDB for {memory_type} memory")
-                    return
-                else:
-                    logger.warning("MongoDB not enabled")
-            except Exception as e:
-                logger.warning(f"Failed to initialize MongoDB (remote): {e}")
+        # elif provider == "mongodb-remote":
+        #     try:
+        #         # Import MongoDBVectorDB when needed
+        #         from omnicoreagent.core.memory_store.memory_management.mongodb_vector_db import (
+        #             MongoDBVectorDB,
+        #         )
 
-        elif provider.startswith("chroma"):
-            try:
-                # Import ChromaDBVectorDB when needed
-                from omnicoreagent.core.memory_store.memory_management.chromadb_vector_db import (
-                    ChromaDBVectorDB,
-                )
+        #         self.vector_db = MongoDBVectorDB(
+        #             self.collection_name,
+        #             memory_type=memory_type,
+        #             is_background=self.is_background,
+        #             llm_connection=self.llm_connection,
+        #         )
+        #         if self.vector_db.enabled:
+        #             logger.debug(f"Using MongoDB for {memory_type} memory")
+        #             return
+        #         else:
+        #             logger.warning("MongoDB not enabled")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to initialize MongoDB (remote): {e}")
 
-                # Determine client type from provider
-                if provider == "chroma-remote":
-                    client_type = "remote"
-                elif provider == "chroma-cloud":
-                    client_type = "cloud"
-                else:
-                    logger.error(f"Invalid ChromaDB provider: {provider}")
-                    raise RuntimeError(f"Invalid ChromaDB provider: {provider}")
+        # elif provider.startswith("chroma"):
+        #     try:
+        #         # Import ChromaDBVectorDB when needed
+        #         from omnicoreagent.core.memory_store.memory_management.chromadb_vector_db import (
+        #             ChromaDBVectorDB,
+        #         )
 
-                self.vector_db = ChromaDBVectorDB(
-                    self.collection_name,
-                    memory_type=memory_type,
-                    client_type=client_type,
-                    llm_connection=self.llm_connection,
-                )
-                if self.vector_db.enabled:
-                    logger.debug(
-                        f"Using ChromaDB ({client_type}) for {memory_type} memory"
-                    )
-                    return
-                else:
-                    logger.warning(f"ChromaDB ({client_type}) not enabled")
-            except Exception as e:
-                logger.warning(f"Failed to initialize ChromaDB ({client_type}): {e}")
+        #         # Determine client type from provider
+        #         if provider == "chroma-remote":
+        #             client_type = "remote"
+        #         elif provider == "chroma-cloud":
+        #             client_type = "cloud"
+        #         else:
+        #             logger.error(f"Invalid ChromaDB provider: {provider}")
+        #             raise RuntimeError(f"Invalid ChromaDB provider: {provider}")
 
-        logger.warning(
-            f"Vector database provider '{provider}' failed - vector DB disabled"
-        )
-        self.vector_db = None
+        #         self.vector_db = ChromaDBVectorDB(
+        #             self.collection_name,
+        #             memory_type=memory_type,
+        #             client_type=client_type,
+        #             llm_connection=self.llm_connection,
+        #         )
+        #         if self.vector_db.enabled:
+        #             logger.debug(
+        #                 f"Using ChromaDB ({client_type}) for {memory_type} memory"
+        #             )
+        #             return
+        #         else:
+        #             logger.warning(f"ChromaDB ({client_type}) not enabled")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to initialize ChromaDB ({client_type}): {e}")
+
+        # logger.warning(
+        #     f"Vector database provider '{provider}' failed - vector DB disabled"
+        # )
+        # self.vector_db = None
 
     async def create_episodic_memory(
         self, message: str, llm_connection: Callable
@@ -199,6 +216,7 @@ class MemoryManager:
             if response and response.choices:
                 content = response.choices[0].message.content
 
+                content = json_to_smooth_text(content=content)
                 return content
             else:
                 return None
@@ -222,7 +240,7 @@ class MemoryManager:
 
             if response and response.choices:
                 content = response.choices[0].message.content
-
+                content = strip_comprehensive_narrative(text=content)
                 return content
             else:
                 return None
@@ -483,9 +501,15 @@ class MemoryManager:
             pass  # Silent background processing
 
     def query_memory(
-        self, query: str, session_id: str, n_results: int, similarity_threshold: float
+        self,
+        query: str,
+        n_results: int,
+        similarity_threshold: float,
+        session_id: str = None,
+        mcp_server_names: list[str] = None,
     ) -> List[str]:
         """Query memory for relevant information."""
+
         if not self.vector_db or not self.vector_db.enabled:
             return []
 
@@ -493,6 +517,7 @@ class MemoryManager:
             results = self.vector_db.query_collection(
                 query=query,
                 session_id=session_id,
+                mcp_server_names=mcp_server_names,
                 n_results=n_results,
                 similarity_threshold=similarity_threshold,
             )

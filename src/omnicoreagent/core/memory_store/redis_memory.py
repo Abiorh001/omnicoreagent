@@ -315,6 +315,58 @@ class RedisMemoryStore(AbstractMemoryStore):
             if self._connection_manager and client and hasattr(client, "close"):
                 await client.close()
 
+    async def tool_exists(self, tool_name: str, mcp_server_name: str) -> Optional[dict]:
+        """
+        Check if a tool exists in Redis for a given MCP server.
+        Returns the tool dict if it exists, else False.
+        """
+        try:
+            client = await self._get_client()
+            key = f"mcp_tools:{mcp_server_name}:{tool_name}"
+            data = await client.get(key)
+            if data is not None:
+                # Decode bytes to str and load JSON
+                tool = json.loads(data)
+                return tool
+            return None
+        except Exception as e:
+            logger.error(f"Failed to check tool existence: {e}")
+            return None
+
+        finally:
+            if self._connection_manager and client:
+                self._connection_manager.release_client()
+
+    async def store_tool(
+        self,
+        tool_name: str,
+        mcp_server_name: str,
+        raw_tool: dict,
+        enriched_tool: dict,
+    ) -> None:
+        """
+        Store a tool in Redis for a given MCP server.
+        """
+        client = None
+        try:
+            client = await self._get_client()
+            key = f"mcp_tools:{mcp_server_name}:{tool_name}"
+            value = json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "mcp_server_name": mcp_server_name,
+                    "raw_tool": raw_tool,
+                    "enriched_tool": enriched_tool,
+                }
+            )
+            await client.set(key, value)
+            logger.debug(f"Stored tool {tool_name} for MCP server {mcp_server_name}")
+        except Exception as e:
+            logger.error(f"Failed to store tool {tool_name}: {e}")
+        finally:
+            if self._connection_manager and client:
+                self._connection_manager.release_client()
+
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None
     ) -> None:

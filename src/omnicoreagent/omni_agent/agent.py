@@ -16,6 +16,7 @@ from omnicoreagent.omni_agent.config import (
 from omnicoreagent.omni_agent.prompts.prompt_builder import OmniAgentPromptBuilder
 from omnicoreagent.omni_agent.prompts.react_suffix import SYSTEM_SUFFIX
 from omnicoreagent.core.events.event_router import EventRouter
+from omnicoreagent.core.tools.semantic_tools import SemanticToolManager
 
 
 class OmniAgent:
@@ -117,6 +118,7 @@ class OmniAgent:
                 "max_steps": 15,
                 "request_limit": 0,
                 "total_tokens_limit": 0,
+                "enable_tools_knowledge_base": False,
                 "memory_config": {"mode": "token_budget", "value": 30000},
             }
 
@@ -143,7 +145,7 @@ class OmniAgent:
         # Initialize MCP client (only if MCP tools are provided)
         if self.mcp_tools:
             self.mcp_client = MCPClient(
-                shared_config,
+                config=shared_config,
                 debug=self.debug,
                 config_filename=str(self._config_file_path),
             )
@@ -179,6 +181,21 @@ class OmniAgent:
         if self.mcp_client and self.mcp_tools:
             # Use the config_filename that's already stored in the MCPClient
             await self.mcp_client.connect_to_servers(self.mcp_client.config_filename)
+            # also connect all the tools to the tools knowledge base if its enabled
+            if self.agent.enable_tools_knowledge_base:
+                llm_connection = self.llm_connection
+                store_tool = self.memory_router.store_tool
+                tool_exists = self.memory_router.tool_exists
+                mcp_tools = self.mcp_client.available_tools if self.mcp_client else {}
+                semantic_tools_manager = SemanticToolManager(
+                    llm_connection=llm_connection
+                )
+
+                await semantic_tools_manager.batch_process_all_mcp_servers(
+                    mcp_tools=mcp_tools,
+                    store_tool=store_tool,
+                    tool_exists=tool_exists,
+                )
 
     async def run(self, query: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """

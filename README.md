@@ -38,6 +38,7 @@
 - [🌟 What is OmniCoreAgent?](#-what-is-omnicoreagent)
 - [💡 What Can You Build? (Examples)](#-what-can-you-build-see-real-examples)
 - [🎯 Choose Your Path](#-choose-your-path)
+- [🧠 Semantic Tool Knowledge Base](#-semantic-tool-knowledge-base)
 
 ### 🤖 **OmniAgent System**
 
@@ -231,6 +232,71 @@ python examples/run_omni_agent.py
 
 **💡 Pro Tip:** Most developers use **both paths** - MCPOmni Connect for daily workflow and OmniAgent for building custom solutions!
 
+---
+
+## 🧠 **Semantic Tool Knowledge Base**
+
+### Why You Need It
+
+As your AI agents grow and connect to more MCP servers, finding the right tool quickly becomes challenging. Relying on static lists or manual selection is slow, inflexible, and can overload your agent’s context window—making it harder for the agent to choose the best tool for each task.
+
+The **Semantic Tool Knowledge Base** solves this by automatically embedding all available tools into a vector database. This enables your agent to use semantic search: it can instantly and intelligently retrieve the most relevant tools based on the meaning of your query, not just keywords. As your tool ecosystem expands, the agent always finds the best match—no manual updates or registry management
+
+### Usefulness
+
+- **Scalable Tool Discovery:** Connect unlimited MCP servers and tools; the agent finds what it needs, when it needs it.
+- **Context-Aware Retrieval:** The agent uses semantic similarity to select tools that best match the user’s intent, not just keywords.
+- **Unified Access:** All tools are accessible via a single `tools_retriever` interface, simplifying agent logic.
+- **Fallback Reliability:** If semantic search fails, the agent falls back to fast keyword (BM25) search for robust results.
+- **No Manual Registry:** Tools are automatically indexed and updated—no need to maintain a static list.
+
+---
+
+### How to Enable
+
+Add these options to your agent config:
+
+```json
+"agent_config": {
+    "enable_tools_knowledge_base": true,      // Enable semantic tool KB, default: false
+    "tools_results_limit": 10,                // Max tools to retrieve per query
+    "tools_similarity_threshold": 0.1,        // Similarity threshold for semantic search
+    ...
+}
+```
+
+When enabled, all MCP server tools are embedded into your chosen vector DB (Qdrant, ChromaDB, MongoDB, etc.) and standard DB. The agent uses `tools_retriever` to fetch tools at runtime.
+
+---
+
+### Example Usage
+
+```python
+agent = OmniAgent(
+    ...,
+    agent_config={
+        "enable_tools_knowledge_base": True,
+        "tools_results_limit": 10,
+        "tools_similarity_threshold": 0.1,
+        # other config...
+    },
+    ...
+)
+```
+
+---
+
+### Benefits Recap
+
+- **Instant access to thousands of tools**
+- **Context-aware, semantic selection**
+- **No manual registry management**
+- **Reliable fallback search**
+- **Scales with your infrastructure**
+
+---
+
+**Note:** Choose your vector DB provider via environment variables. See [Vector Database Setup](#-vector-database--smart-memory-setup-complete-guide)
 ---
 
 # 🤖 OmniAgent - Revolutionary AI Agent Builder
@@ -1646,11 +1712,11 @@ python examples/run_mcp.py
   - **Semantic Search**: Intelligent context retrieval across conversations  
   - **Long-term & Episodic Memory**: Enable with `ENABLE_VECTOR_DB=true`
   
-- **Real-Time Event Streaming** *(NEW!)*
+- **Real-Time Event Streaming**
   - **In-Memory Events**: Fast development event processing
   - **Redis Streams**: Persistent event storage and streaming
   - Runtime switching: `/event_store:redis_stream`, `/event_store:in_memory`
-- **Advanced Tracing & Observability** *(LATEST!)*
+- **Advanced Tracing & Observability**
   - **Opik Integration**: Production-grade tracing and monitoring
     - **Real-time Performance Tracking**: Monitor LLM calls, tool executions, and agent performance
     - **Detailed Call Traces**: See exactly where time is spent in your AI workflows
@@ -1869,7 +1935,8 @@ QDRANT_PORT=6333
 # REDIS_URL=redis://your-remote-redis:6379/0
 # REDIS_URL=redis://:password@localhost:6379/0  # With password
 
-# Database - for memory_store_type="database" (defaults to: sqlite:///omnicoreagent_memory.db)
+
+# DATABASE_URL=sqlite:///omnicoreagent_memory.db
 # DATABASE_URL=postgresql://user:password@localhost:5432/omnicoreagent
 # DATABASE_URL=mysql://user:password@localhost:3306/omnicoreagent
 
@@ -2501,13 +2568,28 @@ You can configure these in your `servers_config.json` under the `AgentConfig` se
 
 ```json
 "AgentConfig": {
-    "tool_call_timeout": 30,        // Tool call timeout in seconds
-    "max_steps": 15,                // Max number of steps before termination
-    "request_limit": 0,          // 0 = unlimited (production mode), set > 0 to enable limits
-    "total_tokens_limit": 0,     // 0 = unlimited (production mode), set > 0 to enable limits
-    "memory_results_limit": 5,   // Number of memory results to retrieve (1-100, default: 5)
-    "memory_similarity_threshold": 0.5  // Similarity threshold for memory filtering (0.0-1.0, default: 0.5)
+    "agent_name": "OmniAgent",              // Unique agent identifier
+    "tool_call_timeout": 30,                // Tool call timeout in seconds
+    "max_steps": 15,                        // Max number of reasoning/tool steps before termination
+
+    // --- Limits ---
+    "request_limit": 0,                     // 0 = unlimited (production mode), set > 0 to enable limits
+    "total_tokens_limit": 0,                // 0 = unlimited (production mode), set > 0 for hard cap on tokens
+
+    // --- Memory Retrieval Config ---
+    "memory_config": {
+        "mode": "sliding_window",           // Options: sliding_window, episodic, vector
+        "value": 100                        // Window size or parameter value depending on mode
+    },
+    "memory_results_limit": 5,              // Number of memory results to retrieve (1–100, default: 5)
+    "memory_similarity_threshold": 0.5,     // Similarity threshold for memory filtering (0.0–1.0, default: 0.5)
+
+    // --- Tool Retrieval Config ---
+    "enable_tools_knowledge_base": false,   // Enable semantic tool retrieval (default: false)
+    "tools_results_limit": 10,              // Max number of tools to retrieve (default: 10)
+    "tools_similarity_threshold": 0.1       // Similarity threshold for tool retrieval (0.0–1.0, default: 0.1)
 }
+
 ```
 
 - When any of these limits are reached, the agent will automatically stop running and notify you.

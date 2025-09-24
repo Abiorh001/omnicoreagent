@@ -1,5 +1,7 @@
 from omnicoreagent.core.memory_store.base import AbstractMemoryStore
 from omnicoreagent.core.database.database_message_store import DatabaseMessageStore
+from omnicoreagent.core.utils import logger
+from typing import Optional
 
 
 class DatabaseMemory(AbstractMemoryStore):
@@ -64,6 +66,31 @@ class DatabaseMemory(AbstractMemoryStore):
     ) -> float | None:
         return await self.db_session.get_last_processed_messages(
             session_id, agent_name, memory_type
+        )
+
+    async def tool_exists(self, tool_name: str, mcp_server_name: str) -> Optional[dict]:
+        """
+        Check if a tool already exists for the given server.
+        """
+        return await self.db_session.tool_exists(
+            tool_name=tool_name, mcp_server_name=mcp_server_name
+        )
+
+    async def store_tool(
+        self,
+        tool_name: str,
+        mcp_server_name: str,
+        raw_tool: dict,
+        enriched_tool: dict,
+    ) -> None:
+        """
+        Store a tool in the database.
+        """
+        await self.db_session.store_tool(
+            tool_name=tool_name,
+            mcp_server_name=mcp_server_name,
+            raw_tool=raw_tool,
+            enriched_tool=enriched_tool,
         )
 
     async def clear_memory(

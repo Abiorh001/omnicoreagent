@@ -36,6 +36,20 @@ class AbstractMemoryStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def tool_exists(self, tool_name: str, mcp_server_name: str) -> Optional[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def store_tool(
+        self,
+        tool_name: str,
+        mcp_server_name: str,
+        raw_tool: dict,
+        enriched_tool: dict,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None
     ) -> None:

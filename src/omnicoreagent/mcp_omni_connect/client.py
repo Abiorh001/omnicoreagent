@@ -20,7 +20,6 @@ from omnicoreagent.mcp_omni_connect.refresh_server_capabilities import (
     refresh_capabilities,
 )
 from omnicoreagent.mcp_omni_connect.sampling import samplingCallback
-from omnicoreagent.core.system_prompts import generate_react_agent_role_prompt
 from omnicoreagent.core.utils import logger
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -272,8 +271,6 @@ class MCPClient:
                 available_resources=self.available_resources,
                 available_prompts=self.available_prompts,
                 refresh_capabilities=refresh_capabilities,
-                llm_connection=self.llm_connection,
-                generate_react_agent_role_prompt=generate_react_agent_role_prompt,
             )
         )
 
@@ -425,9 +422,6 @@ class MCPClient:
                 available_resources=self.available_resources,
                 available_prompts=self.available_prompts,
                 debug=self.debug,
-                server_name=server_name,
-                llm_connection=self.llm_connection,
-                generate_react_agent_role_prompt=generate_react_agent_role_prompt,
             )
 
             return f"{server_name} connected succesfully"

@@ -11,7 +11,7 @@ This package contains the core AI agent functionality including:
 - Utilities and Constants
 """
 
-from .agents import ReactAgent, OrchestratorAgent, SequentialAgent, ToolCallingAgent
+from .agents import ReactAgent, OrchestratorAgent, ToolCallingAgent
 from .memory_store import MemoryRouter
 from .llm import LLMConnection
 from .events import EventRouter
@@ -21,7 +21,6 @@ from .tools import ToolRegistry, Tool
 __all__ = [
     "ReactAgent",
     "OrchestratorAgent",
-    "SequentialAgent",
     "ToolCallingAgent",
     "MemoryRouter",
     "LLMConnection",

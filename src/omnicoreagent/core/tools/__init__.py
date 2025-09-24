@@ -7,8 +7,6 @@ This package provides tool management functionality:
 """
 
 from .local_tools_registry import ToolRegistry, Tool
+from .semantic_tools.semantic_tool_manager import SemanticToolManager
 
-__all__ = [
-    "ToolRegistry",
-    "Tool",
-]
+__all__ = ["ToolRegistry", "Tool", "SemanticToolManager"]
