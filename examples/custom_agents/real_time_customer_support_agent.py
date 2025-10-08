@@ -16,7 +16,7 @@ from omnicoreagent import (
     ToolRegistry,
     BackgroundAgentManager,
 )
-
+import asyncio
 
 class ProductionSupportAgent:
     def __init__(self):
@@ -450,7 +450,7 @@ WORKFLOW:
 TONE: Professional, empathetic, solution-oriented, efficient.""",
             model_config={
                 "provider": "openai",
-                "model": "gpt-4",
+                "model": "gpt-4.1",
                 "temperature": 0.2,  # Lower temperature for consistent support responses
                 "max_context_length": 8000,
             },

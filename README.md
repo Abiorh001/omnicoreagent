@@ -26,7 +26,7 @@
 [![Pull Requests](https://img.shields.io/github/issues-pr/Abiorh001/omnicoreagent)](https://github.com/Abiorh001/omnicoreagent/pulls)
 
 <p align="center">
-  <img src="Gemini_Generated_Image_pfgm65pfgm65pfgmcopy.png" alt="OmniCoreAgent Logo" width="250"/>
+  <img src="assets/IMG_5292.jpeg" alt="OmniCoreAgent Logo" width="250"/>
 </p>
 
 **OmniCoreAgent** is the complete AI development platform that combines two powerful systems into one revolutionary ecosystem. Build production-ready AI agents with **OmniAgent**, use the advanced MCP client with **MCPOmni Connect**, or combine both for maximum power.
