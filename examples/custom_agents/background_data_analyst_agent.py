@@ -580,7 +580,7 @@ Always base recommendations on data patterns, not assumptions.""",
         "request_limit": 0,
         "memory_config": {"mode": "sliding_window", "value": 100},
     },
-    "interval": 3600,  # Every hour
+    "interval": 300,  # Every hour
     "max_retries": 2,
     "debug": True,
     "task_config": {
