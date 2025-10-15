@@ -6,7 +6,10 @@ from collections.abc import Callable
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import Any
-from omnicoreagent.core.system_prompts import tools_retriever_additonal_prompt
+from omnicoreagent.core.system_prompts import (
+    tools_retriever_additional_prompt,
+    memory_tool_additional_prompt,
+)
 from omnicoreagent.core.agents.token_usage import (
     Usage,
     UsageLimitExceeded,
@@ -53,6 +56,10 @@ import traceback
 from omnicoreagent.core.tools.tool_knowledge_base import (
     tools_retriever_local_tool,
 )
+from omnicoreagent.core.tools.memory_tool.memory_tool import (
+    build_tool_registry_memory_tool,
+)
+from omnicoreagent.core.constants import date_time_func
 
 # Import memory system first to ensure initialization
 if is_vector_db_enabled():
@@ -87,6 +94,7 @@ class BaseReactAgent:
         enable_tools_knowledge_base: bool = False,
         tools_results_limit: int = 10,
         tools_similarity_threshold: float = 0.5,
+        memory_tool_backend: str = None,
     ):
         self.agent_name = agent_name
         # Enforce minimum 5 steps to allow proper tool usage and reasoning
@@ -116,6 +124,8 @@ class BaseReactAgent:
 
         self.tools_results_limit = tools_results_limit
         self.tools_similarity_threshold = tools_similarity_threshold
+
+        self.memory_tool_backend = memory_tool_backend
 
         self.messages: dict[str, list[Message]] = {}
         self.state = AgentState.IDLE
@@ -447,6 +457,11 @@ class BaseReactAgent:
             if self.enable_tools_knowledge_base:
                 mcp_tools = None
                 local_tools = tools_retriever_local_tool
+                if self.memory_tool_backend:
+                    build_tool_registry_memory_tool(
+                        memory_tool_backend=self.memory_tool_backend,
+                        registry=local_tools,
+                    )
 
             actions = json.loads(parsed_response.data)
             if not isinstance(actions, list):
@@ -935,7 +950,6 @@ class BaseReactAgent:
             )
 
         xml_obs_block = build_xml_observations_block(tools_results)
-        logger.info(f"xml block: {xml_obs_block}")
         self.messages[self.agent_name].append(
             Message(
                 role="user",
@@ -1053,7 +1067,18 @@ class BaseReactAgent:
             # Process local tools
             if self.enable_tools_knowledge_base:
                 local_tools = tools_retriever_local_tool
+                if self.memory_tool_backend:
+                    build_tool_registry_memory_tool(
+                        memory_tool_backend=self.memory_tool_backend,
+                        registry=local_tools,
+                    )
+
             if local_tools:
+                if self.memory_tool_backend and not self.enable_tools_knowledge_base:
+                    build_tool_registry_memory_tool(
+                        memory_tool_backend=self.memory_tool_backend,
+                        registry=local_tools,
+                    )
                 local_tools_list = local_tools.get_available_tools()
                 if local_tools_list:
                     tools_section.append("## LOCAL TOOLS")
@@ -1180,11 +1205,24 @@ class BaseReactAgent:
 
         # check if enable tools knowledge base
         if self.enable_tools_knowledge_base:
-            system_updated_prompt += tools_retriever_additonal_prompt
+            system_updated_prompt += tools_retriever_additional_prompt
+
+        # check if memory tool backend is enabled
+        if self.memory_tool_backend:
+            system_updated_prompt += f"\n\n{memory_tool_additional_prompt}"
+            # logger.info(f"system prompt: {system_updated_prompt}")
 
         #  append the tools section if needed
         system_updated_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
         # logger.info(f"system prompt: {system_updated_prompt}")
+
+        # add current datetime to prompt
+        current_date_time = date_time_func["format_date"]()
+        system_updated_prompt += f"""
+                                <current_date_time>
+                                {current_date_time}
+                                </current_date_time>
+                                """
 
         self.messages[self.agent_name] = [
             Message(role="system", content=system_updated_prompt)

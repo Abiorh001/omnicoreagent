@@ -79,6 +79,7 @@ class AgentConfig:
     )
     memory_results_limit: int = 5
     memory_similarity_threshold: float = 0.5
+    memory_tool_backend: str = None
 
 
 class ConfigTransformer:

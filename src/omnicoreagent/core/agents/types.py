@@ -43,6 +43,24 @@ class AgentConfig(BaseModel):
         description="Similarity threshold for tool retrieval",
     )
 
+    # --- Memory Tool Backend ---
+    memory_tool_backend: str | None = Field(
+        default=None,
+        description="Backend for memory tool. Options: 'local', 's3', 'db'",
+    )
+
+    @field_validator("memory_tool_backend")
+    @classmethod
+    def validate_backend(cls, v):
+        if v is None:
+            return v
+        allowed = {"local", "s3", "db"}
+        if v not in allowed:
+            raise ValueError(
+                f"Invalid memory_tool_backend '{v}'. Must be one of {allowed}."
+            )
+        return v
+
     @field_validator("request_limit", "total_tokens_limit", mode="before")
     @classmethod
     def convert_none_to_zero(cls, v):

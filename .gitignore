@@ -22,3 +22,4 @@ site/
 ._tools.json
 *.db
 venv/
+memories/
