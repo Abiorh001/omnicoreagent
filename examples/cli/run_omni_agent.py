@@ -775,12 +775,12 @@ Provide clear, supportive, and context-aware responses that help learners grow.
 """,
             model_config={
                 "provider": "openai",
-                "model": "gpt-4.1",
+                "model": "gpt-4o",
                 "temperature": 0.3,
                 "max_context_length": 5000,
             },
             mcp_tools=MCP_TOOLS,
-            # local_tools=tool_registry,
+            local_tools=tool_registry,
             agent_config={
                 "agent_name": "OmniAgent",
                 "max_steps": 15,
@@ -795,6 +795,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
                 "enable_tools_knowledge_base": False,
                 "tools_results_limit": 10,
                 "tools_similarity_threshold": 0.1,
+                "memory_tool_backend": "local",
             },
             embedding_config={
                 "provider": "voyage",

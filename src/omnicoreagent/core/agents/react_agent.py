@@ -18,6 +18,7 @@ class ReactAgent(BaseReactAgent):
             memory_similarity_threshold=config.memory_similarity_threshold,
             tools_results_limit=config.tools_results_limit,
             tools_similarity_threshold=config.tools_similarity_threshold,
+            memory_tool_backend=config.memory_tool_backend,
         )
 
     async def _run(

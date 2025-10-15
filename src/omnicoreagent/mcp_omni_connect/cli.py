@@ -1009,11 +1009,12 @@ class MCPClientCLI:
                     tools_similarity_threshold=self.agent_config.get(
                         "tools_similarity_threshold", 0.5
                     ),
+                    memory_tool_backend=self.agent_config.get(
+                        "memory_tool_backend", False
+                    ),
                 )
                 # Generate ReAct agent prompt
-                react_agent_prompt = generate_react_agent_prompt(
-                    current_date_time=date_time_func["format_date"]()
-                )
+                react_agent_prompt = generate_react_agent_prompt()
                 initial_response = await get_prompt_with_react_agent(
                     sessions=self.client.sessions,
                     system_prompt=react_agent_prompt,
@@ -1246,9 +1247,7 @@ class MCPClientCLI:
                     )
 
                 elif self.MODE["auto"]:
-                    react_agent_prompt = generate_react_agent_prompt(
-                        current_date_time=date_time_func["format_date"](),
-                    )
+                    react_agent_prompt = generate_react_agent_prompt()
                     extra_kwargs = {
                         "sessions": self.client.sessions,
                         "mcp_tools": self.client.available_tools,
@@ -1275,6 +1274,9 @@ class MCPClientCLI:
                         ),
                         tools_similarity_threshold=self.agent_config.get(
                             "tools_similarity_threshold", 0.5
+                        ),
+                        memory_tool_backend=self.agent_config.get(
+                            "memory_tool_backend", False
                         ),
                     )
 

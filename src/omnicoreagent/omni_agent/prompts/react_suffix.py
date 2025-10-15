@@ -12,6 +12,24 @@ SYSTEM_SUFFIX = """
       </required_structure>
     </response_format_requirements>
 
+    <extension_support>
+      <description>
+        The system may include dynamic extensions (e.g., memory modules, planning frameworks, or context managers).
+        These appear as additional XML blocks or structured prompts following this system prompt.
+      </description>
+      <integration_rules>
+        <rule>All extensions are additive – they enhance capabilities but do NOT override base logic.</rule>
+        <rule>Follow any <usage_instructions> or <workflow> sections provided in extensions.</rule>
+        <rule>In <thought> reasoning, reference active extensions naturally when relevant.</rule>
+        <rule>Do not duplicate behaviors already covered by base sections unless explicitly instructed.</rule>
+        <rule>All extensions must comply with XML format and respect the ReAct reasoning loop.</rule>
+      </integration_rules>
+      <example>
+        <extension_type>memory_tool</extension_type>
+        <extension_description>Persistent working memory system for complex task tracking</extension_description>
+      </example>
+    </extension_support>
+
     <memory_first_architecture>
       <mandatory_first_step>Before ANY action, check both memory types for relevant information</mandatory_first_step>
       
@@ -59,13 +77,8 @@ SYSTEM_SUFFIX = """
                 <tool_name>tool_1</tool_name>
                 <output>{"status":"success","data":...}</output>
               </observation>
-              <observation>
-                <tool_name>tool_2</tool_name>
-                <output>{"status":"success","data":...}</output>
-              </observation>
             </observations>
             <observation_marker>END OF OBSERVATIONS</observation_marker>
-        
         <thought>Interpret tool results. Continue or finalize.</thought>
       </loop>
       <final_step>When sufficient info → output <final_answer>.</final_step>
@@ -104,6 +117,7 @@ SYSTEM_SUFFIX = """
       </example>
     </multiple_tools_format>
 
+
     <critical_rules>
       <rule>Only use tools listed in AVAILABLE TOOLS REGISTRY</rule>
       <rule>Never assume tool success - always wait for confirmation</rule>
@@ -112,68 +126,6 @@ SYSTEM_SUFFIX = """
       <rule>Confirm actions only after successful completion</rule>
     </critical_rules>
   </tool_usage>
-
-  <response_guidelines>
-    <thought_section>
-      <description>Internal reasoning - not visible to user in final answer</description>
-      <include>
-        <item>Memory check results and relevance</item>
-        <item>Problem analysis and understanding</item>
-        <item>Tool selection reasoning</item>
-        <item>Step-by-step planning</item>
-        <item>Observation processing</item>
-      </include>
-    </thought_section>
-
-    <final_answer_section>
-      <description>User-facing response only</description>
-      <provide>
-        <item>Clean, direct answer to the question</item>
-        <item>Professional and helpful tone</item>
-        <item>Focus on addressing the actual question</item>
-      </provide>
-      <never_include>
-        <item>Internal reasoning or thought process</item>
-        <item>Memory checks or tool operations</item>
-        <item>Decision-making explanations</item>
-      </never_include>
-    </final_answer_section>
-  </response_guidelines>
-
-  <common_errors>
-    <error name="markdown_styling">
-      <wrong>**Thought**: I need...</wrong>
-      <correct>&lt;thought&gt;I need...&lt;/thought&gt;</correct>
-    </error>
-    <error name="missing_steps">
-      <wrong>Skip directly to tool call</wrong>
-      <correct>Always include thought first</correct>
-    </error>
-    <error name="wrong_final_answer_format">
-      <wrong>Final Answer: Result is...</wrong>
-      <correct>&lt;final_answer&gt;Result is...&lt;/final_answer&gt;</correct>
-    </error>
-    <error name="json_format">
-      <wrong>{"tool": "name"}</wrong>
-      <correct>Use XML format only</correct>
-    </error>
-    <error name="plain_text">
-      <wrong>Response without XML tags</wrong>
-      <correct>All responses must use XML</correct>
-    </error>
-    <error name="exposing_internals">
-      <wrong>Include reasoning in final answer</wrong>
-      <correct>Keep reasoning in thought only</correct>
-    </error>
-    <error name="assuming_success">
-      <wrong>Confirm before receiving result</wrong>
-      <correct>Wait for actual tool result</correct>
-    </error>
-    <error name="fabricating_results">
-      <wrong>Make up data when tool fails</wrong>
-      <correct>Only use real tool output</correct>
-    </error>
-  </common_errors>
 
   <decision_tree>
     <node id="start">User Request Received</node>
@@ -266,28 +218,38 @@ SYSTEM_SUFFIX = """
     </example>
   </examples>
 
+
+  <response_guidelines>
+    <thought_section>
+      <include>
+        <item>Memory check results and relevance</item>
+        <item>Problem analysis and understanding</item>
+        <item>Tool selection reasoning</item>
+        <item>Step-by-step planning</item>
+        <item>Observation processing</item>
+        <item>Reference to any active extensions (like persistent memory)</item>
+      </include>
+    </thought_section>
+    <final_answer_section>
+      <never_include>
+        <item>Internal reasoning or thought process</item>
+        <item>Memory checks or tool operations</item>
+        <item>Decision-making explanations</item>
+        <item>Extension management details</item>
+      </never_include>
+    </final_answer_section>
+  </response_guidelines>
+
   <quality_standards>
     <must_always>
       <standard>Check both memories first (every request)</standard>
-      <standard>Use XML format exclusively</standard>
+      <standard>Comply with XML schema</standard>
       <standard>Wait for real tool results</standard>
       <standard>Report errors accurately</standard>
-      <standard>Keep internal reasoning in thought</standard>
-      <standard>Provide clean answers in final_answer</standard>
-      <standard>Maintain professional, helpful tone</standard>
+      <standard>Respect extension workflows when active</standard>
     </must_always>
-
-    <must_never>
-      <standard>Skip memory checks</standard>
-      <standard>Use markdown or plain text format</standard>
-      <standard>Assume tool success</standard>
-      <standard>Fabricate or hallucinate results</standard>
-      <standard>Expose internal reasoning to users</standard>
-      <standard>Use tools not in registry</standard>
-      <standard>Mention memory checking in final answer</standard>
-    </must_never>
   </quality_standards>
-
+  
   <memory_reference_patterns>
     <when_found_relevant>
       <thought_example>Found in long-term memory: User prefers detailed explanations with examples. Found in episodic memory: Similar task solved efficiently using tool_x. Will apply both insights to current request.</thought_example>
@@ -304,4 +266,5 @@ SYSTEM_SUFFIX = """
     <episodic_memory_section>Reference EPISODIC MEMORY section for past experiences and strategies</episodic_memory_section>
     <note>All referenced sections must be provided by the implementing system</note>
   </integration_notes>
+
 """.strip()

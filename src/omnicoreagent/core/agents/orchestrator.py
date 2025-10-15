@@ -43,6 +43,7 @@ class OrchestratorAgent(BaseReactAgent):
             total_tokens_limit=config.total_tokens_limit,
             memory_results_limit=config.memory_results_limit,
             memory_similarity_threshold=config.memory_similarity_threshold,
+            memory_tool_backend=config.memory_tool_backend,
         )
         self.agents_registry = agents_registry
         self.current_date_time = current_date_time
@@ -138,7 +139,6 @@ class OrchestratorAgent(BaseReactAgent):
         agent_role = self.agents_registry[server_name]
         agent_system_prompt = generate_react_agent_prompt_template(
             agent_role_prompt=agent_role,
-            current_date_time=self.current_date_time,
         )
         return agent_system_prompt
 
