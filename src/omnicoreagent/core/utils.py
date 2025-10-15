@@ -6,7 +6,7 @@ import re
 import subprocess
 import sys
 import uuid
-from collections import deque
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
@@ -21,7 +21,7 @@ from omnicoreagent.core.constants import AGENTS_REGISTRY
 from omnicoreagent.core.system_prompts import generate_react_agent_role_prompt
 import asyncio
 from typing import Any, Callable
-
+from xml.sax.saxutils import escape
 
 console = Console()
 # Configure logging
@@ -187,18 +187,11 @@ class RobustLoopDetector:
         pattern_detection: bool = True,
         max_pattern_length: int = 3,
     ):
-        """Initialize a robust loop detector.
-
-        Args:
-            maxlen: Maximum number of recent interactions to track
-            min_calls: Minimum number of interactions before loop detection is active
-            same_output_threshold: Maximum unique outputs before it's considered a loop
-            same_input_threshold: Maximum unique inputs before it's considered a loop
-            full_dup_threshold: Maximum unique interaction signatures before it's considered a loop
-            pattern_detection: Whether to detect repeating patterns
-            max_pattern_length: Maximum pattern length to detect
-        """
-        self.recent_interactions = deque(maxlen=maxlen)
+        """Initialize a robust loop detector."""
+        self.global_interactions = deque(maxlen=maxlen)
+        self.tool_interactions: dict[str, deque] = defaultdict(
+            lambda: deque(maxlen=maxlen)
+        )
         self.min_calls = min_calls
         self.same_output_threshold = same_output_threshold
         self.same_input_threshold = same_input_threshold
@@ -206,189 +199,80 @@ class RobustLoopDetector:
         self.pattern_detection = pattern_detection
         self.max_pattern_length = max_pattern_length
 
-        # Cache for performance optimization
         self._cache: dict[str, Any] = {}
         self._interaction_count = 0
 
     def record_tool_call(
         self, tool_name: str, tool_input: str, tool_output: str
     ) -> None:
-        """Record a new tool call interaction.
-
-        Args:
-            tool_name: Name of the tool that was called
-            tool_input: Input provided to the tool
-            tool_output: Output returned by the tool
-        """
+        """Record a new tool call interaction."""
         signature = (
             "tool",
             tool_name,
             hash_text(tool_input),
             hash_text(tool_output),
         )
-        self.recent_interactions.append(signature)
+        self.global_interactions.append(signature)
+        self.tool_interactions[tool_name].append(signature)
         self._interaction_count += 1
-
-        # Invalidate cache
         self._cache = {}
 
-    def record_message(self, user_message: str, assistant_message: str) -> None:
-        """Record a new message exchange interaction.
-
-        Args:
-            user_message: Message from the user
-            assistant_message: Response from the assistant
-        """
-        signature = (
-            "message",
-            "",
-            hash_text(user_message),
-            hash_text(assistant_message),
-        )
-        self.recent_interactions.append(signature)
-        self._interaction_count += 1
-
-        # Invalidate cache
-        self._cache = {}
-
-    def record_interaction(
-        self,
-        interaction_type: str,
-        input_data: str,
-        output_data: str,
-        metadata: str = "",
-    ) -> None:
-        """Generic method to record any type of interaction.
-
-        Args:
-            interaction_type: Type of interaction (e.g., "tool", "message", "function")
-            input_data: Input for the interaction
-            output_data: Output from the interaction
-            metadata: Additional information about the interaction (e.g., tool name)
-        """
-        signature = (
-            interaction_type,
-            metadata,
-            hash_text(input_data),
-            hash_text(output_data),
-        )
-        self.recent_interactions.append(signature)
-        self._interaction_count += 1
-
-        # Invalidate cache
-        self._cache = {}
-
-    def reset(self) -> None:
-        """Reset the detector, clearing all recorded interactions."""
-        self.recent_interactions.clear()
+    def reset(self, tool_name: str | None = None) -> None:
+        """Reset loop memory."""
+        if tool_name:
+            self.tool_interactions.pop(tool_name, None)
+        else:
+            self.global_interactions.clear()
+            self.tool_interactions.clear()
         self._cache = {}
         self._interaction_count = 0
 
-    def _get_unique_inputs(self) -> set[str]:
-        """Get set of unique inputs (cached)."""
-        if "unique_inputs" not in self._cache:
-            self._cache["unique_inputs"] = set(
-                sig[2] for sig in self.recent_interactions
-            )
-        return self._cache["unique_inputs"]
+    def _get_recent_for_tool(self, tool_name: str) -> list[tuple]:
+        return list(self.tool_interactions.get(tool_name, []))
 
-    def _get_unique_outputs(self) -> set[str]:
-        """Get set of unique outputs (cached)."""
-        if "unique_outputs" not in self._cache:
-            self._cache["unique_outputs"] = set(
-                sig[3] for sig in self.recent_interactions
-            )
-        return self._cache["unique_outputs"]
-
-    def _get_unique_signatures(self) -> set[tuple]:
-        """Get set of unique full signatures (cached)."""
-        if "unique_signatures" not in self._cache:
-            self._cache["unique_signatures"] = set(self.recent_interactions)
-        return self._cache["unique_signatures"]
-
-    def is_ready(self) -> bool:
-        """Check if we have enough data to start detecting loops."""
-        return self._interaction_count >= self.min_calls
-
-    def is_stuck_same_output(self) -> bool:
-        """Detect if we're stuck getting the same outputs repeatedly."""
-        if not self.is_ready():
+    def _is_tool_stuck_same_output(self, tool_name: str) -> bool:
+        interactions = self._get_recent_for_tool(tool_name)
+        if len(interactions) < self.same_output_threshold:
             return False
+        outputs = [sig[3] for sig in interactions[-self.same_output_threshold :]]
+        return len(set(outputs)) == 1
 
-        # Get the last few outputs
-        recent_outputs = [sig[3] for sig in self.recent_interactions]
-
-        # We need at least same_output_threshold outputs to check
-        if len(recent_outputs) < self.same_output_threshold:
+    def _is_tool_stuck_same_input(self, tool_name: str) -> bool:
+        interactions = self._get_recent_for_tool(tool_name)
+        if len(interactions) < self.same_input_threshold:
             return False
+        inputs = [sig[2] for sig in interactions[-self.same_input_threshold :]]
+        return len(set(inputs)) == 1
 
-        # Check if the last same_output_threshold outputs are all the same
-        last_outputs = recent_outputs[-self.same_output_threshold :]
-        return len(set(last_outputs)) == 1
-
-    def is_stuck_same_input(self) -> bool:
-        """Detect if we're stuck using the same inputs repeatedly."""
-        if not self.is_ready():
+    def _is_tool_fully_stuck(self, tool_name: str) -> bool:
+        interactions = self._get_recent_for_tool(tool_name)
+        if len(interactions) < self.full_dup_threshold:
             return False
+        recent = interactions[-self.full_dup_threshold :]
+        return len(set(recent)) == 1
 
-        # Get the last few inputs
-        recent_inputs = [sig[2] for sig in self.recent_interactions]
-
-        # We need at least same_input_threshold inputs to check
-        if len(recent_inputs) < self.same_input_threshold:
+    def _has_tool_pattern_loop(self, tool_name: str) -> bool:
+        interactions = self._get_recent_for_tool(tool_name)
+        if len(interactions) < 2 or not self.pattern_detection:
             return False
-
-        # Check if the last same_input_threshold inputs are all the same
-        last_inputs = recent_inputs[-self.same_input_threshold :]
-        return len(set(last_inputs)) == 1
-
-    def is_fully_stuck(self) -> bool:
-        """Detect if we're stuck in the same input-output combinations."""
-        if not self.is_ready():
-            return False
-
-        # Get the last few interactions
-        recent_interactions = list(self.recent_interactions)
-
-        # We need at least full_dup_threshold interactions to check
-        if len(recent_interactions) < self.full_dup_threshold:
-            return False
-
-        # Check if the last full_dup_threshold interactions are all the same
-        last_interactions = recent_interactions[-self.full_dup_threshold :]
-        return len(set(last_interactions)) == 1
-
-    def find_repeating_pattern(self) -> list[tuple] | None:
-        """Find a repeating pattern in the interaction history.
-
-        Returns:
-            The detected pattern as a list of signatures, or None if no pattern found
-        """
-        if not self.pattern_detection or not self.is_ready():
-            return None
-
-        interactions = list(self.recent_interactions)
-
-        # Check patterns of different lengths
         for pattern_len in range(
             1, min(self.max_pattern_length + 1, len(interactions) // 2 + 1)
         ):
-            # Check if the last N elements repeat the previous N elements
             pattern = interactions[-pattern_len:]
             prev_pattern = interactions[-2 * pattern_len : -pattern_len]
-
             if pattern == prev_pattern:
-                # Found a repeating pattern
-                return pattern
+                return True
+        return False
 
-        return None
-
-    def has_pattern_loop(self) -> bool:
-        """Check if there's a repeating pattern loop."""
-        return self.find_repeating_pattern() is not None
-
-    def is_looping(self) -> bool:
-        """Check if any loop detection method indicates a loop."""
+    def is_looping(self, tool_name: str | None = None) -> bool:
+        """Check global or tool-specific looping."""
+        if tool_name:
+            return (
+                self._is_tool_stuck_same_output(tool_name)
+                or self._is_tool_stuck_same_input(tool_name)
+                or self._is_tool_fully_stuck(tool_name)
+                or self._has_tool_pattern_loop(tool_name)
+            )
         return (
             self.is_stuck_same_output()
             or self.is_stuck_same_input()
@@ -396,65 +280,28 @@ class RobustLoopDetector:
             or self.has_pattern_loop()
         )
 
-    def get_loop_type(self) -> list[str]:
-        """Get detailed information about the type of loop detected.
-
-        Returns:
-            List of strings describing the detected loop types
-        """
-        if not self.is_looping():
-            return []
-
-        loop_types = []
-        if self.is_stuck_same_output():
-            loop_types.append("same_output")
-        if self.is_stuck_same_input():
-            loop_types.append("same_input")
-        if self.is_fully_stuck():
-            loop_types.append("full_duplication")
-
-        pattern = self.find_repeating_pattern()
-        if pattern:
-            loop_types.append(f"repeating_pattern(len={len(pattern)})")
-
-        return loop_types
-
-    def get_stats(self) -> dict[str, Any]:
-        """Get statistics about the current state.
-
-        Returns:
-            Dictionary with statistics about inputs, outputs, etc.
-        """
-        if not self.recent_interactions:
-            return {"interactions": 0}
-
-        # Count different types of interactions
-        interaction_types = {}
-        for sig in self.recent_interactions:
-            itype = sig[0]
-            interaction_types[itype] = interaction_types.get(itype, 0) + 1
-
-        return {
-            "interactions": self._interaction_count,
-            "queue_size": len(self.recent_interactions),
-            "unique_inputs": len(self._get_unique_inputs()),
-            "unique_outputs": len(self._get_unique_outputs()),
-            "unique_signatures": len(self._get_unique_signatures()),
-            "interaction_types": interaction_types,
-            "repeating_pattern": self.find_repeating_pattern() is not None,
-        }
-
-    def get_interaction_types(self) -> dict[str, int]:
-        """Get counts of each interaction type in the history.
-
-        Returns:
-            Dictionary mapping interaction types to their counts
-        """
-        type_counts = {}
-        for sig in self.recent_interactions:
-            itype = sig[0]
-            type_counts[itype] = type_counts.get(itype, 0) + 1
-        return type_counts
+    def get_loop_type(self, tool_name: str | None = None) -> list[str]:
+        """Get detailed loop type (global or per-tool)."""
+        types = []
+        if tool_name:
+            if self._is_tool_stuck_same_output(tool_name):
+                types.append("same_output")
+            if self._is_tool_stuck_same_input(tool_name):
+                types.append("same_input")
+            if self._is_tool_fully_stuck(tool_name):
+                types.append("full_duplication")
+            if self._has_tool_pattern_loop(tool_name):
+                types.append("repeating_pattern")
+        else:
+            if self.is_stuck_same_output():
+                types.append("same_output")
+            if self.is_stuck_same_input():
+                types.append("same_input")
+            if self.is_fully_stuck():
+                types.append("full_duplication")
+            if self.has_pattern_loop():
+                types.append("repeating_pattern")
+        return types
 
 
 def strip_comprehensive_narrative(text):
@@ -760,6 +607,61 @@ def get_mac_address() -> str:
 
     # If all else fails, generate a UUID
     return str(uuid.uuid4())
+
+
+import json
+from xml.sax.saxutils import escape
+
+
+def build_xml_observations_block(
+    tools_results, observation_marker="OBSERVATION RESULT FROM TOOL CALLS"
+):
+    """
+    Build an XML block for tool outputs with proper escaping and consistency.
+    Returns a string like:
+    <observation_marker>OBSERVATION RESULT FROM TOOL CALLS</observation_marker>
+    <observations>
+      <observation>
+        <tool_name>get_user_profile</tool_name>
+        <status>success</status>
+        <args>{"user_id": "123"}</args>
+        <output>{"name": "Abiorh"}</output>
+      </observation>
+      ...
+    </observations>
+    <observation_marker>(END OF OBSERVATIONS)</observation_marker>
+    """
+
+    xml_lines = [
+        f"<observation_marker>{escape(observation_marker)}</observation_marker>",
+        "  <observations>",
+    ]
+
+    for result in tools_results:
+        tool_name = escape(str(result.get("tool_name", "unknown_tool")))
+        status = escape(str(result.get("status", "unknown")))
+        args = escape(json.dumps(result.get("args", {}), ensure_ascii=False))
+
+        data = result.get("data")
+        message = result.get("message", "")
+        output_value = data if data is not None else message
+        output = (
+            escape(json.dumps(output_value, ensure_ascii=False))
+            if not isinstance(output_value, str)
+            else escape(output_value)
+        )
+
+        xml_lines.append("    <observation>")
+        xml_lines.append(f"      <tool_name>{tool_name}</tool_name>")
+        xml_lines.append(f"      <status>{status}</status>")
+        xml_lines.append(f"      <args>{args}</args>")
+        xml_lines.append(f"      <output>{output}</output>")
+        xml_lines.append("    </observation>")
+
+    xml_lines.append("  </observations>")
+    xml_lines.append("<observation_marker>(END OF OBSERVATIONS)</observation_marker>")
+
+    return "\n".join(xml_lines)
 
 
 # Create a global instance of the MAC address

@@ -34,37 +34,37 @@ from omnicoreagent import (
 tool_registry = ToolRegistry()
 
 MCP_TOOLS = [
-    {
-        "name": "mysql",
-        "command": "uv",
-        "args": [
-            "--directory",
-            "/home/abiorh/ai/mcp_servers/mysql_mcp_server",
-            "run",
-            "mysql_mcp_server",
-        ],
-        "env": {
-            "MYSQL_HOST": "localhost",
-            "MYSQL_PORT": "3306",
-            "MYSQL_USER": "root",
-            "MYSQL_PASSWORD": "Lucifer_001",
-            "MYSQL_DATABASE": "mcp_learning",
-        },
-    },
-    {
-        "name": "mcp-pinecone",
-        "command": "uv",
-        "args": [
-            "--directory",
-            "/home/abiorh/ai/mcp_servers/mcp-pinecone",
-            "run",
-            "mcp-pinecone",
-        ],
-        "env": {
-            "PINECONE_API_KEY": "",
-            "PINECONE_INDEX_NAME": "ocpp-index",
-        },
-    },
+    # {
+    #     "name": "mysql",
+    #     "command": "uv",
+    #     "args": [
+    #         "--directory",
+    #         "/home/abiorh/ai/mcp_servers/mysql_mcp_server",
+    #         "run",
+    #         "mysql_mcp_server",
+    #     ],
+    #     "env": {
+    #         "MYSQL_HOST": "localhost",
+    #         "MYSQL_PORT": "3306",
+    #         "MYSQL_USER": "root",
+    #         "MYSQL_PASSWORD": "Lucifer_001",
+    #         "MYSQL_DATABASE": "mcp_learning",
+    #     },
+    # },
+    # {
+    #     "name": "mcp-pinecone",
+    #     "command": "uv",
+    #     "args": [
+    #         "--directory",
+    #         "/home/abiorh/ai/mcp_servers/mcp-pinecone",
+    #         "run",
+    #         "mcp-pinecone",
+    #     ],
+    #     "env": {
+    #         "PINECONE_API_KEY": "",
+    #         "PINECONE_INDEX_NAME": "ocpp-index",
+    #     },
+    # },
     # {
     #     "name": "new-mcpserver",
     #    "transport_type": "streamable_http",
@@ -792,7 +792,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
                 "memory_results_limit": 5,
                 "memory_similarity_threshold": 0.5,
                 # --- Tool Retrieval Config ---
-                "enable_tools_knowledge_base": True,
+                "enable_tools_knowledge_base": False,
                 "tools_results_limit": 10,
                 "tools_similarity_threshold": 0.1,
             },

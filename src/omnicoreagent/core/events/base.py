@@ -31,13 +31,13 @@ class AgentMessagePayload(BaseModel):
 
 class ToolCallStartedPayload(BaseModel):
     tool_name: str
-    tool_args: Dict[str, Any]
+    tool_args: str | Dict[str, Any]
     tool_call_id: Optional[str] = None
 
 
 class ToolCallResultPayload(BaseModel):
     tool_name: str
-    tool_args: Dict[str, Any]
+    tool_args: str | Dict[str, Any]
     tool_call_id: Optional[str] = None
     result: str
 

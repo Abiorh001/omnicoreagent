@@ -135,43 +135,6 @@ class ToolRegistry:
 
         return await tool.execute(parameters)
 
-    # def _infer_schema(self, func: Callable) -> dict[str, Any]:
-    #     sig = inspect.signature(func)
-    #     props = {}
-    #     required = []
-
-    #     for param_name, param in sig.parameters.items():
-    #         # Skip 'self' parameter for methods
-    #         if param_name == "self":
-    #             continue
-
-    #         param_type = (
-    #             param.annotation
-    #             if param.annotation is not inspect.Parameter.empty
-    #             else str
-    #         )
-
-    #         props[param_name] = {"type": self._map_type(param_type)}
-
-    #         # Add description if available from docstring
-    #         if func.__doc__:
-    #             # Simple docstring parsing for parameter descriptions
-    #             doc_lines = func.__doc__.split("\n")
-    #             for line in doc_lines:
-    #                 if line.strip().startswith(f"{param_name}:"):
-    #                     props[param_name]["description"] = line.split(":", 1)[1].strip()
-    #                     break
-
-    #         if param.default is inspect.Parameter.empty:
-    #             required.append(param_name)
-
-    #     return {
-    #         "type": "object",
-    #         "properties": props,
-    #         "required": required,
-    #         "additionalProperties": False,
-    #     }
-
     def _infer_schema(self, func: Callable) -> dict[str, Any]:
         sig = inspect.signature(func)
         props = {}

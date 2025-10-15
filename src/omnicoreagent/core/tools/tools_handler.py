@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
 from omnicoreagent.core.utils import logger
+import asyncio
 
 
 class BaseToolHandler(ABC):
@@ -166,7 +167,7 @@ class ToolExecutor:
         self,
         agent_name: str,
         tool_name: str,
-        tool_args: dict[str, Any],
+        tool_args: list[dict[str, Any]],
         tool_call_id: str,
         add_message_to_history: Callable[[str, str, dict | None], Any],
         llm_connection: Callable,
@@ -174,84 +175,128 @@ class ToolExecutor:
         session_id: str = None,
         **kwargs,
     ) -> str:
+        """
+        Executes one or more tools concurrently and always returns a single aggregated result object.
+        Includes both successful and failed tool results under `tools_results`.
+        Properly handles tool-level and global exceptions.
+        """
+        aggregated_results = []
+
         try:
-            if tool_name.lower().strip() == "tools_retriever":
-                tool_args["llm_connection"] = llm_connection
-                tool_args["mcp_tools"] = mcp_tools
-                tool_args["top_k"] = kwargs.get("top_k")
-                tool_args["similarity_threshold"] = kwargs.get("similarity_threshold")
-            result = await self.tool_handler.call(tool_name, tool_args)
-            if tool_name.lower().strip() == "tools_retriever":
-                del tool_args["llm_connection"]
-                del tool_args["mcp_tools"]
-                del tool_args["top_k"]
-                del tool_args["similarity_threshold"]
+            split_tool_names = tool_name.split("_and_")
+            tasks = []
 
-            if isinstance(result, dict):
-                # Handle structured dict responses (local tools)
-                if result.get("status") == "success":
-                    tool_result = result.get("data", result)
-                    response = {"status": "success", "data": tool_result}
-                elif result.get("status") == "error":
-                    response = result  # Keep error as-is
+            for name, args in zip(split_tool_names, tool_args):
+                # Inject extra retriever args
+                if name.lower().strip() == "tools_retriever":
+                    args["llm_connection"] = llm_connection
+                    args["mcp_tools"] = mcp_tools
+                    args["top_k"] = kwargs.get("top_k")
+                    args["similarity_threshold"] = kwargs.get("similarity_threshold")
+
+                tasks.append(self.tool_handler.call(name, args))
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for name, args, result in zip(split_tool_names, tool_args, results):
+                # Cleanup retriever args
+                if name.lower().strip() == "tools_retriever":
+                    for key in [
+                        "llm_connection",
+                        "mcp_tools",
+                        "top_k",
+                        "similarity_threshold",
+                    ]:
+                        args.pop(key, None)
+
+                if isinstance(result, Exception):
+                    aggregated_results.append(
+                        {
+                            "tool_name": name,
+                            "args": args,
+                            "status": "error",
+                            "data": None,
+                            "message": str(result),
+                        }
+                    )
+                    continue
+
+                if isinstance(result, dict):
+                    status = result.get("status", "success")
+                    data = result.get("data")
+                    message = result.get("message")
+
+                    # Handle error cases
+                    if status == "error" and not message:
+                        message = "Tool returned error status without message."
+
+                    # Handle success with no data
+                    if status == "success" and data is None:
+                        # Keep status as success but optionally add a note in message
+                        message = (
+                            message
+                            or "(No data returned yet; tool may be processing asynchronously.)"
+                        )
+
+                elif hasattr(result, "content"):
+                    content = result.content
+                    data = content[0].text if isinstance(content, list) else content
+                    status = "success"
+                    message = None
+
                 else:
-                    # Dict without status field - treat as data
-                    response = {"status": "success", "data": result}
-            elif hasattr(result, "content"):
-                # Handle MCP-style responses
-                tool_content = result.content
-                tool_result = (
-                    tool_content[0].text
-                    if isinstance(tool_content, list)
-                    else tool_content
+                    data = result
+                    status = "success" if result else "error"
+                    message = (
+                        None if result else f"Tool '{name}' returned empty output."
+                    )
+
+                aggregated_results.append(
+                    {
+                        "tool_name": name,
+                        "args": args,
+                        "status": status,
+                        "data": data,
+                        "message": message,
+                    }
                 )
-                response = {"status": "success", "data": tool_result}
-            else:
-                # Handle raw responses (strings, numbers, etc.) - common for simple tools
-                response = {"status": "success", "data": result}
 
-            tool_content = response.get("data")
-            # Only flag as error if tool_content is explicitly None (not empty string, list, etc.)
-            # Empty results might be valid responses from tools
-            if tool_content is None:
-                response = {
-                    "status": "error",
-                    "message": (
-                        f"Tool '{tool_name}' returned None/null result. This might indicate:\n"
-                        f"1. Tool execution failed silently\n"
-                        f"2. Tool doesn't support the provided parameters\n"
-                        f"3. Network/connection issue (for MCP tools)\n"
-                        f"Please verify tool parameters or try a different approach."
-                    ),
-                }
-                tool_content = response["message"]
+                await add_message_to_history(
+                    role="tool",
+                    content=data if data is not None else message,
+                    metadata={
+                        "tool_call_id": tool_call_id,
+                        "tool": name,
+                        "args": args,
+                        "agent_name": agent_name,
+                    },
+                    session_id=session_id,
+                )
 
-            await add_message_to_history(
-                role="tool",
-                content=tool_content,
-                metadata={
-                    "tool_call_id": tool_call_id,
-                    "tool": tool_name,
-                    "args": tool_args,
-                    "agent_name": agent_name,
-                },
-                session_id=session_id,
+            overall_status = (
+                "error"
+                if any(r["status"] == "error" for r in aggregated_results)
+                else "success"
             )
 
-            return json.dumps(response)
+            return json.dumps(
+                {"status": overall_status, "tools_results": aggregated_results}
+            )
 
         except Exception as e:
-            error_response = {
-                "status": "error",
-                "message": (
-                    f"Error: {str(e)}. Please try again or use a different approach. "
-                    "If the issue persists, please provide a detailed description of the problem and "
-                    "the current state of the conversation. And stop immediately, do not try again."
-                ),
-            }
+            aggregated_results.append(
+                {
+                    "tool_name": tool_name,
+                    "args": tool_args,
+                    "status": "error",
+                    "data": None,
+                    "message": str(e),
+                }
+            )
+
             await add_message_to_history(
                 role="tool",
-                content=error_response["message"],
+                content=str(e),
                 metadata={
                     "tool_call_id": tool_call_id,
                     "tool": tool_name,
@@ -260,4 +305,5 @@ class ToolExecutor:
                 },
                 session_id=session_id,
             )
-            return json.dumps(error_response)
+
+            return json.dumps({"status": "error", "tools_results": aggregated_results})
