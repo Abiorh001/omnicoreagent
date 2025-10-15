@@ -157,4 +157,5 @@ async def tools_retriever(
         top_k=top_k,
         similarity_threshold=similarity_threshold,
     )
+
     return {"status": "success", "data": str(tool_retriever)}
