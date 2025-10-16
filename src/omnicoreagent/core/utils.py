@@ -519,12 +519,15 @@ def show_tool_response(agent_name, tool_name, tool_args, observation):
     console.print(panel)
 
 
+import ast
+
 def normalize_tool_args(args: dict) -> dict:
     """
     Normalize tool arguments:
     - Convert stringified booleans into proper bool
     - Convert stringified numbers into int/float
     - Convert "null"/"none" into None
+    - Convert stringified lists/tuples/dicts (e.g. "['a', 'b']") into Python objects
     - Handle nested dicts, lists, and tuples recursively
     """
 
@@ -540,15 +543,24 @@ def normalize_tool_args(args: dict) -> dict:
             if lower_val in ("true", "false"):
                 return lower_val == "true"
 
-            # Handle int
+            # Handle numeric (int or float)
             if value.isdigit():
                 return int(value)
-
-            # Handle float
             try:
                 return float(value)
             except ValueError:
-                return value  # keep as string if not numeric
+                pass
+
+            # Handle stringified list/tuple/dict safely
+            if value.strip().startswith(("[", "{", "(")) and value.strip().endswith(("]", "}", ")")):
+                try:
+                    parsed = ast.literal_eval(value)
+                    return _normalize(parsed)
+                except (ValueError, SyntaxError):
+                    pass  # fallback to plain string if invalid
+
+            # Default: keep string
+            return value
 
         elif isinstance(value, dict):
             return {k: _normalize(v) for k, v in value.items()}
@@ -562,6 +574,7 @@ def normalize_tool_args(args: dict) -> dict:
         return value
 
     return {k: _normalize(v) for k, v in args.items()}
+
 
 
 def get_mac_address() -> str:
