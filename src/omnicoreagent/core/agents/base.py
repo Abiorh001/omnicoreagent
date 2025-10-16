@@ -51,6 +51,7 @@ from omnicoreagent.core.events.base import (
     FinalAnswerPayload,
     AgentMessagePayload,
     UserMessagePayload,
+    AgentThoughtPayload,
 )
 import traceback
 from omnicoreagent.core.tools.tool_knowledge_base import (
@@ -219,10 +220,24 @@ class BaseReactAgent:
     async def extract_action_or_answer(
         self,
         response: str,
+        session_id: str,
+        event_router: Callable,
         debug: bool = False,
     ) -> ParsedResponse:
         """Parse LLM response to extract a final answer or a tool action using XML format only."""
         try:
+            # emit the agent thoughts each time
+            agent_thoughts = re.search(r"<thought>(.*?)</thought>", response, re.DOTALL)
+            if agent_thoughts:
+                event = Event(
+                    type=EventType.AGENT_THOUGHT,
+                    payload=AgentThoughtPayload(
+                        message=str(agent_thoughts.group(1).strip()),
+                    ),
+                    agent_name=self.agent_name,
+                )
+                if event_router:
+                    await event_router(session_id=session_id, event=event)
             tool_calls = []
             tool_call_blocks = []
             # Check for XML-style tool call format first
@@ -247,8 +262,6 @@ class BaseReactAgent:
             else:
                 tool_call_blocks = []
 
-            if debug:
-                logger.info("XML tool call format detected in response: %s", response)
             # Parse each <tool_call> block
             for block in tool_call_blocks:
                 name_match = re.search(
@@ -308,13 +321,6 @@ class BaseReactAgent:
                     return ParsedResponse(answer=answer)
                 else:
                     return ParsedResponse(error="Invalid XML final answer format")
-
-            # If no XML format detected, treat as conversational response
-            if debug:
-                logger.info(
-                    "No XML format detected, treating as conversational response: %s",
-                    response,
-                )
 
             # Check if response contains any XML tags at all
             if "<" in response and ">" in response:
@@ -828,7 +834,7 @@ class BaseReactAgent:
                     message = result.get("message", "")
                     # Increment counter for repeated tool names
                     tool_counter[tool_name] += 1
-                    tool_call_id = f"{tool_name}#{tool_counter[tool_name]}"
+                    tool_call_generated_id = f"{tool_name}#{tool_counter[tool_name]}"
                     display_value = data if data is not None else message
                     # Record in loop detector
                     self.loop_detector.record_tool_call(
@@ -838,16 +844,16 @@ class BaseReactAgent:
                     )
 
                     if status == "success":
-                        obs_lines.append(f"{tool_call_id}: {display_value}")
+                        obs_lines.append(f"{tool_call_generated_id}: {display_value}")
                         success_count += 1
                     elif status == "error":
                         # Include detailed reason if available
                         reason = display_value or "Unknown error occurred."
-                        obs_lines.append(f"{tool_call_id} ERROR: {reason}")
+                        obs_lines.append(f"{tool_call_generated_id} ERROR: {reason}")
                         error_count += 1
                     else:
                         obs_lines.append(
-                            f"{tool_call_id}: Unexpected status '{status}'"
+                            f"{tool_call_generated_id}: Unexpected status '{status}'"
                         )
                         error_count += 1
 
@@ -1371,7 +1377,10 @@ class BaseReactAgent:
                     return error_message
 
                 parsed_response = await self.extract_action_or_answer(
-                    response=response, debug=debug
+                    response=response,
+                    debug=debug,
+                    session_id=session_id,
+                    event_router=event_router,
                 )
                 if debug:
                     logger.info(f"current steps: {current_steps}")

@@ -14,6 +14,7 @@ class EventType(str, Enum):
     TOOL_CALL_RESULT = "tool_call_result"
     TOOL_CALL_ERROR = "tool_call_error"
     FINAL_ANSWER = "final_answer"
+    AGENT_THOUGHT = "agent_thought"
     # Background agent events
     BACKGROUND_TASK_STARTED = "background_task_started"
     BACKGROUND_TASK_COMPLETED = "background_task_completed"
@@ -48,6 +49,10 @@ class ToolCallErrorPayload(BaseModel):
 
 
 class FinalAnswerPayload(BaseModel):
+    message: str
+
+
+class AgentThoughtPayload(BaseModel):
     message: str
 
 
@@ -94,6 +99,7 @@ EventPayload = Union[
     ToolCallResultPayload,
     ToolCallErrorPayload,
     FinalAnswerPayload,
+    AgentThoughtPayload,
     BackgroundTaskStartedPayload,
     BackgroundTaskCompletedPayload,
     BackgroundTaskErrorPayload,
@@ -116,6 +122,7 @@ EVENT_PAYLOAD_MAP: dict[EventType, Type[BaseModel]] = {
     EventType.TOOL_CALL_RESULT: ToolCallResultPayload,
     EventType.TOOL_CALL_ERROR: ToolCallErrorPayload,
     EventType.FINAL_ANSWER: FinalAnswerPayload,
+    EventType.AGENT_THOUGHT: AgentThoughtPayload,
     EventType.BACKGROUND_TASK_STARTED: BackgroundTaskStartedPayload,
     EventType.BACKGROUND_TASK_COMPLETED: BackgroundTaskCompletedPayload,
     EventType.BACKGROUND_TASK_ERROR: BackgroundTaskErrorPayload,

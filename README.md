@@ -39,6 +39,7 @@
 - [💡 What Can You Build? (Examples)](#-what-can-you-build-see-real-examples)
 - [🎯 Choose Your Path](#-choose-your-path)
 - [🧠 Semantic Tool Knowledge Base](#-semantic-tool-knowledge-base)
+- [🗂️ Memory Tool Backend](#-memory-tool-backend)
 
 ### 🤖 **OmniAgent System**
 
@@ -293,6 +294,81 @@ agent = OmniAgent(
 - **No manual registry management**
 - **Reliable fallback search**
 - **Scales with your infrastructure**
+
+---
+
+## 🗂️ **Memory Tool Backend**
+
+Introduces a persistent "memory tool" backend so agents can store a writable working memory layer on disk (under /memories). This is designed for multi-step or resumable workflows where the agent needs durable state outside the transient LLM context.
+
+Why this matters
+
+- Agents often need an external writable workspace for long-running tasks, progress tracking, or resumable operations.
+- Storing working memory externally prevents constantly bloating the prompt and preserves important intermediate state across restarts or multiple runs.
+- This is a lightweight, agent-facing working layer — not a replacement for structured DBs or vector semantic memory.
+
+How to enable
+
+- Enable via agent config:
+
+```python
+agent_config = {
+    "memory_tool_backend": "local",  # enable persistent memory (writes to ./memories)
+}
+```
+
+- Disable by omitting the key or setting it to None:
+
+```python
+agent_config = {
+    "memory_tool_backend": None,  # disable persistent memory
+}
+```
+
+Behavior & capabilities
+
+- When enabled the agent gets access to memory_* tools for managing persistent files under /memories:
+  - memory_view, memory_create_update, memory_insert
+  - memory_str_replace, memory_delete, memory_rename, memory_clear_all
+- Operations use a structured XML observation format so the LLM can perform reliable memory actions and parse results programmatically.
+- System prompt extensions include privacy, concurrency, and size constraints to help enforce safe usage.
+
+Files & storage
+
+- Local backend stores files under the repository (./memories) by default.
+- Current release: local backend only. Future releases will add S3, database, and other filesystem backends.
+
+Example usage (agent-facing)
+
+```python
+# enable persistent memory in agent config
+agent = OmniAgent(
+    ...,
+    agent_config={
+        "memory_tool_backend": "local",
+        # other agent config...
+    },
+    ...
+)
+
+# Agent can now call memory_* tools to create and update working memory
+# (these are invoked by the agent's tool-calling logic; see examples/ for patterns)
+```
+
+Result / tradeoffs
+
+- Agents can maintain durable working memory outside the token context enabling long-running workflows, planning persistence, and resumable tasks.
+- This memory layer is intended as a writable working area for active tasks (progress, in-progress artifacts, state), not a substitute for structured transactional storage or semantic vector memory.
+- Privacy, concurrency, and size constraints are enforced via system prompt and runtime checks; review policies for production deployment.
+
+Roadmap
+
+- Add S3, DB, and other filesystem backends.
+- Add optional encryption, access controls, and configurable retention policies.
+
+Practical note
+
+- Use the memory tool backend when your workflows require persistent, writable agent state between steps or runs. Continue using vector DBs or SQL/NoSQL stores for semantic or structured storage needs.
 
 ---
 
@@ -2587,8 +2663,12 @@ You can configure these in your `servers_config.json` under the `AgentConfig` se
     // --- Tool Retrieval Config ---
     "enable_tools_knowledge_base": false,   // Enable semantic tool retrieval (default: false)
     "tools_results_limit": 10,              // Max number of tools to retrieve (default: 10)
-    "tools_similarity_threshold": 0.1       // Similarity threshold for tool retrieval (0.0–1.0, default: 0.1)
+    "tools_similarity_threshold": 0.1,      // Similarity threshold for tool retrieval (0.0–1.0, default: 0.1)
+
+    // --- Memory Tool Backend ---
+    "memory_tool_backend": "None"           // Backend for memory tool. Options: "None" (default), "local", "s3", or "db"
 }
+
 
 ```
 
