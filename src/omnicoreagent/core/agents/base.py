@@ -1205,6 +1205,7 @@ class BaseReactAgent:
             # Vector DB disabled - no memory sections
             system_updated_prompt = system_prompt
             long_term_memory, episodic_memory = [], []
+        
         tools_section = await self.get_tools_registry(
             mcp_tools=mcp_tools, local_tools=local_tools
         )
