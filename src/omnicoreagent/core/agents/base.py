@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Callable
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Tuple
 from omnicoreagent.core.system_prompts import (
     tools_retriever_additional_prompt,
     memory_tool_additional_prompt,
@@ -31,6 +31,7 @@ from omnicoreagent.core.agents.types import (
     ToolCallResult,
     ToolError,
     ToolFunction,
+    SessionState,
 )
 from omnicoreagent.core.utils import (
     RobustLoopDetector,
@@ -127,16 +128,23 @@ class BaseReactAgent:
         self.tools_similarity_threshold = tools_similarity_threshold
 
         self.memory_tool_backend = memory_tool_backend
-
-        self.messages: dict[str, list[Message]] = {}
-        self.state = AgentState.IDLE
-
-        self.loop_detector = RobustLoopDetector()
-        self.assistant_with_tool_calls = None
-        self.pending_tool_responses = []
         self.usage_limits = UsageLimits(
             request_limit=self.request_limit, total_tokens_limit=self.total_tokens_limit
         )
+
+        self._session_states: dict[Tuple[str, str], SessionState] = {}
+
+    def _get_session_state(self, session_id: str) -> SessionState:
+        key = (session_id, self.agent_name)
+        if key not in self._session_states:
+            self._session_states[key] = SessionState(
+                messages=[],
+                state=AgentState.IDLE,
+                loop_detector=RobustLoopDetector(),
+                assistant_with_tool_calls=None,
+                pending_tool_responses=[],
+            )
+        return self._session_states[key]
 
     @track("memory_retrieval")
     async def get_long_episodic_memory(
@@ -381,23 +389,24 @@ class BaseReactAgent:
                 logger.debug("Vector DB disabled - skipping memory processing")
         except Exception as e:
             logger.error(f"Error in memory processing: {e}")
-
+        # get the session state to be use
+        session_state = self._get_session_state(session_id)
         for message in validated_messages:
             role = message.role
             metadata = message.metadata
             if role == "user":
                 # Flush any pending assistant-tool-call + responses before new "user" message
-                self._try_flush_pending()
-                self.messages[self.agent_name].append(
+                self._try_flush_pending(session_id=session_id)
+                session_state.messages.append(
                     Message(role="user", content=message.content)
                 )
 
             elif role == "assistant":
                 if metadata.has_tool_calls:
                     # If we already have a pending assistant with tool calls, try to flush it
-                    self._try_flush_pending()
+                    self._try_flush_pending(session_id=session_id)
                     # Store this assistant message for later (until we collect all tool responses)
-                    self.assistant_with_tool_calls = {
+                    session_state.assistant_with_tool_calls = {
                         "role": "assistant",
                         "content": message.content,
                         "tool_calls": (
@@ -406,17 +415,17 @@ class BaseReactAgent:
                             else []
                         ),
                     }
-                    self.pending_tool_responses = []
+                    session_state.pending_tool_responses = []
                 else:
                     # Regular assistant message without tool calls
                     # First flush any pending tool calls
-                    self._try_flush_pending()
-                    self.messages[self.agent_name].append(
+                    self._try_flush_pending(session_id=session_id)
+                    session_state.messages.append(
                         Message(role="assistant", content=message.content)
                     )
 
             elif role == "tool":
-                self.pending_tool_responses.append(
+                session_state.pending_tool_responses.append(
                     {
                         "role": "tool",
                         "content": message.content,
@@ -424,34 +433,33 @@ class BaseReactAgent:
                     }
                 )
                 # After adding, try to flush if all responses are present
-                self._try_flush_pending()
+                self._try_flush_pending(session_id=session_id)
 
             elif role == "system":
-                self._try_flush_pending()
-                self.messages[self.agent_name].append(
+                self._try_flush_pending(session_id=session_id)
+                session_state.messages.append(
                     Message(role="system", content=message.content)
                 )
 
             else:
                 logger.warning(f"Unknown message role encountered: {role}")
 
-    @track("message_flushing")
-    def _try_flush_pending(self):
-        if self.assistant_with_tool_calls:
-            expected_tool_calls = {
-                tc["id"] for tc in self.assistant_with_tool_calls.get("tool_calls", [])
+    def _try_flush_pending(self, session_id: str):
+        session_state = self._get_session_state(session_id)
+        if session_state.assistant_with_tool_calls:
+            expected = {
+                tc["id"]
+                for tc in session_state.assistant_with_tool_calls.get("tool_calls", [])
             }
-            actual_tool_calls = {
-                resp["tool_call_id"] for resp in self.pending_tool_responses
+            actual = {
+                resp["tool_call_id"] for resp in session_state.pending_tool_responses
             }
-            missing = expected_tool_calls - actual_tool_calls
-            if not missing:
-                self.messages[self.agent_name].append(self.assistant_with_tool_calls)
-                self.messages[self.agent_name].extend(self.pending_tool_responses)
-                self.assistant_with_tool_calls = None
-                self.pending_tool_responses = []
+            if not (expected - actual):
+                session_state.messages.append(session_state.assistant_with_tool_calls)
+                session_state.messages.extend(session_state.pending_tool_responses)
+                session_state.assistant_with_tool_calls = None
+                session_state.pending_tool_responses = []
 
-    @track("tool_resolution")
     async def resolve_tool_call_request(
         self,
         parsed_response: ParsedResponse,
@@ -698,6 +706,9 @@ class BaseReactAgent:
         session_id: str = None,
         event_router: Callable[[str, Event], Any] = None,
     ):
+        # get the session state to be use
+        session_state = self._get_session_state(session_id)
+
         tool_call_result = await self.resolve_tool_call_request(
             parsed_response=parsed_response,
             mcp_tools=mcp_tools,
@@ -736,8 +747,7 @@ class BaseReactAgent:
 
                 if event_router:
                     await event_router(session_id=session_id, event=event)
-
-                self.loop_detector.record_tool_call(
+                session_state.loop_detector.record_tool_call(
                     str(tool_name),
                     str(tool_args),
                     str(error_message),
@@ -837,7 +847,7 @@ class BaseReactAgent:
                     tool_call_generated_id = f"{tool_name}#{tool_counter[tool_name]}"
                     display_value = data if data is not None else message
                     # Record in loop detector
-                    self.loop_detector.record_tool_call(
+                    session_state.loop_detector.record_tool_call(
                         str(tool_name),
                         str(args),
                         str(display_value),
@@ -892,7 +902,7 @@ class BaseReactAgent:
                 )
                 logger.warning(obs_text)
                 for single_tool in tool_call_result:
-                    self.loop_detector.record_tool_call(
+                    session_state.loop_detector.record_tool_call(
                         str(single_tool.tool_name),
                         str(single_tool.tool_args),
                         obs_text,
@@ -921,7 +931,7 @@ class BaseReactAgent:
                 obs_text = f"Error executing tool: {str(e)}"
                 logger.error(obs_text)
                 for single_tool in tool_call_result:
-                    self.loop_detector.record_tool_call(
+                    session_state.loop_detector.record_tool_call(
                         str(single_tool.tool_name),
                         str(single_tool.tool_args),
                         obs_text,
@@ -956,7 +966,7 @@ class BaseReactAgent:
             )
 
         xml_obs_block = build_xml_observations_block(tools_results)
-        self.messages[self.agent_name].append(
+        session_state.messages.append(
             Message(
                 role="user",
                 content=xml_obs_block,
@@ -971,9 +981,9 @@ class BaseReactAgent:
 
         if debug:
             logger.info(
-                f"Agent state changed from {self.state} to {AgentState.OBSERVING}"
+                f"Agent state changed from {session_state.state} to {AgentState.OBSERVING}"
             )
-        self.state = AgentState.OBSERVING
+        session_state.state = AgentState.OBSERVING
 
         if isinstance(tool_call_result, (list, tuple)):
             tool_call_results = list(tool_call_result)
@@ -991,15 +1001,15 @@ class BaseReactAgent:
                     )
                     continue
 
-            if self.loop_detector.is_looping(tool_name):
-                loop_type = self.loop_detector.get_loop_type(tool_name)
+            if session_state.loop_detector.is_looping(tool_name):
+                loop_type = session_state.loop_detector.get_loop_type(tool_name)
                 logger.warning(
                     f"Tool call loop detected for '{tool_name}': {loop_type}"
                 )
 
                 new_system_prompt = handle_stuck_state(system_prompt)
-                self.messages[self.agent_name] = await self.reset_system_prompt(
-                    messages=self.messages[self.agent_name],
+                session_state.messages = await self.reset_system_prompt(
+                    messages=session_state.messages,
                     system_prompt=new_system_prompt,
                 )
 
@@ -1028,17 +1038,17 @@ class BaseReactAgent:
                 if event_router:
                     await event_router(session_id=session_id, event=event)
 
-                self.messages[self.agent_name].append(
+                session_state.messages.append(
                     Message(role="user", content=loop_message)
                 )
 
                 if debug:
                     logger.info(
-                        f"Agent state changed from {self.state} to {AgentState.STUCK}"
+                        f"Agent state changed from {session_state.state} to {AgentState.STUCK}"
                     )
 
-                self.state = AgentState.STUCK
-                self.loop_detector.reset(tool_name)
+                session_state.state = AgentState.STUCK
+                session_state.loop_detector.reset(tool_name)
 
     async def reset_system_prompt(self, messages: list, system_prompt: str):
         # Reset system prompt and keep all messages
@@ -1048,22 +1058,23 @@ class BaseReactAgent:
         messages.extend(old_messages)
         return messages
 
-    @track("state_management")
     @asynccontextmanager
-    async def agent_state_context(self, new_state: AgentState):
-        """Context manager to change the agent state"""
+    async def agent_session_state_context(self, new_state: AgentState, session_id: str):
+        """Context manager to change the agent session state"""
+        # get the session state to be use
+        session_state = self._get_session_state(session_id)
         if not isinstance(new_state, AgentState):
             raise ValueError(f"Invalid agent state: {new_state}")
-        previous_state = self.state
-        self.state = new_state
+        previous_state = session_state.state
+        session_state.state = new_state
         try:
             yield
         except Exception as e:
-            self.state = AgentState.ERROR
+            session_state.state = AgentState.ERROR
             logger.error(f"Error in agent state context: {e}")
             raise
         finally:
-            self.state = previous_state
+            session_state.state = previous_state
 
     async def get_tools_registry(
         self, mcp_tools: dict = None, local_tools: Any = None
@@ -1174,6 +1185,9 @@ class BaseReactAgent:
         """Execute ReAct loop with JSON communication
         kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be local_tools
         """
+        # get the session state to be use
+        session_state = self._get_session_state(session_id)
+
         # handle start of agent run
         event = Event(
             type=EventType.USER_MESSAGE,
@@ -1205,7 +1219,7 @@ class BaseReactAgent:
             # Vector DB disabled - no memory sections
             system_updated_prompt = system_prompt
             long_term_memory, episodic_memory = [], []
-        
+
         tools_section = await self.get_tools_registry(
             mcp_tools=mcp_tools, local_tools=local_tools
         )
@@ -1231,9 +1245,7 @@ class BaseReactAgent:
                                 </current_date_time>
                                 """
 
-        self.messages[self.agent_name] = [
-            Message(role="system", content=system_updated_prompt)
-        ]
+        session_state.messages = [Message(role="system", content=system_updated_prompt)]
 
         # Add initial user message to message history
         @track("message_history_update")
@@ -1259,26 +1271,28 @@ class BaseReactAgent:
         await update_working_memory()
 
         # check if the agent is in a valid state to run
-        if self.state not in [
+        if session_state.state not in [
             AgentState.IDLE,
             AgentState.ERROR,
         ]:
-            raise RuntimeError(f"Agent is not in a valid state to run: {self.state}")
+            raise RuntimeError(
+                f"Agent is not in a valid state to run: {session_state.state}"
+            )
 
         # set the agent state to running
-        async with self.agent_state_context(AgentState.RUNNING):
+        async with self.agent_session_state_context(
+            new_state=AgentState.RUNNING, session_id=session_id
+        ):
             current_steps = 0
             last_valid_response = None  # Track last valid response
             while (
-                self.state not in [AgentState.FINISHED]
+                session_state.state not in [AgentState.FINISHED]
                 and current_steps < self.max_steps
             ):
-                # logger.info(
-                #         f"history: {(self.messages[self.agent_name])}"
-                #     )
+                logger.info(f"history: {(session_state.messages[1:])}")
                 if debug:
                     logger.info(
-                        f"Sending {len(self.messages[self.agent_name])} messages to LLM"
+                        f"Sending {len(session_state.messages)} messages to LLM"
                     )
                 current_steps += 1
                 if self._limits_enabled:
@@ -1288,27 +1302,21 @@ class BaseReactAgent:
 
                     @track("llm_call")
                     async def make_llm_call():
-                        return await llm_connection.llm_call(
-                            self.messages[self.agent_name]
-                        )
+                        return await llm_connection.llm_call(session_state.messages)
 
                     response = await make_llm_call()
 
                     if response:
                         # handle agent response event
-                        @track("event_handling")
-                        async def handle_agent_event():
-                            event = Event(
-                                type=EventType.AGENT_MESSAGE,
-                                payload=AgentMessagePayload(
-                                    message=str(response),
-                                ),
-                                agent_name=self.agent_name,
-                            )
-                            if event_router:
-                                await event_router(session_id=session_id, event=event)
-
-                        await handle_agent_event()
+                        event = Event(
+                            type=EventType.AGENT_MESSAGE,
+                            payload=AgentMessagePayload(
+                                message=str(response),
+                            ),
+                            agent_name=self.agent_name,
+                        )
+                        if event_router:
+                            await event_router(session_id=session_id, event=event)
 
                         # check if it has usage - always record, but only enforce limits when enabled
                         if hasattr(response, "usage"):
@@ -1387,10 +1395,9 @@ class BaseReactAgent:
                     logger.info(f"current steps: {current_steps}")
                 # check for final answer
                 if parsed_response.answer is not None:
-                    last_valid_response = (
-                        parsed_response.answer
-                    )  # Store last valid response
-                    self.messages[self.agent_name].append(
+                    last_valid_response = parsed_response.answer
+
+                    session_state.messages.append(
                         Message(
                             role="assistant",
                             content=parsed_response.answer,
@@ -1398,26 +1405,23 @@ class BaseReactAgent:
                     )
 
                     # handle final answer event
-                    @track("final_answer_handling")
-                    async def handle_final_answer():
-                        event = Event(
-                            type=EventType.FINAL_ANSWER,
-                            payload=FinalAnswerPayload(
-                                message=str(parsed_response.answer),
-                            ),
-                            agent_name=self.agent_name,
-                        )
-                        if event_router:
-                            await event_router(session_id=session_id, event=event)
-                        await add_message_to_history(
-                            role="assistant",
-                            content=parsed_response.answer,
-                            session_id=session_id,
-                            metadata={"agent_name": self.agent_name},
-                        )
-
-                    await handle_final_answer()
-                    self.state = AgentState.FINISHED
+                    event = Event(
+                        type=EventType.FINAL_ANSWER,
+                        payload=FinalAnswerPayload(
+                            message=str(parsed_response.answer),
+                        ),
+                        agent_name=self.agent_name,
+                    )
+                    if event_router:
+                        await event_router(session_id=session_id, event=event)
+                    await add_message_to_history(
+                        role="assistant",
+                        content=parsed_response.answer,
+                        session_id=session_id,
+                        metadata={"agent_name": self.agent_name},
+                    )
+                    # self.state = AgentState.FINISHED
+                    session_state.state = AgentState.FINISHED
                     return parsed_response.answer
 
                 # check for action
@@ -1456,7 +1460,7 @@ class BaseReactAgent:
                 if parsed_response.error is not None:
                     logger.error(f"Error in parsed response: {parsed_response.error}")
                     # we need to continue the loop if there is an error in parsing
-                    self.messages[self.agent_name].append(
+                    session_state.messages.append(
                         Message(
                             role="user",
                             content=(
@@ -1469,7 +1473,7 @@ class BaseReactAgent:
                     continue
                 # check for stuck state
                 if current_steps >= self.max_steps:
-                    self.state = AgentState.STUCK
+                    session_state.state = AgentState.STUCK
                     if last_valid_response:
                         # Prepend max steps context for judge evaluation
                         max_steps_context = f"[SYSTEM_CONTEXT: MAX_STEPS_REACHED - Agent hit {self.max_steps} step limit]\n\n"
@@ -1478,7 +1482,7 @@ class BaseReactAgent:
                         return f"[SYSTEM_CONTEXT: MAX_STEPS_REACHED - Agent hit {self.max_steps} step limit without valid response]"
 
         # If we exit the loop due to STUCK state, return last valid response with context
-        if self.state == AgentState.STUCK and last_valid_response:
+        if session_state.state == AgentState.STUCK and last_valid_response:
             # Prepend loop detection context for judge evaluation
             loop_context = (
                 "[SYSTEM_CONTEXT: LOOP_DETECTED - Agent stuck in tool call loop]\n\n"

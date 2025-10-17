@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
+from omnicoreagent.core.utils import RobustLoopDetector
 
 
 class AgentConfig(BaseModel):
@@ -156,3 +157,11 @@ class ToolExecutorConfig(BaseModel):
 class LoopDetectorConfig(BaseModel):
     max_repeats: int = 3
     similarity_threshold: float = 0.9
+
+
+class SessionState(BaseModel):
+    messages: list[Message]
+    state: AgentState
+    loop_detector: Any  # RobustLoopDetector instance
+    assistant_with_tool_calls: dict | None
+    pending_tool_responses: list[dict]
