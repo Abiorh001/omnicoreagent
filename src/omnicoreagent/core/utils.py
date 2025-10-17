@@ -521,6 +521,7 @@ def show_tool_response(agent_name, tool_name, tool_args, observation):
 
 import ast
 
+
 def normalize_tool_args(args: dict) -> dict:
     """
     Normalize tool arguments:
@@ -552,7 +553,9 @@ def normalize_tool_args(args: dict) -> dict:
                 pass
 
             # Handle stringified list/tuple/dict safely
-            if value.strip().startswith(("[", "{", "(")) and value.strip().endswith(("]", "}", ")")):
+            if value.strip().startswith(("[", "{", "(")) and value.strip().endswith(
+                ("]", "}", ")")
+            ):
                 try:
                     parsed = ast.literal_eval(value)
                     return _normalize(parsed)
@@ -574,7 +577,6 @@ def normalize_tool_args(args: dict) -> dict:
         return value
 
     return {k: _normalize(v) for k, v in args.items()}
-
 
 
 def get_mac_address() -> str:
