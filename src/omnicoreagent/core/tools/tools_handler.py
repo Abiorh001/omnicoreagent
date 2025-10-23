@@ -106,7 +106,7 @@ class LocalToolHandler(BaseToolHandler):
     async def validate_tool_call_request(
         self,
         tool_data: str,
-        local_tools: Any = None,  # Not used for local tools
+        local_tools: Any = None,
     ) -> dict[str, Any]:
         try:
             action = json.loads(tool_data)

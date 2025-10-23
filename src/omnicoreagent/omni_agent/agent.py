@@ -142,7 +142,7 @@ class OmniAgent:
         # Create shared configuration
         shared_config = Configuration()
 
-        # Initialize MCP client (only if MCP tools are provided)
+        # Initialize MCP client only if MCP tools are provided
         if self.mcp_tools:
             self.mcp_client = MCPClient(
                 config=shared_config,

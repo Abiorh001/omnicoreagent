@@ -42,6 +42,7 @@ from omnicoreagent.core.utils import (
     is_vector_db_enabled,
     normalize_tool_args,
     build_xml_observations_block,
+    BackgroundTaskManager,
 )
 from omnicoreagent.core.events.base import (
     Event,
@@ -63,11 +64,10 @@ from omnicoreagent.core.tools.memory_tool.memory_tool import (
 )
 from omnicoreagent.core.constants import date_time_func
 
-# Import memory system first to ensure initialization
+
 if is_vector_db_enabled():
     logger.info("Vector database is enabled")
     try:
-        # Import memory system to trigger initialization
         from omnicoreagent.core.memory_store.memory_management.memory_manager import (
             MemoryManagerFactory,
         )
@@ -133,14 +133,15 @@ class BaseReactAgent:
         )
 
         self._session_states: dict[Tuple[str, str], SessionState] = {}
+        self.background_task_manager = BackgroundTaskManager()
 
-    def _get_session_state(self, session_id: str) -> SessionState:
+    def _get_session_state(self, session_id: str, debug: bool) -> SessionState:
         key = (session_id, self.agent_name)
         if key not in self._session_states:
             self._session_states[key] = SessionState(
                 messages=[],
                 state=AgentState.IDLE,
-                loop_detector=RobustLoopDetector(),
+                loop_detector=RobustLoopDetector(debug=debug),
                 assistant_with_tool_calls=None,
                 pending_tool_responses=[],
             )
@@ -245,7 +246,9 @@ class BaseReactAgent:
                     agent_name=self.agent_name,
                 )
                 if event_router:
-                    await event_router(session_id=session_id, event=event)
+                    self.background_task_manager.run_background_strict(
+                        event_router(session_id=session_id, event=event)
+                    )
             tool_calls = []
             tool_call_blocks = []
             # Check for XML-style tool call format first
@@ -352,6 +355,7 @@ class BaseReactAgent:
         message_history: Callable[[], Any],
         session_id: str,
         llm_connection: Callable,
+        debug: bool,
     ):
         """Update the LLM's working memory with the current message history and process memory asynchronously"""
 
@@ -365,7 +369,6 @@ class BaseReactAgent:
             Message.model_validate(msg) if isinstance(msg, dict) else msg
             for msg in short_term_memory_message_history
         ]
-
         try:
             # Memory processing when vector DB is enabled
             if is_vector_db_enabled():
@@ -390,22 +393,22 @@ class BaseReactAgent:
         except Exception as e:
             logger.error(f"Error in memory processing: {e}")
         # get the session state to be use
-        session_state = self._get_session_state(session_id)
+        session_state = self._get_session_state(session_id=session_id, debug=debug)
         for message in validated_messages:
             role = message.role
             metadata = message.metadata
+
             if role == "user":
-                # Flush any pending assistant-tool-call + responses before new "user" message
-                self._try_flush_pending(session_id=session_id)
-                session_state.messages.append(
-                    Message(role="user", content=message.content)
-                )
+                # Only include real user messages — skip system-generated observations
+                if not message.content.strip().startswith("<observations>"):
+                    self._try_flush_pending(session_id=session_id, debug=debug)
+                    session_state.messages.append(
+                        Message(role="user", content=message.content)
+                    )
 
             elif role == "assistant":
                 if metadata.has_tool_calls:
-                    # If we already have a pending assistant with tool calls, try to flush it
-                    self._try_flush_pending(session_id=session_id)
-                    # Store this assistant message for later (until we collect all tool responses)
+                    self._try_flush_pending(session_id=session_id, debug=debug)
                     session_state.assistant_with_tool_calls = {
                         "role": "assistant",
                         "content": message.content,
@@ -417,9 +420,7 @@ class BaseReactAgent:
                     }
                     session_state.pending_tool_responses = []
                 else:
-                    # Regular assistant message without tool calls
-                    # First flush any pending tool calls
-                    self._try_flush_pending(session_id=session_id)
+                    self._try_flush_pending(session_id=session_id, debug=debug)
                     session_state.messages.append(
                         Message(role="assistant", content=message.content)
                     )
@@ -432,20 +433,13 @@ class BaseReactAgent:
                         "tool_call_id": metadata.tool_call_id,
                     }
                 )
-                # After adding, try to flush if all responses are present
-                self._try_flush_pending(session_id=session_id)
-
-            elif role == "system":
-                self._try_flush_pending(session_id=session_id)
-                session_state.messages.append(
-                    Message(role="system", content=message.content)
-                )
+                self._try_flush_pending(session_id=session_id, debug=debug)
 
             else:
                 logger.warning(f"Unknown message role encountered: {role}")
 
-    def _try_flush_pending(self, session_id: str):
-        session_state = self._get_session_state(session_id)
+    def _try_flush_pending(self, session_id: str, debug: bool):
+        session_state = self._get_session_state(session_id=session_id, debug=debug)
         if session_state.assistant_with_tool_calls:
             expected = {
                 tc["id"]
@@ -707,7 +701,7 @@ class BaseReactAgent:
         event_router: Callable[[str, Event], Any] = None,
     ):
         # get the session state to be use
-        session_state = self._get_session_state(session_id)
+        session_state = self._get_session_state(session_id=session_id, debug=debug)
 
         tool_call_result = await self.resolve_tool_call_request(
             parsed_response=parsed_response,
@@ -746,7 +740,9 @@ class BaseReactAgent:
                 )
 
                 if event_router:
-                    await event_router(session_id=session_id, event=event)
+                    self.background_task_manager.run_background_strict(
+                        event_router(session_id=session_id, event=event)
+                    )
                 session_state.loop_detector.record_tool_call(
                     str(tool_name),
                     str(tool_args),
@@ -793,7 +789,9 @@ class BaseReactAgent:
                 agent_name=self.agent_name,
             )
             if event_router:
-                await event_router(session_id=session_id, event=event)
+                self.background_task_manager.run_background_strict(
+                    event_router(session_id=session_id, event=event)
+                )
 
             await add_message_to_history(
                 role="assistant",
@@ -801,6 +799,7 @@ class BaseReactAgent:
                 metadata=tool_calls_metadata.model_dump(),
                 session_id=session_id,
             )
+            session_state.messages.append(Message(role="assistant", content=response))
 
             try:
                 async with asyncio.timeout(self.tool_call_timeout):
@@ -836,6 +835,7 @@ class BaseReactAgent:
 
                 # Process each tool result
                 tool_counter = defaultdict(int)
+                seen_tools: set[str] = set()
                 for single_tool, result in zip(tool_call_result, tools_results):
                     tool_name = result.get("tool_name", "unknown_tool")
                     args = result.get("args", {})
@@ -846,12 +846,14 @@ class BaseReactAgent:
                     tool_counter[tool_name] += 1
                     tool_call_generated_id = f"{tool_name}#{tool_counter[tool_name]}"
                     display_value = data if data is not None else message
-                    # Record in loop detector
-                    session_state.loop_detector.record_tool_call(
-                        str(tool_name),
-                        str(args),
-                        str(display_value),
-                    )
+                    # Record in loop detector only once per batch
+                    if tool_name not in seen_tools:
+                        seen_tools.add(tool_name)
+                        session_state.loop_detector.record_tool_call(
+                            str(tool_name),
+                            str(args),
+                            str(display_value),
+                        )
 
                     if status == "success":
                         obs_lines.append(f"{tool_call_generated_id}: {display_value}")
@@ -866,7 +868,8 @@ class BaseReactAgent:
                             f"{tool_call_generated_id}: Unexpected status '{status}'"
                         )
                         error_count += 1
-
+                # Clear the seen_tools after finishing the batch
+                seen_tools.clear()
                 if success_count == len(tools_results):
                     status = "success"
                     obs_text = "\n\n".join(obs_lines)
@@ -894,7 +897,9 @@ class BaseReactAgent:
                     agent_name=self.agent_name,
                 )
                 if event_router:
-                    await event_router(session_id=session_id, event=event)
+                    self.background_task_manager.run_background_strict(
+                        event_router(session_id=session_id, event=event)
+                    )
 
             except asyncio.TimeoutError:
                 obs_text = (
@@ -916,6 +921,7 @@ class BaseReactAgent:
                     },
                     session_id=session_id,
                 )
+
                 event = Event(
                     type=EventType.TOOL_CALL_ERROR,
                     payload=ToolCallErrorPayload(
@@ -925,7 +931,9 @@ class BaseReactAgent:
                     agent_name=self.agent_name,
                 )
                 if event_router:
-                    await event_router(session_id=session_id, event=event)
+                    self.background_task_manager.run_background_strict(
+                        event_router(session_id=session_id, event=event)
+                    )
 
             except Exception as e:
                 obs_text = f"Error executing tool: {str(e)}"
@@ -954,7 +962,9 @@ class BaseReactAgent:
                     agent_name=self.agent_name,
                 )
                 if event_router:
-                    await event_router(session_id=session_id, event=event)
+                    self.background_task_manager.run_background_strict(
+                        event_router(session_id=session_id, event=event)
+                    )
 
         # Debug and final observation handling
         if debug:
@@ -1036,7 +1046,9 @@ class BaseReactAgent:
                     agent_name=self.agent_name,
                 )
                 if event_router:
-                    await event_router(session_id=session_id, event=event)
+                    self.background_task_manager.run_background_strict(
+                        event_router(session_id=session_id, event=event)
+                    )
 
                 session_state.messages.append(
                     Message(role="user", content=loop_message)
@@ -1052,17 +1064,18 @@ class BaseReactAgent:
 
     async def reset_system_prompt(self, messages: list, system_prompt: str):
         # Reset system prompt and keep all messages
-
         old_messages = messages[1:]
         messages = [Message(role="system", content=system_prompt)]
         messages.extend(old_messages)
         return messages
 
     @asynccontextmanager
-    async def agent_session_state_context(self, new_state: AgentState, session_id: str):
+    async def agent_session_state_context(
+        self, new_state: AgentState, session_id: str, debug: bool
+    ):
         """Context manager to change the agent session state"""
         # get the session state to be use
-        session_state = self._get_session_state(session_id)
+        session_state = self._get_session_state(session_id=session_id, debug=debug)
         if not isinstance(new_state, AgentState):
             raise ValueError(f"Invalid agent state: {new_state}")
         previous_state = session_state.state
@@ -1079,17 +1092,86 @@ class BaseReactAgent:
     async def get_tools_registry(
         self, mcp_tools: dict = None, local_tools: Any = None
     ) -> str:
-        tools_section = []
+        lines = ["Available tools:"]
+
+        def format_param_type(param_info: dict) -> str:
+            """Format parameter type with nested structure details."""
+            p_type = param_info.get("type", "any")
+
+            # Handle array types
+            if p_type == "array":
+                items = param_info.get("items", {})
+                if items:
+                    item_type = items.get("type", "any")
+                    if item_type == "object":
+                        # Array of objects - show the object structure
+                        props = items.get("properties", {})
+                        if props:
+                            fields = ", ".join(
+                                [
+                                    f'"{k}": {v.get("type", "any")}'
+                                    for k, v in props.items()
+                                ]
+                            )
+                            return f"array of objects ({{{fields}}})"
+                        return "array of objects"
+                    else:
+                        return f"array of {item_type}s"
+                return "array"
+
+            # Handle object types
+            elif p_type == "object":
+                props = param_info.get("properties", {})
+                if props:
+                    fields = ", ".join(
+                        [f'"{k}": {v.get("type", "any")}' for k, v in props.items()]
+                    )
+                    return f"object ({{{fields}}})"
+                return "object"
+
+            return p_type
+
+        def format_param_description(param_info: dict) -> str:
+            """Format parameter description with structure examples."""
+            p_desc = param_info.get("description", "").replace("\n", " ").strip()
+            p_type = param_info.get("type", "any")
+
+            # Add structure hints for complex types
+            if p_type == "array":
+                items = param_info.get("items", {})
+                if items.get("type") == "object":
+                    props = items.get("properties", {})
+                    if props:
+                        # Build example structure
+                        example_fields = []
+                        for k, v in props.items():
+                            v_type = v.get("type", "any")
+                            if v_type == "string":
+                                example_fields.append(f'"{k}": "..."')
+                            elif v_type == "number":
+                                example_fields.append(f'"{k}": 0')
+                            elif v_type == "boolean":
+                                example_fields.append(f'"{k}": true')
+                            else:
+                                example_fields.append(f'"{k}": ...')
+
+                        example = "{" + ", ".join(example_fields) + "}"
+                        if p_desc:
+                            p_desc += f". Example: {example}"
+                        else:
+                            p_desc = f"Example: {example}"
+
+            return p_desc if p_desc else "No description"
+
         try:
             # Process local tools
             if self.enable_tools_knowledge_base:
                 local_tools = tools_retriever_local_tool
-                if self.memory_tool_backend:
-                    build_tool_registry_memory_tool(
-                        memory_tool_backend=self.memory_tool_backend,
-                        registry=local_tools,
-                    )
-
+            if self.memory_tool_backend:
+                build_tool_registry_memory_tool(
+                    memory_tool_backend=self.memory_tool_backend,
+                    registry=local_tools,
+                )
             if local_tools:
                 if self.memory_tool_backend and not self.enable_tools_knowledge_base:
                     build_tool_registry_memory_tool(
@@ -1098,74 +1180,150 @@ class BaseReactAgent:
                     )
                 local_tools_list = local_tools.get_available_tools()
                 if local_tools_list:
-                    tools_section.append("## LOCAL TOOLS")
-
-                    # Handle local tool dictionaries
                     for tool in local_tools_list:
                         if isinstance(tool, dict):
-                            tool_name = tool.get("name", "Unknown")
-                            tool_description = tool.get("description", "No description")
-
-                            tool_md = f"### `{tool_name}`\n{tool_description}"
-
+                            name = tool.get("name", "unknown")
+                            desc = (
+                                tool.get("description", "").replace("\n", " ").strip()
+                            )
+                            lines.append(f"\n{name}: {desc}")
                             input_schema = tool.get("inputSchema", {})
-                            if input_schema:
-                                params = input_schema.get("properties", {})
-                                if params:
-                                    tool_md += "\n\n**Parameters:**\n"
-                                    tool_md += "| Name | Type | Description |\n"
-                                    tool_md += "|------|------|-------------|\n"
-                                    for param_name, param_info in params.items():
-                                        param_desc = param_info.get(
-                                            "description", "**No description**"
-                                        )
-                                        param_type = param_info.get("type", "any")
-                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+                            params = input_schema.get("properties", {})
+                            required = input_schema.get("required", [])
+                            if params:
+                                for param_name, param_info in params.items():
+                                    p_type = format_param_type(param_info)
+                                    p_desc = format_param_description(param_info)
+                                    is_req = (
+                                        " (required)" if param_name in required else ""
+                                    )
+                                    lines.append(
+                                        f"  - {param_name}: {p_type}{is_req} — {p_desc}"
+                                    )
 
-                            tools_section.append(tool_md)
             # Process MCP tools
-            if mcp_tools:
-                if self.enable_tools_knowledge_base:
-                    return tools_section
-
+            if mcp_tools and not self.enable_tools_knowledge_base:
                 for server_name, tools in mcp_tools.items():
                     if not tools:
                         continue
-
-                    # Add server header
-                    tools_section.append(f"## {server_name.upper()} TOOLS (MCP)")
-
-                    # Handle MCP Tool objects
                     for tool in tools:
-                        if hasattr(tool, "name"):  # MCP Tool object
-                            tool_name = str(tool.name)
-                            tool_description = str(tool.description)
-
-                            tool_md = f"### `{tool_name}`\n{tool_description}"
-
+                        if hasattr(tool, "name"):
+                            name = str(tool.name)
+                            desc = str(tool.description).replace("\n", " ").strip()
+                            lines.append(f"\n{name}: {desc}")
                             if hasattr(tool, "inputSchema") and tool.inputSchema:
                                 params = tool.inputSchema.get("properties", {})
-                                if params:
-                                    tool_md += "\n\n**Parameters:**\n"
-                                    tool_md += "| Name | Type | Description |\n"
-                                    tool_md += "|------|------|-------------|\n"
-                                    for param_name, param_info in params.items():
-                                        param_desc = param_info.get(
-                                            "description", "**No description**"
-                                        )
-                                        param_type = param_info.get("type", "any")
-                                        tool_md += f"| `{param_name}` | `{param_type}` | {param_desc} |\n"
+                                required = tool.inputSchema.get("required", [])
+                                for param_name, param_info in params.items():
+                                    p_type = format_param_type(param_info)
+                                    p_desc = format_param_description(param_info)
+                                    is_req = (
+                                        " (required)" if param_name in required else ""
+                                    )
+                                    lines.append(
+                                        f"  - {param_name}: {p_type}{is_req} — {p_desc}"
+                                    )
 
-                            tools_section.append(tool_md)
-
-            if not tools_section:
+            if len(lines) == 1:
                 return "No tools available"
-
         except Exception as e:
-            logger.error(f"Error getting tools registry: {e}")
-            return "No tools registry available"
+            logger.error(f"Error building compact tool registry: {e}")
+            return "No tools available"
 
-        return "\n\n".join(tools_section)
+        return "\n".join(lines)
+
+    async def prepare_initial_messages(
+        self,
+        session_state,
+        system_prompt: str,
+        query: str,
+        session_id: str,
+        llm_connection: Callable,
+        message_history: Callable[[], Any],
+        mcp_tools: dict = None,
+        local_tools: Any = None,
+        debug: bool = False,
+    ) -> None:
+        """
+        Prepare the full initial message list for the LLM by concurrently:
+        - Retrieving memory (if enabled)
+        - Building tool registry
+        - Loading prior message history
+        - Injecting current user query
+        """
+        tasks = {}
+
+        # Memory retrieval only if vector DB enabled
+        if is_vector_db_enabled():
+            tasks["memory"] = self.get_long_episodic_memory(
+                query=query, session_id=session_id, llm_connection=llm_connection
+            )
+        else:
+            tasks["memory"] = asyncio.create_task(asyncio.sleep(0, result=([], [])))
+
+        # Tool registry
+        tasks["tools"] = self.get_tools_registry(
+            mcp_tools=mcp_tools, local_tools=local_tools
+        )
+
+        # Working memory: load prior history and load to session_state.messages
+        tasks["history"] = self.update_llm_working_memory(
+            message_history=message_history,
+            session_id=session_id,
+            llm_connection=llm_connection,
+            debug=debug,
+        )
+
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(
+                    tasks["memory"],
+                    tasks["tools"],
+                    tasks["history"],
+                    return_exceptions=True,
+                ),
+                timeout=20.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timeout during initial message preparation (20s). Proceeding with defaults."
+            )
+            # fallback results on timeout
+            results = [([], []), "No tools available", None]
+
+        # Unpack results
+        long_term_memory, episodic_memory = (
+            results[0] if not isinstance(results[0], BaseException) else ([], [])
+        )
+        tools_section = (
+            results[1]
+            if not isinstance(results[1], BaseException)
+            else "No tools available"
+        )
+
+        # Build system prompt
+        updated_system_prompt = system_prompt
+
+        if is_vector_db_enabled():
+            updated_system_prompt += f"\n[LONG TERM MEMORY]\n{long_term_memory}\n[EPISODIC MEMORY]\n{episodic_memory}"
+
+        if self.enable_tools_knowledge_base:
+            updated_system_prompt += f"\n{tools_retriever_additional_prompt}"
+
+        if self.memory_tool_backend:
+            updated_system_prompt += f"\n{memory_tool_additional_prompt}"
+
+        updated_system_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n{tools_section}"
+
+        current_date_time = date_time_func["format_date"]()
+        updated_system_prompt += (
+            f"<current_date_time>{current_date_time}</current_date_time>"
+        )
+
+        # Insert system prompt at index 0
+        session_state.messages.insert(
+            0, Message(role="system", content=updated_system_prompt)
+        )
 
     @track("agent_execution")
     async def run(
@@ -1178,15 +1336,19 @@ class BaseReactAgent:
         debug: bool = False,
         sessions: dict = None,
         mcp_tools: dict = None,
-        local_tools: Any = None,  # LocalToolsIntegration instance
+        local_tools: Any = None,
         session_id: str = None,
-        event_router: Callable[[str, Event], Any] = None,  # Event router callable
+        event_router: Callable[[str, Event], Any] = None,
     ) -> str | None:
         """Execute ReAct loop with JSON communication
         kwargs: if mcp is enbale then it will be sessions and availables_tools else it will be local_tools
         """
-        # get the session state to be use
-        session_state = self._get_session_state(session_id)
+        # get the session state to be use it must be new at all time
+        session_state = self._get_session_state(session_id=session_id, debug=debug)
+        session_state.messages = []
+        session_state.assistant_with_tool_calls = None
+        session_state.pending_tool_responses = []
+        session_state.loop_detector.reset()
 
         # handle start of agent run
         event = Event(
@@ -1197,79 +1359,27 @@ class BaseReactAgent:
             agent_name=self.agent_name,
         )
         if event_router:
-            await event_router(session_id=session_id, event=event)
-
-        # Only get memory if vector DB is enabled
-        if is_vector_db_enabled():
-
-            @track("memory_retrieval_step")
-            async def get_memory():
-                return await self.get_long_episodic_memory(
-                    query=query, session_id=session_id, llm_connection=llm_connection
-                )
-
-            long_term_memory, episodic_memory = await get_memory()
-
-            # now update the system prompt with the long term and episodic memory using the XML-based template
-            system_updated_prompt = (
-                system_prompt
-                + f"\n[LONG TERM MEMORY]\n\n{long_term_memory}\n\n[EPISODIC MEMORY]\n\n{episodic_memory}"
+            self.background_task_manager.run_background_strict(
+                event_router(session_id=session_id, event=event)
             )
-        else:
-            # Vector DB disabled - no memory sections
-            system_updated_prompt = system_prompt
-            long_term_memory, episodic_memory = [], []
 
-        tools_section = await self.get_tools_registry(
-            mcp_tools=mcp_tools, local_tools=local_tools
+        await add_message_to_history(
+            role="user",
+            content=query,
+            session_id=session_id,
+            metadata={"agent_name": self.agent_name},
         )
-
-        # check if enable tools knowledge base
-        if self.enable_tools_knowledge_base:
-            system_updated_prompt += tools_retriever_additional_prompt
-
-        # check if memory tool backend is enabled
-        if self.memory_tool_backend:
-            system_updated_prompt += f"\n\n{memory_tool_additional_prompt}"
-            # logger.info(f"system prompt: {system_updated_prompt}")
-
-        #  append the tools section if needed
-        system_updated_prompt += f"\n[AVAILABLE TOOLS REGISTRY]\n\n{tools_section}"
-        # logger.info(f"system prompt: {system_updated_prompt}")
-
-        # add current datetime to prompt
-        current_date_time = date_time_func["format_date"]()
-        system_updated_prompt += f"""
-                                <current_date_time>
-                                {current_date_time}
-                                </current_date_time>
-                                """
-
-        session_state.messages = [Message(role="system", content=system_updated_prompt)]
-
-        # Add initial user message to message history
-        @track("message_history_update")
-        async def update_history():
-            await add_message_to_history(
-                role="user",
-                content=query,
-                session_id=session_id,
-                metadata={"agent_name": self.agent_name},
-            )
-
-        await update_history()
-
-        # Initialize messages with current message history (only once at start)
-        @track("working_memory_update")
-        async def update_working_memory():
-            await self.update_llm_working_memory(
-                message_history=message_history,
-                session_id=session_id,
-                llm_connection=llm_connection,
-            )
-
-        await update_working_memory()
-
+        await self.prepare_initial_messages(
+            system_prompt=system_prompt,
+            query=query,
+            session_state=session_state,
+            llm_connection=llm_connection,
+            message_history=message_history,
+            mcp_tools=mcp_tools,
+            local_tools=local_tools,
+            session_id=session_id,
+            debug=debug,
+        )
         # check if the agent is in a valid state to run
         if session_state.state not in [
             AgentState.IDLE,
@@ -1281,15 +1391,15 @@ class BaseReactAgent:
 
         # set the agent state to running
         async with self.agent_session_state_context(
-            new_state=AgentState.RUNNING, session_id=session_id
+            new_state=AgentState.RUNNING, session_id=session_id, debug=debug
         ):
             current_steps = 0
-            last_valid_response = None  # Track last valid response
+            last_valid_response = None
             while (
                 session_state.state not in [AgentState.FINISHED]
                 and current_steps < self.max_steps
             ):
-                logger.info(f"history: {(session_state.messages[1:])}")
+                # logger.info(f"history: {(session_state.messages)}")
                 if debug:
                     logger.info(
                         f"Sending {len(session_state.messages)} messages to LLM"
@@ -1316,9 +1426,10 @@ class BaseReactAgent:
                             agent_name=self.agent_name,
                         )
                         if event_router:
-                            await event_router(session_id=session_id, event=event)
+                            self.background_task_manager.run_background_strict(
+                                event_router(session_id=session_id, event=event)
+                            )
 
-                        # check if it has usage - always record, but only enforce limits when enabled
                         if hasattr(response, "usage"):
                             request_usage = Usage(
                                 requests=current_steps,
@@ -1413,31 +1524,21 @@ class BaseReactAgent:
                         agent_name=self.agent_name,
                     )
                     if event_router:
-                        await event_router(session_id=session_id, event=event)
+                        self.background_task_manager.run_background_strict(
+                            event_router(session_id=session_id, event=event)
+                        )
                     await add_message_to_history(
                         role="assistant",
                         content=parsed_response.answer,
                         session_id=session_id,
                         metadata={"agent_name": self.agent_name},
                     )
-                    # self.state = AgentState.FINISHED
+
                     session_state.state = AgentState.FINISHED
                     return parsed_response.answer
 
                 # check for action
                 if parsed_response.action is not None:
-                    # Add the action to the message history
-                    @track("action_message_update")
-                    async def update_action_message():
-                        await add_message_to_history(
-                            role="assistant",
-                            content=parsed_response.data,
-                            session_id=session_id,
-                            metadata={"agent_name": self.agent_name},
-                        )
-
-                    await update_action_message()
-
                     # Execute the action
                     @track("action_execution")
                     async def execute_action():

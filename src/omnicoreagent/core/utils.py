@@ -21,7 +21,8 @@ from omnicoreagent.core.constants import AGENTS_REGISTRY
 from omnicoreagent.core.system_prompts import generate_react_agent_role_prompt
 import asyncio
 from typing import Any, Callable
-from xml.sax.saxutils import escape
+from html import escape
+import ast
 
 console = Console()
 # Configure logging
@@ -79,6 +80,79 @@ logger.addHandler(file_handler)
 # Configure handlers to flush immediately
 console_handler.flush = sys.stdout.flush
 file_handler.flush = lambda: file_handler.stream.flush()
+import asyncio
+import inspect
+import traceback
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Coroutine, Any
+
+
+class BackgroundTaskManager:
+    """Unified helper for running background, async, or blocking tasks safely."""
+
+    def __init__(self, max_workers: int = 4):
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.tasks = set()
+
+    # Fire-and-forget for SYNC functions
+    def run_background(self, func: Callable[..., Any], *args, **kwargs):
+        """
+        Run a synchronous function in a background thread (fire-and-forget).
+        Use this for non-async I/O or CPU-bound functions.
+        """
+
+        def wrapper():
+            try:
+                func(*args, **kwargs)
+            except Exception:
+                traceback.print_exc()
+
+        asyncio.create_task(asyncio.to_thread(wrapper))
+
+    # Fire-and-forget for lightweight ASYNC functions
+    def run_background_async(self, coro: Coroutine):
+        """
+        Run an async coroutine in the same event loop (fire-and-forget).
+        Use only for lightweight, non-blocking coroutines.
+        """
+
+        async def runner():
+            try:
+                await coro
+            except Exception:
+                traceback.print_exc()
+
+        asyncio.create_task(runner())
+
+    # Strict isolation for DB or heavy async functions
+    def run_background_strict(self, coro):
+        """Fire and forget a coroutine safely, with internal error handling."""
+        if asyncio.iscoroutine(coro):
+            task = asyncio.create_task(self._run_safe(coro))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
+        else:
+            logger.warning(f"Tried to run non-coroutine task: {coro}")
+
+    async def _run_safe(self, coro):
+        """Wrap background coroutine in safety net."""
+        try:
+            await coro
+        except asyncio.CancelledError:
+            logger.debug("Background task cancelled.")
+        except Exception as e:
+            logger.exception(f"Background task failed: {e}")
+
+    # Run blocking function and await its result
+    def run_in_executor(
+        self, func: Callable[..., Any], *args, **kwargs
+    ) -> asyncio.Task:
+        """
+        Run a blocking function in the threadpool and return an awaitable task.
+        Use this when you need the result (not fire-and-forget).
+        """
+        loop = asyncio.get_event_loop()
+        return loop.run_in_executor(self.executor, lambda: func(*args, **kwargs))
 
 
 def clean_json_response(json_response):
@@ -172,50 +246,66 @@ async def ensure_agent_registry(
 
 
 def hash_text(text: str) -> str:
-    """Hash a string using SHA-256."""
-    return hashlib.sha256(text.encode()).hexdigest()
+    """Generate a simple hash for a string."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class RobustLoopDetector:
     def __init__(
         self,
         maxlen: int = 20,
-        min_calls: int = 3,
-        same_output_threshold: int = 3,
-        same_input_threshold: int = 3,
-        full_dup_threshold: int = 3,
+        consecutive_threshold: int = 5,
         pattern_detection: bool = True,
         max_pattern_length: int = 3,
+        debug: bool = True,
     ):
-        """Initialize a robust loop detector."""
+        """
+        Initialize a robust loop detector.
+
+        - maxlen: number of past interactions to track
+        - consecutive_threshold: number of consecutive calls to same tool to detect loop
+        - pattern_detection: enable repeating pattern detection
+        - max_pattern_length: max pattern length for pattern detection
+        - debug: enable debug logging
+        """
         self.global_interactions = deque(maxlen=maxlen)
         self.tool_interactions: dict[str, deque] = defaultdict(
             lambda: deque(maxlen=maxlen)
         )
-        self.min_calls = min_calls
-        self.same_output_threshold = same_output_threshold
-        self.same_input_threshold = same_input_threshold
-        self.full_dup_threshold = full_dup_threshold
+        self.consecutive_threshold = consecutive_threshold
         self.pattern_detection = pattern_detection
         self.max_pattern_length = max_pattern_length
 
-        self._cache: dict[str, Any] = {}
-        self._interaction_count = 0
+        self._last_tool = None
+        self._consecutive_count = 0
+        self.debug = debug
 
     def record_tool_call(
         self, tool_name: str, tool_input: str, tool_output: str
     ) -> None:
         """Record a new tool call interaction."""
         signature = (
-            "tool",
             tool_name,
             hash_text(tool_input),
             hash_text(tool_output),
         )
+
+        # Update global and per-tool history
         self.global_interactions.append(signature)
         self.tool_interactions[tool_name].append(signature)
-        self._interaction_count += 1
-        self._cache = {}
+
+        # Update consecutive counter
+        if tool_name == self._last_tool:
+            self._consecutive_count += 1
+        else:
+            self._last_tool = tool_name
+            self._consecutive_count = 1
+
+        if self.debug:
+            logger.info(
+                f"[LoopDetector] Tool '{tool_name}' called. "
+                f"Consecutive count: {self._consecutive_count}"
+            )
 
     def reset(self, tool_name: str | None = None) -> None:
         """Reset loop memory."""
@@ -224,35 +314,28 @@ class RobustLoopDetector:
         else:
             self.global_interactions.clear()
             self.tool_interactions.clear()
-        self._cache = {}
-        self._interaction_count = 0
+        self._last_tool = None
+        self._consecutive_count = 0
 
-    def _get_recent_for_tool(self, tool_name: str) -> list[tuple]:
-        return list(self.tool_interactions.get(tool_name, []))
+        if self.debug:
+            logger.info("[LoopDetector] Reset performed.")
 
-    def _is_tool_stuck_same_output(self, tool_name: str) -> bool:
-        interactions = self._get_recent_for_tool(tool_name)
-        if len(interactions) < self.same_output_threshold:
-            return False
-        outputs = [sig[3] for sig in interactions[-self.same_output_threshold :]]
-        return len(set(outputs)) == 1
-
-    def _is_tool_stuck_same_input(self, tool_name: str) -> bool:
-        interactions = self._get_recent_for_tool(tool_name)
-        if len(interactions) < self.same_input_threshold:
-            return False
-        inputs = [sig[2] for sig in interactions[-self.same_input_threshold :]]
-        return len(set(inputs)) == 1
-
-    def _is_tool_fully_stuck(self, tool_name: str) -> bool:
-        interactions = self._get_recent_for_tool(tool_name)
-        if len(interactions) < self.full_dup_threshold:
-            return False
-        recent = interactions[-self.full_dup_threshold :]
-        return len(set(recent)) == 1
+    def _is_tool_stuck_consecutive(self, tool_name: str) -> bool:
+        """Check if a tool has been called consecutively enough times to be stuck."""
+        stuck = (
+            tool_name == self._last_tool
+            and self._consecutive_count >= self.consecutive_threshold
+        )
+        if self.debug and stuck:
+            logger.info(
+                f"[LoopDetector] Tool '{tool_name}' is stuck due to "
+                f"{self._consecutive_count} consecutive calls."
+            )
+        return stuck
 
     def _has_tool_pattern_loop(self, tool_name: str) -> bool:
-        interactions = self._get_recent_for_tool(tool_name)
+        """Detect repeating patterns for a tool."""
+        interactions = list(self.tool_interactions.get(tool_name, []))
         if len(interactions) < 2 or not self.pattern_detection:
             return False
         for pattern_len in range(
@@ -261,46 +344,39 @@ class RobustLoopDetector:
             pattern = interactions[-pattern_len:]
             prev_pattern = interactions[-2 * pattern_len : -pattern_len]
             if pattern == prev_pattern:
+                if self.debug:
+                    logger.info(
+                        f"[LoopDetector] Tool '{tool_name}' has repeating pattern: {pattern_len} steps."
+                    )
                 return True
         return False
 
     def is_looping(self, tool_name: str | None = None) -> bool:
-        """Check global or tool-specific looping."""
+        """Check if a tool or global state is looping."""
         if tool_name:
-            return (
-                self._is_tool_stuck_same_output(tool_name)
-                or self._is_tool_stuck_same_input(tool_name)
-                or self._is_tool_fully_stuck(tool_name)
-                or self._has_tool_pattern_loop(tool_name)
-            )
-        return (
-            self.is_stuck_same_output()
-            or self.is_stuck_same_input()
-            or self.is_fully_stuck()
-            or self.has_pattern_loop()
+            return self._is_tool_stuck_consecutive(
+                tool_name
+            ) or self._has_tool_pattern_loop(tool_name)
+        # Global: check all tools
+        return any(
+            self._is_tool_stuck_consecutive(name) or self._has_tool_pattern_loop(name)
+            for name in self.tool_interactions.keys()
         )
 
     def get_loop_type(self, tool_name: str | None = None) -> list[str]:
-        """Get detailed loop type (global or per-tool)."""
+        """Get detailed loop type for a tool."""
         types = []
         if tool_name:
-            if self._is_tool_stuck_same_output(tool_name):
-                types.append("same_output")
-            if self._is_tool_stuck_same_input(tool_name):
-                types.append("same_input")
-            if self._is_tool_fully_stuck(tool_name):
-                types.append("full_duplication")
+            if self._is_tool_stuck_consecutive(tool_name):
+                types.append("consecutive_calls")
             if self._has_tool_pattern_loop(tool_name):
                 types.append("repeating_pattern")
         else:
-            if self.is_stuck_same_output():
-                types.append("same_output")
-            if self.is_stuck_same_input():
-                types.append("same_input")
-            if self.is_fully_stuck():
-                types.append("full_duplication")
-            if self.has_pattern_loop():
-                types.append("repeating_pattern")
+            for name in self.tool_interactions.keys():
+                if self._is_tool_stuck_consecutive(name):
+                    types.append(f"{name}: consecutive_calls")
+                if self._has_tool_pattern_loop(name):
+                    types.append(f"{name}: repeating_pattern")
         return types
 
 
@@ -324,7 +400,7 @@ def json_to_smooth_text(content):
     - Safe fallback: returns original content if anything fails.
     """
     try:
-        # Step 1: if content is str, try to parse as JSON
+        # if content is str, try to parse as JSON
         if isinstance(content, str):
             try:
                 data = json.loads(content)
@@ -334,7 +410,7 @@ def json_to_smooth_text(content):
         else:
             data = content  # already dict/list/scalar
 
-        # Step 2: recursively flatten
+        # recursively flatten
         def _flatten(obj):
             if isinstance(obj, dict):
                 sentences = []
@@ -369,14 +445,11 @@ def normalize_enriched_tool(enriched: str) -> str:
         # fallback: return as plain text if parsing fails
         return enriched.strip()
 
-    # --- Extract fields ---
     name = root.findtext("expanded_name", default="Unnamed Tool")
     description = root.findtext("long_description", default="").strip()
 
-    # --- Build narrative ---
     parts = [f"Tool: {name}\n{description}"]
 
-    # --- Parameters ---
     params_root = root.find("argument_schema")
     if params_root is not None:
         params = []
@@ -389,7 +462,6 @@ def normalize_enriched_tool(enriched: str) -> str:
         if params:
             parts.append("Parameters:\n" + "\n".join(params))
 
-    # --- Example Questions ---
     questions_root = root.find("synthetic_questions")
     if questions_root is not None:
         questions = [
@@ -400,7 +472,6 @@ def normalize_enriched_tool(enriched: str) -> str:
         if questions:
             parts.append("Example Questions:\n" + "\n".join(questions))
 
-    # --- Key Topics ---
     topics_root = root.find("key_topics")
     if topics_root is not None:
         topics = [
@@ -519,64 +590,79 @@ def show_tool_response(agent_name, tool_name, tool_args, observation):
     console.print(panel)
 
 
-import ast
-
-
-def normalize_tool_args(args: dict) -> dict:
+def normalize_tool_args(value: Any) -> Any:
     """
-    Normalize tool arguments:
-    - Convert stringified booleans into proper bool
-    - Convert stringified numbers into int/float
-    - Convert "null"/"none" into None
-    - Convert stringified lists/tuples/dicts (e.g. "['a', 'b']") into Python objects
-    - Handle nested dicts, lists, and tuples recursively
+    Deeply normalize tool arguments.
+    - If value is a list with single dict, unwrap it
+    - Converts stringified booleans to bool
+    - Converts stringified numbers to int/float
+    - Converts "null"/"none" to None
+    - Converts stringified JSON or Python literals to Python objects
+    - Handles nested dicts, lists, tuples
+    - Preserves strings with XML/multi-line content
     """
 
-    def _normalize(value):
-        if isinstance(value, str):
-            lower_val = value.strip().lower()
+    # UNWRAP single-element list containing a dict
+    if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict):
+        value = value[0]
 
-            # Handle null / none
-            if lower_val in ("null", "none"):
+    def _normalize(v: Any) -> Any:
+        # 1. Handle strings
+        if isinstance(v, str):
+            val = v.strip()
+            # null / none
+            if val.lower() in ("null", "none"):
                 return None
-
-            # Handle booleans
-            if lower_val in ("true", "false"):
-                return lower_val == "true"
-
-            # Handle numeric (int or float)
-            if value.isdigit():
-                return int(value)
+            # boolean
+            if val.lower() == "true":
+                return True
+            if val.lower() == "false":
+                return False
+            # integer / float
             try:
-                return float(value)
+                if "." in val or "e" in val.lower():
+                    return float(val)
+                return int(val)
             except ValueError:
                 pass
-
-            # Handle stringified list/tuple/dict safely
-            if value.strip().startswith(("[", "{", "(")) and value.strip().endswith(
-                ("]", "}", ")")
-            ):
+            # JSON parsing (double-quoted)
+            try:
+                parsed_json = json.loads(val)
+                return _normalize(parsed_json)
+            except (ValueError, json.JSONDecodeError):
+                pass
+            # Python literal_eval (single quotes, tuples, lists, dicts)
+            if val.startswith(("[", "{", "(")) and val.endswith(("]", "}", ")")):
                 try:
-                    parsed = ast.literal_eval(value)
-                    return _normalize(parsed)
+                    parsed_literal = ast.literal_eval(val)
+                    return _normalize(parsed_literal)
                 except (ValueError, SyntaxError):
-                    pass  # fallback to plain string if invalid
+                    pass
+            # Comma-separated string → list (avoid splitting inside quotes)
+            # BUT: Don't split if it looks like XML or has < > characters
+            if (
+                "," in val
+                and not (val.startswith('"') or val.startswith("'"))
+                and "<" not in val
+            ):
+                parts = [p.strip() for p in val.split(",") if p.strip()]
+                if len(parts) > 1:
+                    return [_normalize(p) for p in parts]
+            # fallback to original string
+            return v
+        # 2. Handle dict recursively
+        elif isinstance(v, dict):
+            return {k: _normalize(val) for k, val in v.items()}
+        # 3. Handle list recursively
+        elif isinstance(v, list):
+            return [_normalize(i) for i in v]
+        # 4. Handle tuple recursively
+        elif isinstance(v, tuple):
+            return tuple(_normalize(i) for i in v)
+        # 5. Other types: leave as-is
+        return v
 
-            # Default: keep string
-            return value
-
-        elif isinstance(value, dict):
-            return {k: _normalize(v) for k, v in value.items()}
-
-        elif isinstance(value, list):
-            return [_normalize(v) for v in value]
-
-        elif isinstance(value, tuple):
-            return tuple(_normalize(v) for v in value)
-
-        return value
-
-    return {k: _normalize(v) for k, v in args.items()}
+    return _normalize(value)
 
 
 def get_mac_address() -> str:
@@ -624,59 +710,31 @@ def get_mac_address() -> str:
     return str(uuid.uuid4())
 
 
-import json
-from xml.sax.saxutils import escape
+def build_xml_observations_block(tools_results):
+    if not tools_results:
+        return "<observations></observations>"
 
-
-def build_xml_observations_block(
-    tools_results, observation_marker="OBSERVATION RESULT FROM TOOL CALLS"
-):
-    """
-    Build an XML block for tool outputs with proper escaping and consistency.
-    Returns a string like:
-    <observation_marker>OBSERVATION RESULT FROM TOOL CALLS</observation_marker>
-    <observations>
-      <observation>
-        <tool_name>get_user_profile</tool_name>
-        <status>success</status>
-        <args>{"user_id": "123"}</args>
-        <output>{"name": "Abiorh"}</output>
-      </observation>
-      ...
-    </observations>
-    <observation_marker>(END OF OBSERVATIONS)</observation_marker>
-    """
-
-    xml_lines = [
-        f"<observation_marker>{escape(observation_marker)}</observation_marker>",
-        "  <observations>",
-    ]
+    lines = ["<observations>"]
+    tool_counter = defaultdict(int)
 
     for result in tools_results:
-        tool_name = escape(str(result.get("tool_name", "unknown_tool")))
-        status = escape(str(result.get("status", "unknown")))
-        args = escape(json.dumps(result.get("args", {}), ensure_ascii=False))
+        tool_name = str(result.get("tool_name", "unknown_tool"))
+        tool_counter[tool_name] += 1
+        unique_id = f"{tool_name}#{tool_counter[tool_name]}"
 
-        data = result.get("data")
-        message = result.get("message", "")
-        output_value = data if data is not None else message
-        output = (
-            escape(json.dumps(output_value, ensure_ascii=False))
-            if not isinstance(output_value, str)
-            else escape(output_value)
+        output_value = result.get("data") or result.get("message") or "No output"
+        if isinstance(output_value, (dict, list)):
+            output_str = json.dumps(output_value, separators=(",", ":"))
+        else:
+            output_str = str(output_value)
+
+        safe_output = escape(output_str, quote=False)
+        lines.append(
+            f'  <observation tool_name="{unique_id}">{safe_output}</observation>'
         )
 
-        xml_lines.append("    <observation>")
-        xml_lines.append(f"      <tool_name>{tool_name}</tool_name>")
-        xml_lines.append(f"      <status>{status}</status>")
-        xml_lines.append(f"      <args>{args}</args>")
-        xml_lines.append(f"      <output>{output}</output>")
-        xml_lines.append("    </observation>")
-
-    xml_lines.append("  </observations>")
-    xml_lines.append("<observation_marker>(END OF OBSERVATIONS)</observation_marker>")
-
-    return "\n".join(xml_lines)
+    lines.append("</observations>")
+    return "\n".join(lines)
 
 
 # Create a global instance of the MAC address
