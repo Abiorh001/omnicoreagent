@@ -757,8 +757,8 @@ Patterns Found:"""
         print("🚀 Initializing OmniAgent CLI...")
 
         # Initialize routers
-        self.memory_router = MemoryRouter("in_memory")
-        self.event_router = EventRouter("in_memory")
+        self.memory_router = MemoryRouter("redis")
+        self.event_router = EventRouter("redis_stream")
 
         # Initialize agent with exact same config as working example
         self.agent = OmniAgent(
@@ -783,7 +783,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
                 "max_context_length": 5000,
             },
             mcp_tools=MCP_TOOLS,
-            # local_tools=tool_registry,
+            local_tools=tool_registry,
             agent_config={
                 "agent_name": "OmniAgent",
                 "max_steps": 15,
