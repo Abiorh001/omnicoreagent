@@ -9,7 +9,10 @@ import argparse
 import sys
 import subprocess
 from typing import Optional
+import time
+import logging
 
+logger = logging.getLogger("omnicoreagent")
 
 # TOP-LEVEL IMPORTS (Recommended for most use cases)
 from omnicoreagent import (
@@ -754,7 +757,7 @@ Patterns Found:"""
         print("🚀 Initializing OmniAgent CLI...")
 
         # Initialize routers
-        self.memory_router = MemoryRouter("database")
+        self.memory_router = MemoryRouter("in_memory")
         self.event_router = EventRouter("in_memory")
 
         # Initialize agent with exact same config as working example
@@ -775,12 +778,12 @@ Provide clear, supportive, and context-aware responses that help learners grow.
 """,
             model_config={
                 "provider": "openai",
-                "model": "gpt-4o",
+                "model": "gpt-4.1",
                 "temperature": 0.3,
                 "max_context_length": 5000,
             },
             mcp_tools=MCP_TOOLS,
-            local_tools=tool_registry,
+            # local_tools=tool_registry,
             agent_config={
                 "agent_name": "OmniAgent",
                 "max_steps": 15,
@@ -795,7 +798,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
                 "enable_tools_knowledge_base": False,
                 "tools_results_limit": 10,
                 "tools_similarity_threshold": 0.1,
-                "memory_tool_backend": "local",
+                "memory_tool_backend": None,
             },
             embedding_config={
                 "provider": "voyage",
@@ -856,7 +859,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
         print("=" * 80 + "\n")
 
     async def handle_chat(self, message: str):
-        """Handle chat messages."""
+        """Handle chat messages and measure total request/response time."""
         if not self.agent:
             print("❌ Agent not initialized")
             return
@@ -872,11 +875,30 @@ Provide clear, supportive, and context-aware responses that help learners grow.
             )
 
         try:
+            # Start timer before calling the agent
+            overall_start = time.perf_counter()
+
             # Run the agent and get response
             result = await self.agent.run(message, session_id=self.session_id)
+
+            overall_end = time.perf_counter()
+            total_time = overall_end - overall_start
+
+            # Extract response text
             response = result.get("response", "No response received")
+
+            # Log timing and response
+            logger.info(f"[CHAT] Total message processing time: {total_time:.3f}s")
+            logger.info(f"[CHAT] Request: {message}")
+            logger.info(
+                f"[CHAT] Response: {response[:300]}{'...' if len(response) > 300 else ''}"
+            )
+
             print(f"🤖 Response: {response}")
+            print(f"⏱️ Total time: {total_time:.3f}s")
+
         except Exception as e:
+            logger.error(f"[CHAT] Error while processing message: {e}")
             print(f"❌ Error: {e}")
 
     async def handle_tools(self):

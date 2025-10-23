@@ -42,7 +42,7 @@ class InMemoryStore(AbstractMemoryStore):
             max_context_tokens: Maximum tokens to keep in memory
             debug: Enable debug logging
         """
-        # Changed to session-based storage for database compatibility
+
         self.sessions_history: dict[str, list[dict[str, Any]]] = {}
         self.memory_config: dict[str, Any] = {}
         self._lock = threading.RLock()
