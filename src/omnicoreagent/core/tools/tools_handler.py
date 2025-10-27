@@ -235,7 +235,7 @@ class ToolExecutor:
                         # Keep status as success but optionally add a note in message
                         message = (
                             message
-                            or "(No data returned yet; tool may be processing asynchronously.)"
+                            or "(Tool executed successfully but returned no data; This likely means the action completed or is async.)"
                         )
 
                 elif hasattr(result, "content"):

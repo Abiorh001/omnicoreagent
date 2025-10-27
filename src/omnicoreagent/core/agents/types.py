@@ -2,7 +2,8 @@
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+import json
 from omnicoreagent.core.utils import RobustLoopDetector
 
 
@@ -103,6 +104,16 @@ class Message(BaseModel):
     tool_calls: Optional[str] = None
     metadata: Optional[ToolCallMetadata] = None
     timestamp: Optional[str] = None
+
+    @model_validator(mode="before")
+    def ensure_content_is_string(cls, values):
+        c = values.get("content")
+        if not isinstance(c, str):
+            try:
+                values["content"] = json.dumps(c, ensure_ascii=False)
+            except Exception:
+                values["content"] = str(c)
+        return values
 
 
 class ParsedResponse(BaseModel):
