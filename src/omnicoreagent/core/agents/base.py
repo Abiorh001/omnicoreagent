@@ -1291,6 +1291,10 @@ class BaseReactAgent:
             # fallback results on timeout
             results = [([], []), "No tools available", None]
 
+        for r in results:
+            if isinstance(r, BaseException):
+                logger.error(f"prepare_initial_messages error: {r}", exc_info=True)
+
         # Unpack results
         long_term_memory, episodic_memory = (
             results[0] if not isinstance(results[0], BaseException) else ([], [])

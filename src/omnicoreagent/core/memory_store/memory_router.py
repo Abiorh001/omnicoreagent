@@ -7,6 +7,7 @@ from omnicoreagent.core.utils import logger
 from omnicoreagent.core.utils import normalize_metadata
 from omnicoreagent.core.database.mongodb import MongoDb
 from omnicoreagent.core.memory_store.base import AbstractMemoryStore
+from omnicoreagent.core.utils import normalize_content
 
 
 class MemoryRouter:
@@ -77,6 +78,7 @@ class MemoryRouter:
                 "Metadata cannot be None. Please provide a valid metadata dictionary."
             )
         metadata = normalize_metadata(metadata)
+        content = normalize_content(content)
 
         await self.memory_store.store_message(role, content, metadata, session_id)
 

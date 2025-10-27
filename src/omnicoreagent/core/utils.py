@@ -254,29 +254,34 @@ class RobustLoopDetector:
     def __init__(
         self,
         maxlen: int = 20,
-        consecutive_threshold: int = 5,
+        consecutive_threshold: int = 7,
         pattern_detection: bool = True,
-        max_pattern_length: int = 3,
+        max_pattern_length: int = 5,
+        pattern_repetition_threshold: int = 4,
         debug: bool = True,
     ):
         """
         Initialize a robust loop detector.
 
         - maxlen: number of past interactions to track
-        - consecutive_threshold: number of consecutive calls to same tool to detect loop
+        - consecutive_threshold: number of consecutive IDENTICAL calls to detect loop
         - pattern_detection: enable repeating pattern detection
         - max_pattern_length: max pattern length for pattern detection
+        - pattern_repetition_threshold: how many times a pattern must repeat to be considered a loop (default: 4)
         - debug: enable debug logging
         """
         self.global_interactions = deque(maxlen=maxlen)
         self.tool_interactions: dict[str, deque] = defaultdict(
             lambda: deque(maxlen=maxlen)
         )
-        self.consecutive_threshold = consecutive_threshold
+        self.consecutive_threshold = max(1, consecutive_threshold)
         self.pattern_detection = pattern_detection
-        self.max_pattern_length = max_pattern_length
+        self.max_pattern_length = max(1, max_pattern_length)
+        self.pattern_repetition_threshold = max(
+            4, pattern_repetition_threshold
+        )  # At least 4 repetitions
 
-        self._last_tool = None
+        self._last_signature = None
         self._consecutive_count = 0
         self.debug = debug
 
@@ -284,6 +289,11 @@ class RobustLoopDetector:
         self, tool_name: str, tool_input: str, tool_output: str
     ) -> None:
         """Record a new tool call interaction."""
+        # handle None or empty values
+        tool_name = tool_name or "unknown_tool"
+        tool_input = tool_input if tool_input is not None else ""
+        tool_output = tool_output if tool_output is not None else ""
+
         signature = (
             tool_name,
             hash_text(tool_input),
@@ -294,90 +304,205 @@ class RobustLoopDetector:
         self.global_interactions.append(signature)
         self.tool_interactions[tool_name].append(signature)
 
-        # Update consecutive counter
-        if tool_name == self._last_tool:
+        # Update consecutive counter - comparing full signatures
+        if signature == self._last_signature:
             self._consecutive_count += 1
         else:
-            self._last_tool = tool_name
+            self._last_signature = signature
             self._consecutive_count = 1
 
         if self.debug:
             logger.info(
                 f"[LoopDetector] Tool '{tool_name}' called. "
-                f"Consecutive count: {self._consecutive_count}"
+                f"Consecutive count: {self._consecutive_count} "
+                f"(signature: {tool_name}, input_hash={signature[1][:8]}..., output_hash={signature[2][:8]}...)"
             )
 
     def reset(self, tool_name: str | None = None) -> None:
-        """Reset loop memory."""
-        if tool_name:
+        """
+        Reset loop memory.
+
+        Edge cases handled:
+        - Empty/whitespace tool_name (treated as global reset)
+        - Resetting a tool that doesn't exist (no error)
+        - Multiple rapid resets (idempotent)
+        """
+        if tool_name and tool_name.strip():
+            # Only reset specific tool if it has a valid name
             self.tool_interactions.pop(tool_name, None)
+
+            if self._last_signature and self._last_signature[0] == tool_name:
+                self._last_signature = None
+                self._consecutive_count = 0
         else:
+            # Global reset
             self.global_interactions.clear()
             self.tool_interactions.clear()
-        self._last_tool = None
-        self._consecutive_count = 0
+            self._last_signature = None
+            self._consecutive_count = 0
 
         if self.debug:
-            logger.info("[LoopDetector] Reset performed.")
+            reset_target = (
+                f"tool '{tool_name}'"
+                if tool_name and tool_name.strip()
+                else "all tools"
+            )
+            logger.info(f"[LoopDetector] Reset performed for {reset_target}.")
 
     def _is_tool_stuck_consecutive(self, tool_name: str) -> bool:
-        """Check if a tool has been called consecutively enough times to be stuck."""
+        """Check if a tool has been called consecutively with SAME input/output."""
+
+        if not tool_name:
+            return False
+
+        # Get the last signature for this tool
+        tool_history = self.tool_interactions.get(tool_name, [])
+        if not tool_history:
+            return False
+
+        last_tool_signature = tool_history[-1]
+
+        if self._last_signature is None:
+            return False
+
+        # Check if this exact signature is being repeated
         stuck = (
-            tool_name == self._last_tool
+            last_tool_signature == self._last_signature
             and self._consecutive_count >= self.consecutive_threshold
         )
+
         if self.debug and stuck:
             logger.info(
                 f"[LoopDetector] Tool '{tool_name}' is stuck due to "
-                f"{self._consecutive_count} consecutive calls."
+                f"{self._consecutive_count} consecutive identical calls."
             )
         return stuck
 
     def _has_tool_pattern_loop(self, tool_name: str) -> bool:
-        """Detect repeating patterns for a tool."""
-        interactions = list(self.tool_interactions.get(tool_name, []))
-        if len(interactions) < 2 or not self.pattern_detection:
+        """
+        Detect repeating patterns for a tool.
+
+        A pattern is considered a loop only if it repeats pattern_repetition_threshold times.
+        For example, with threshold=2 and pattern_length=2:
+        - [A, B, A, B, A, B] is a loop (pattern [A,B] repeats 3 times >= 2)
+        - [A, B, A, B] is NOT a loop (pattern [A,B] repeats only 2 times, need 3+ for threshold 2)
+        """
+
+        if not tool_name or not self.pattern_detection:
             return False
-        for pattern_len in range(
-            1, min(self.max_pattern_length + 1, len(interactions) // 2 + 1)
-        ):
+
+        interactions = list(self.tool_interactions.get(tool_name, []))
+
+        min_required = 4  # At minimum need 4 interactions
+        if len(interactions) < min_required:
+            return False
+
+        # ensure we don't exceed available data
+        max_checkable_pattern = min(
+            self.max_pattern_length,
+            len(interactions) // (self.pattern_repetition_threshold + 1),
+        )
+
+        if max_checkable_pattern < 1:
+            return False
+
+        for pattern_len in range(1, max_checkable_pattern + 1):
+            # Check if pattern repeats enough times
+            required_length = pattern_len * (self.pattern_repetition_threshold + 1)
+
+            if len(interactions) < required_length:
+                continue
+
+            # Extract the pattern and check if it repeats
             pattern = interactions[-pattern_len:]
-            prev_pattern = interactions[-2 * pattern_len : -pattern_len]
-            if pattern == prev_pattern:
+            is_loop = True
+
+            # Check pattern_repetition_threshold number of previous occurrences
+            for i in range(1, self.pattern_repetition_threshold + 1):
+                start_idx = -(i + 1) * pattern_len
+                end_idx = -i * pattern_len if i > 0 else None
+                prev_pattern = interactions[start_idx:end_idx]
+
+                if len(prev_pattern) != pattern_len or prev_pattern != pattern:
+                    is_loop = False
+                    break
+
+            if is_loop:
                 if self.debug:
                     logger.info(
-                        f"[LoopDetector] Tool '{tool_name}' has repeating pattern: {pattern_len} steps."
+                        f"[LoopDetector] Tool '{tool_name}' has repeating pattern: "
+                        f"{pattern_len} steps repeated {self.pattern_repetition_threshold + 1} times."
                     )
                 return True
+
         return False
 
     def is_looping(self, tool_name: str | None = None) -> bool:
-        """Check if a tool or global state is looping."""
-        if tool_name:
+        """
+        Check if a tool or global state is looping.
+
+        Edge cases handled:
+        - Empty/None tool_name when checking specific tool
+        - No interactions recorded yet
+        - Empty tool_interactions dict
+        """
+        if tool_name is not None:
+            if not tool_name or not tool_name.strip():
+                return False
             return self._is_tool_stuck_consecutive(
                 tool_name
             ) or self._has_tool_pattern_loop(tool_name)
-        # Global: check all tools
+
+        if not self.tool_interactions:
+            return False
+
         return any(
             self._is_tool_stuck_consecutive(name) or self._has_tool_pattern_loop(name)
             for name in self.tool_interactions.keys()
         )
 
     def get_loop_type(self, tool_name: str | None = None) -> list[str]:
-        """Get detailed loop type for a tool."""
+        """
+        Get detailed loop type for a tool.
+
+        Edge cases handled:
+        - None/empty tool_name
+        - No loops detected (returns empty list)
+        - Tools with no history
+        """
         types = []
-        if tool_name:
+
+        if tool_name is not None:
+            if not tool_name or not tool_name.strip():
+                return types
+
             if self._is_tool_stuck_consecutive(tool_name):
                 types.append("consecutive_calls")
             if self._has_tool_pattern_loop(tool_name):
                 types.append("repeating_pattern")
         else:
+            if not self.tool_interactions:
+                return types
+
             for name in self.tool_interactions.keys():
                 if self._is_tool_stuck_consecutive(name):
                     types.append(f"{name}: consecutive_calls")
                 if self._has_tool_pattern_loop(name):
                     types.append(f"{name}: repeating_pattern")
+
         return types
+
+
+def normalize_content(content: any) -> str:
+    """Ensure message content is always a string."""
+    if isinstance(content, str):
+        return content
+    try:
+        # convert dicts/lists cleanly to JSON string
+        return json.dumps(content, ensure_ascii=False)
+    except Exception:
+        # fallback to str() for objects or errors
+        return str(content)
 
 
 def strip_comprehensive_narrative(text):
