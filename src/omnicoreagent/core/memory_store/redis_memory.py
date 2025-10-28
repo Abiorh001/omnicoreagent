@@ -370,33 +370,29 @@ class RedisMemoryStore(AbstractMemoryStore):
     async def clear_memory(
         self, session_id: str = None, agent_name: str = None
     ) -> None:
-        """Clear memory from Redis with optimized operations.
+        """Clear memory in Redis efficiently.
 
         Args:
-            session_id: Session ID to clear (if None, clear all)
-            agent_name: Optional agent name filter
+            session_id: Specific session to clear (if None, all sessions)
+            agent_name: Specific agent to clear (if None, all messages)
         """
         client = None
         try:
             client = await self._get_client()
 
             if session_id and agent_name:
-                # Clear messages for specific agent in specific session
                 await self._clear_agent_from_session(client, session_id, agent_name)
 
             elif session_id:
-                # Clear all messages for specific session
-                key = f"mcp_memory:{session_id}"
+                key = f"omnicoreagent_memory:{session_id}"
                 await client.delete(key)
-                logger.debug(f"Cleared memory for session {session_id}")
+                logger.debug(f"Cleared all memory for session {session_id}")
 
             elif agent_name:
-                # Clear messages for specific agent across all sessions
                 await self._clear_agent_across_sessions(client, agent_name)
 
             else:
-                # Clear all memory - get all keys and delete them
-                pattern = "mcp_memory:*"
+                pattern = "omnicoreagent_memory:*"
                 keys = await client.keys(pattern)
                 if keys:
                     await client.delete(*keys)
@@ -411,38 +407,27 @@ class RedisMemoryStore(AbstractMemoryStore):
     async def _clear_agent_from_session(
         self, client: redis.Redis, session_id: str, agent_name: str
     ) -> None:
-        """Efficiently clear messages for a specific agent from a session."""
-        key = f"mcp_memory:{session_id}"
-        messages = await client.zrange(key, 0, -1, withscores=True)
+        """Clear messages for a specific agent from a session efficiently."""
+        key = f"omnicoreagent_memory:{session_id}"
+        messages = await client.zrange(key, 0, -1)
 
         if not messages:
             logger.debug(f"No messages found for session {session_id}")
             return
 
-        # Parse messages and filter out the target agent
-        to_remove = []
-        to_keep = []
-
-        for msg_json, score in messages:
-            try:
-                msg_data = json.loads(msg_json)
-                if msg_data.get("msg_metadata", {}).get("agent_name") == agent_name:
-                    to_remove.append(msg_json)
-                else:
-                    to_keep.append((msg_json, score))
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse message JSON: {msg_json}")
-                continue
+        # Remove only messages for the target agent
+        to_remove = [
+            msg_json
+            for msg_json in messages
+            if json.loads(msg_json).get("msg_metadata", {}).get("agent_name")
+            == agent_name
+        ]
 
         if to_remove:
-            # Remove specific messages by their JSON content
-            await client.zrem(key, *to_remove)
-
-            # Re-add the kept messages (this is still necessary for Redis sorted sets)
-            if to_keep:
-                for msg_json, score in to_keep:
-                    await client.zadd(key, {msg_json: score})
-
+            async with client.pipeline(transaction=False) as pipe:
+                for msg in to_remove:
+                    pipe.zrem(key, msg)
+                await pipe.execute()
             logger.debug(
                 f"Cleared {len(to_remove)} messages for agent {agent_name} in session {session_id}"
             )
@@ -454,8 +439,8 @@ class RedisMemoryStore(AbstractMemoryStore):
     async def _clear_agent_across_sessions(
         self, client: redis.Redis, agent_name: str
     ) -> None:
-        """Efficiently clear messages for a specific agent across all sessions."""
-        pattern = "mcp_memory:*"
+        """Clear messages for a specific agent across all sessions efficiently."""
+        pattern = "omnicoreagent_memory:*"
         keys = await client.keys(pattern)
 
         if not keys:
@@ -464,32 +449,22 @@ class RedisMemoryStore(AbstractMemoryStore):
 
         total_removed = 0
         for key in keys:
-            messages = await client.zrange(key, 0, -1, withscores=True)
-
+            messages = await client.zrange(key, 0, -1)
             if not messages:
                 continue
 
-            # Parse and filter messages for this session
-            to_remove = []
-            to_keep = []
-
-            for msg_json, score in messages:
-                try:
-                    msg_data = json.loads(msg_json)
-                    if msg_data.get("msg_metadata", {}).get("agent_name") == agent_name:
-                        to_remove.append(msg_json)
-                    else:
-                        to_keep.append((msg_json, score))
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse message JSON: {msg_json}")
-                    continue
+            to_remove = [
+                msg_json
+                for msg_json in messages
+                if json.loads(msg_json).get("msg_metadata", {}).get("agent_name")
+                == agent_name
+            ]
 
             if to_remove:
-                # Remove specific messages and re-add kept ones
-                await client.zrem(key, *to_remove)
-                if to_keep:
-                    for msg_json, score in to_keep:
-                        await client.zadd(key, {msg_json: score})
+                async with client.pipeline(transaction=False) as pipe:
+                    for msg in to_remove:
+                        pipe.zrem(key, msg)
+                    await pipe.execute()
 
                 total_removed += len(to_remove)
                 logger.debug(

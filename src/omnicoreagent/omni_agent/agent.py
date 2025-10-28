@@ -17,6 +17,7 @@ from omnicoreagent.omni_agent.prompts.prompt_builder import OmniAgentPromptBuild
 from omnicoreagent.omni_agent.prompts.react_suffix import SYSTEM_SUFFIX
 from omnicoreagent.core.events.event_router import EventRouter
 from omnicoreagent.core.tools.semantic_tools import SemanticToolManager
+from omnicoreagent.core.utils import logger
 
 
 class OmniAgent:
@@ -279,12 +280,14 @@ class OmniAgent:
     async def clear_session_history(self, session_id: Optional[str] = None):
         """Clear session history for a specific session ID or all history"""
         if not self.memory_router:
+            logger.info("no memoory router")
             return
 
         if session_id:
             await self.memory_router.clear_memory(
                 session_id=session_id, agent_name=self.name
             )
+            logger.info("memory cleared")
         else:
             await self.memory_router.clear_memory(agent_name=self.name)
 
@@ -308,7 +311,7 @@ class OmniAgent:
         """Get information about the current event store."""
         return self.event_router.get_event_store_info()
 
-    def switch_event_store(self, event_store_type: str):
+    async def switch_event_store(self, event_store_type: str):
         """Switch to a different event store type."""
         self.event_router.switch_event_store(event_store_type)
 
@@ -316,7 +319,7 @@ class OmniAgent:
         """Get the current memory store type."""
         return self.memory_router.memory_store_type
 
-    def swith_memory_store(self, memory_store_type: str):
+    async def swith_memory_store(self, memory_store_type: str):
         """Switch to a different memory store type."""
         self.memory_router.swith_memory_store(memory_store_type)
 
@@ -326,9 +329,9 @@ class OmniAgent:
             await self.mcp_client.cleanup()
 
         # Clean up config files
-        self._cleanup_config()
+        await self._cleanup_config()
 
-    def _cleanup_config(self):
+    async def _cleanup_config(self):
         """Clean up the agent-specific config file"""
         try:
             # Only clean up this agent's specific config file
