@@ -2,7 +2,9 @@
 APScheduler backend for background task scheduling.
 """
 
-from apscheduler.schedulers.background import BackgroundScheduler
+# from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import asyncio
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 from typing import Any, Callable, Dict, Union, Optional
@@ -14,7 +16,7 @@ class APSchedulerBackend(BackgroundTaskScheduler):
     """APScheduler-based background task scheduler."""
 
     def __init__(self):
-        self.scheduler = BackgroundScheduler()
+        self.scheduler = AsyncIOScheduler()
         self._running = False
 
     def schedule_task(
@@ -28,6 +30,8 @@ class APSchedulerBackend(BackgroundTaskScheduler):
             task_fn: Function to execute
             **kwargs: Additional arguments for the task function
         """
+        if not asyncio.iscoroutinefunction(task_fn):
+            raise ValueError("task_fn must be an async function for AsyncIOScheduler")
         try:
             if isinstance(interval, int):
                 # Use interval trigger

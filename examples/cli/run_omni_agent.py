@@ -1242,7 +1242,7 @@ Provide clear, supportive, and context-aware responses that help learners grow.
             print(f"\n🚀 Creating BackgroundOmniAgent: {config['agent_id']}")
             print("⏳ Please wait...")
 
-            result = self.background_manager.create_agent(config)
+            result = await self.background_manager.create_agent(config)
 
             print("✅ BackgroundOmniAgent created successfully!")
             print("=" * 50)

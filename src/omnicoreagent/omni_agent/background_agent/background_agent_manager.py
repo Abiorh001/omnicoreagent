@@ -98,10 +98,10 @@ class BackgroundAgentManager:
                 logger.info(
                     "Auto-starting BackgroundAgentManager for immediate scheduling"
                 )
-                self.start()
+                await self.start()
 
             # Register task in scheduler (now manager is guaranteed to be running)
-            self._schedule_agent(agent_id, agent)
+            await self._schedule_agent(agent_id, agent)
 
             # Get event streaming information using agent's method
             event_stream_info = agent.get_event_stream_info()
@@ -123,7 +123,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to create agent: {e}")
             raise
 
-    def register_task(self, agent_id: str, task_config: Dict[str, Any]) -> bool:
+    async def register_task(self, agent_id: str, task_config: Dict[str, Any]) -> bool:
         """
         Register a task for an existing agent.
 
@@ -151,11 +151,13 @@ class BackgroundAgentManager:
             logger.error(f"Failed to register task for agent {agent_id}: {e}")
             return False
 
-    def get_task_config(self, agent_id: str) -> Optional[Dict[str, Any]]:
+    async def get_task_config(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get task configuration for an agent."""
         return self.task_registry.get(agent_id)
 
-    def update_task_config(self, agent_id: str, task_config: Dict[str, Any]) -> bool:
+    async def update_task_config(
+        self, agent_id: str, task_config: Dict[str, Any]
+    ) -> bool:
         """Update task configuration for an agent."""
         try:
             self.task_registry.update(agent_id, task_config)
@@ -172,7 +174,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to update task for agent {agent_id}: {e}")
             return False
 
-    def remove_task(self, agent_id: str) -> bool:
+    async def remove_task(self, agent_id: str) -> bool:
         """Remove task configuration for an agent."""
         try:
             self.task_registry.remove(agent_id)
@@ -183,38 +185,17 @@ class BackgroundAgentManager:
             logger.error(f"Failed to remove task for agent {agent_id}: {e}")
             return False
 
-    def list_tasks(self) -> List[str]:
+    async def list_tasks(self) -> List[str]:
         """List all registered task agent IDs."""
         return self.task_registry.get_agent_ids()
 
-    def _schedule_agent(self, agent_id: str, agent: BackgroundOmniAgent):
+    async def _schedule_agent(self, agent_id: str, agent: BackgroundOmniAgent):
         """Schedule an agent for execution."""
         try:
-            # Create a wrapper function to handle the async run_task method
-            def run_agent_task(**kwargs):
-                """Wrapper to run the async agent task in a new event loop."""
-                import asyncio
-
-                try:
-                    # Create a new event loop for this task
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
-                    # Run the async task
-                    loop.run_until_complete(agent.run_task())
-
-                except Exception as e:
-                    logger.error(f"Error in scheduled task for agent {agent_id}: {e}")
-                finally:
-                    # Clean up the event loop
-                    if loop and not loop.is_closed():
-                        loop.close()
-
-            # Schedule the agent task
             self.scheduler.schedule_task(
                 agent_id=agent_id,
                 interval=agent.interval,
-                task_fn=run_agent_task,
+                task_fn=agent.run_task,
                 max_instances=1,
             )
             logger.info(f"Scheduled agent {agent_id} with interval {agent.interval}s")
@@ -223,7 +204,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to schedule agent {agent_id}: {e}")
             raise
 
-    def start(self):
+    async def start(self):
         """Start the manager and all agents."""
         try:
             if self.is_running:
@@ -235,7 +216,7 @@ class BackgroundAgentManager:
 
             # Schedule all existing agents
             for agent_id, agent in self.agents.items():
-                self._schedule_agent(agent_id, agent)
+                await self._schedule_agent(agent_id, agent)
 
             self.is_running = True
             logger.info("BackgroundAgentManager started successfully")
@@ -244,7 +225,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to start manager: {e}")
             raise
 
-    def shutdown(self):
+    async def shutdown(self):
         """Shutdown the manager and all agents."""
         try:
             if not self.is_running:
@@ -269,7 +250,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to shutdown manager: {e}")
             raise
 
-    def get_agent_status(self, agent_id: str) -> Optional[Dict[str, Any]]:
+    async def get_agent_status(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a specific agent."""
         if agent_id not in self.agents:
             return None
@@ -292,7 +273,7 @@ class BackgroundAgentManager:
 
         return status
 
-    def get_manager_status(self) -> Dict[str, Any]:
+    async def get_manager_status(self) -> Dict[str, Any]:
         """Get overall manager status."""
         agent_statuses = {}
         running_count = 0
@@ -321,11 +302,11 @@ class BackgroundAgentManager:
             "scheduler_running": self.scheduler.is_running(),
         }
 
-    def list_agents(self) -> List[str]:
+    async def list_agents(self) -> List[str]:
         """List all agent IDs."""
         return list(self.agents.keys())
 
-    def pause_agent(self, agent_id: str):
+    async def pause_agent(self, agent_id: str):
         """Pause an agent (remove from scheduler)."""
         if agent_id not in self.agents:
             raise ValueError(f"Agent {agent_id} not found")
@@ -338,21 +319,21 @@ class BackgroundAgentManager:
             logger.error(f"Failed to pause agent {agent_id}: {e}")
             raise
 
-    def resume_agent(self, agent_id: str):
+    async def resume_agent(self, agent_id: str):
         """Resume an agent (add back to scheduler)."""
         if agent_id not in self.agents:
             raise ValueError(f"Agent {agent_id} not found")
 
         try:
             agent = self.agents[agent_id]
-            self._schedule_agent(agent_id, agent)
+            await self._schedule_agent(agent_id, agent)
             logger.info(f"Resumed agent {agent_id}")
 
         except Exception as e:
             logger.error(f"Failed to resume agent {agent_id}: {e}")
             raise
 
-    def stop_agent(self, agent_id: str):
+    async def stop_agent(self, agent_id: str):
         """Stop a specific agent: unschedule and cleanup its resources."""
         if agent_id not in self.agents:
             raise ValueError(f"Agent {agent_id} not found")
@@ -371,7 +352,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to stop agent {agent_id}: {e}")
             raise
 
-    def start_agent(self, agent_id: str):
+    async def start_agent(self, agent_id: str):
         """Start (schedule) a specific agent. Ensures manager/scheduler is running."""
         if agent_id not in self.agents:
             raise ValueError(f"Agent {agent_id} not found")
@@ -385,7 +366,7 @@ class BackgroundAgentManager:
             # Remove any previous schedule to avoid duplication
             if self.scheduler.is_task_scheduled(agent_id):
                 self.scheduler.remove_task(agent_id)
-            self._schedule_agent(agent_id, agent)
+            await self._schedule_agent(agent_id, agent)
             logger.info(f"Started (scheduled) agent {agent_id}")
 
         except Exception as e:
@@ -407,7 +388,7 @@ class BackgroundAgentManager:
             # Re-schedule if manager is running
             if self.is_running:
                 self.scheduler.remove_task(agent_id)
-                self._schedule_agent(agent_id, agent)
+                await self._schedule_agent(agent_id, agent)
 
             logger.info(f"Updated configuration for agent {agent_id}")
 
@@ -415,7 +396,7 @@ class BackgroundAgentManager:
             logger.error(f"Failed to update agent {agent_id} config: {e}")
             raise
 
-    def delete_agent(self, agent_id: str):
+    async def delete_agent(self, agent_id: str):
         """Delete an agent."""
         if agent_id not in self.agents:
             raise ValueError(f"Agent {agent_id} not found")

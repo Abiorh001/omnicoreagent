@@ -2,6 +2,8 @@ from pathlib import Path
 import urllib.parse
 from filelock import FileLock
 from omnicoreagent.core.tools.memory_tool.base import AbstractMemoryBackend
+import json
+from typing import Any
 
 
 class LocalMemoryBackend(AbstractMemoryBackend):
@@ -24,8 +26,13 @@ class LocalMemoryBackend(AbstractMemoryBackend):
         if not path or path.strip() == "":
             return self.base_dir
 
-        decoded = urllib.parse.unquote(path)
-        candidate = (self.base_dir / decoded.lstrip("/")).resolve()
+        decoded = urllib.parse.unquote(path).strip()
+
+        if decoded.startswith("memories/"):
+            decoded = decoded[len("memories/") :]
+        decoded = decoded.lstrip("/")
+
+        candidate = (self.base_dir / decoded).resolve()
 
         try:
             candidate.relative_to(self.base_dir)
@@ -81,7 +88,16 @@ class LocalMemoryBackend(AbstractMemoryBackend):
         else:
             return f"Path not found: {path}\nBase directory: {self.base_dir}\nCurrent contents:\n{self._describe_dir()}"
 
-    def create_update(self, path: str, file_text: str, mode: str = "create") -> str:
+    def create_update(self, path: str, file_text: Any, mode: str = "create") -> str:
+        if isinstance(file_text, str):
+            content = file_text
+        elif isinstance(file_text, list):
+            content = "\n".join(str(item) for item in file_text)
+        elif isinstance(file_text, dict):
+            content = json.dumps(file_text, indent=2)
+        else:
+            content = str(file_text)
+
         try:
             abs_path = self._resolve_path(path)
         except ValueError as e:
@@ -100,7 +116,7 @@ class LocalMemoryBackend(AbstractMemoryBackend):
                     f"--- Preview (first 5 lines) ---\n{preview}\n"
                     "Use mode='append' or mode='overwrite'."
                 )
-            self._write_atomic(abs_path, file_text)
+            self._write_atomic(abs_path, content)
             return f"New file created: {abs_path}"
 
         elif mode == "append":
@@ -108,13 +124,13 @@ class LocalMemoryBackend(AbstractMemoryBackend):
                 return (
                     f"Cannot append: File not found at {abs_path}\nUse mode='create'."
                 )
-            self._append_atomic(abs_path, file_text)
+            self._append_atomic(abs_path, content)
             return f"Appended text to {abs_path}"
 
         elif mode == "overwrite":
             if not abs_path.exists():
                 return f"Cannot overwrite: File not found at {abs_path}\nUse mode='create'."
-            self._write_atomic(abs_path, file_text)
+            self._write_atomic(abs_path, content)
             return f"File overwritten: {abs_path}"
 
         else:
