@@ -415,13 +415,15 @@ class RedisMemoryStore(AbstractMemoryStore):
             logger.debug(f"No messages found for session {session_id}")
             return
 
-        # Remove only messages for the target agent
-        to_remove = [
-            msg_json
-            for msg_json in messages
-            if json.loads(msg_json).get("msg_metadata", {}).get("agent_name")
-            == agent_name
-        ]
+        to_remove = []
+        for msg_json in messages:
+            try:
+                msg_data = json.loads(msg_json)
+                if msg_data.get("msg_metadata", {}).get("agent_name") == agent_name:
+                    to_remove.append(msg_json)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse message JSON: {msg_json}")
+                continue
 
         if to_remove:
             async with client.pipeline(transaction=False) as pipe:
@@ -448,17 +450,21 @@ class RedisMemoryStore(AbstractMemoryStore):
             return
 
         total_removed = 0
+
         for key in keys:
             messages = await client.zrange(key, 0, -1)
             if not messages:
                 continue
 
-            to_remove = [
-                msg_json
-                for msg_json in messages
-                if json.loads(msg_json).get("msg_metadata", {}).get("agent_name")
-                == agent_name
-            ]
+            to_remove = []
+            for msg_json in messages:
+                try:
+                    msg_data = json.loads(msg_json)
+                    if msg_data.get("msg_metadata", {}).get("agent_name") == agent_name:
+                        to_remove.append(msg_json)
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse message JSON in {key}: {msg_json}")
+                    continue
 
             if to_remove:
                 async with client.pipeline(transaction=False) as pipe:
