@@ -35,13 +35,12 @@ class SequentialAgent:
             raise RuntimeError(
                 "SequentialAgent must be initialized Call `await <your_instance>.initialize()` before using it"
             )
-        # check if initial_task is not addedd we default to use its sytem instruction directly
+
         if not initial_task:
             initial_task = self.DEFAULT_TASK
         current_input = initial_task
         final_output: dict = {}
 
-        # generate session id if None
         if not session_id:
             session_id = str(uuid.uuid4())
 
@@ -52,11 +51,10 @@ class SequentialAgent:
             retry_count = 0
             while retry_count < self.max_retries:
                 try:
-                    # Run the agent
                     final_output = await agent_service.run(
                         query=current_input, session_id=session_id
                     )
-                    # success, exit retry loop
+
                     break
 
                 except Exception as exc:
@@ -75,7 +73,6 @@ class SequentialAgent:
                             "error": str(exc),
                         }
 
-            # Prepare input for next agent
             current_input = self._extract_output(final_output)
 
         return final_output

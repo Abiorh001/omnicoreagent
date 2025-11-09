@@ -30,7 +30,6 @@ class RouterAgent:
         if not sub_agents:
             raise ValueError("RouterAgent requires at least one sub-agent")
 
-        # Map subagents by name
         self.sub_agents = {
             getattr(a, "name", f"Agent_{i + 1}"): a for i, a in enumerate(sub_agents)
         }
@@ -60,7 +59,6 @@ class RouterAgent:
                     logger.warning(f"{agent.name}: MCP connection failed: {exc}")
             await self.create_agent_capabilities_registry(agent=agent)
 
-        # check the router agent if None
         if not self.router_agent:
             system_instruction = self._build_router_system_instruction()
             self.router_agent = OmniAgent(
@@ -167,7 +165,6 @@ class RouterAgent:
         while retry_count < self.max_retries:
             parsed_response = await self._route_with_llm(query, session_id)
 
-            # Parse XML
             match_agent = re.search(r"<agent>(.*?)</agent>", parsed_response, re.DOTALL)
             match_task = re.search(r"<task>(.*?)</task>", parsed_response, re.DOTALL)
 
@@ -184,7 +181,6 @@ class RouterAgent:
                 f"RouterAgent: Invalid routing decision, retry {retry_count}/{self.max_retries}"
             )
 
-            # Build corrective query for RouterAgent
             available_agents = "\n".join(
                 f"<agent>{name}</agent>: {capabilities}"
                 for name, capabilities in self.agent_registry.items()
@@ -202,7 +198,6 @@ class RouterAgent:
                 "response": task,
             }
 
-        # Run the selected agent safely
         return await self._run_single_agent(chosen_agent, query, session_id)
 
     async def _run_single_agent(
@@ -219,7 +214,6 @@ class RouterAgent:
                     agent.run(query=query, session_id=session_id)
                 )
 
-                # Ensure minimum fields always exist
                 final_output.setdefault("agent_name", agent_name)
                 final_output.setdefault("session_id", session_id)
                 final_output.setdefault("response", "")
@@ -233,7 +227,6 @@ class RouterAgent:
                 )
 
                 if retry_count >= self.max_retries:
-                    # Return a consistent fallback dict
                     final_output = {
                         "agent_name": agent_name,
                         "session_id": session_id,

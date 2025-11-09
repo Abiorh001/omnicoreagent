@@ -93,6 +93,8 @@ class ConfigTransformer:
             "ollama": "ollama",
             "azure": "azure",
             "gemini": "gemini",
+            "deepseek": "deepseek",
+            "mistral": "mistral",
         }
 
         self.supported_embedding_providers = {
@@ -134,7 +136,6 @@ class ConfigTransformer:
             Internal configuration dictionary
         """
         try:
-            # Convert to dataclasses if needed
             model = self._ensure_model_config(model_config)
             tools = [self._ensure_tool_config(tool) for tool in mcp_tools]
             agent = (
@@ -148,13 +149,11 @@ class ConfigTransformer:
                 else None
             )
 
-            # Validate configurations
             self._validate_model_config(model)
             self._validate_tools_config(tools)
             if embedding:
                 self._validate_embedding_config(embedding)
 
-            # Check if vector database is enabled and require embedding configuration
             ENABLE_VECTOR_DB = config("ENABLE_VECTOR_DB", default=False, cast=bool)
             if ENABLE_VECTOR_DB and not embedding:
                 raise ValueError(
@@ -166,14 +165,12 @@ class ConfigTransformer:
                     "Vector database validation passed: embedding configuration provided"
                 )
 
-            # Transform to internal format
             internal_config = {
                 "AgentConfig": asdict(agent),
                 "LLM": self._transform_model_config(model),
                 "mcpServers": self._transform_tools_config(tools),
             }
 
-            # Add EMBEDDING if provided
             if embedding:
                 internal_config["EMBEDDING"] = self._transform_embedding_config(
                     embedding
@@ -216,7 +213,6 @@ class ConfigTransformer:
     ) -> AgentConfig:
         """Ensure agent config is an AgentConfig instance"""
         if isinstance(config, dict):
-            # Filter out None values for limits to use defaults
             filtered_config = config.copy()
             if filtered_config.get("request_limit") is None:
                 filtered_config.pop("request_limit", None)
@@ -273,7 +269,6 @@ class ConfigTransformer:
                     f"Unsupported transport type: {tool.transport_type}. Supported: {supported}"
                 )
 
-            # Validate transport-specific requirements
             self._validate_tool_transport(tool)
 
     def _validate_tool_transport(self, tool: MCPToolConfig):
@@ -323,7 +318,6 @@ class ConfigTransformer:
         if not config.model:
             raise ValueError("Embedding model name is required")
 
-        # Dimensions is MANDATORY for vector database compatibility
         if config.dimensions is None:
             raise ValueError(
                 "Embedding dimensions is REQUIRED and cannot be None. This is needed for vector database index creation."
@@ -378,7 +372,6 @@ class ConfigTransformer:
         }
 
         if tool.headers:
-            # ensure its dict
             if not isinstance(tool.headers, dict):
                 raise ValueError("headers must be a dictionary")
             config["headers"] = tool.headers
@@ -416,5 +409,4 @@ class ConfigTransformer:
             raise
 
 
-# Global transformer instance
 config_transformer = ConfigTransformer()

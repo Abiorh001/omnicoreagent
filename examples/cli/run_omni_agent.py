@@ -777,10 +777,10 @@ Always use the most relevant tool when storing, retrieving, or adapting knowledg
 Provide clear, supportive, and context-aware responses that help learners grow.
 """,
             model_config={
-                "provider": "openai",
-                "model": "gpt-4.1",
+                "provider": "mistral",
+                "model": "magistral-medium-2509",
                 "temperature": 0.3,
-                "max_context_length": 5000,
+                "max_context_length": 1000,
             },
             mcp_tools=MCP_TOOLS,
             local_tools=tool_registry,

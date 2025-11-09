@@ -196,6 +196,7 @@ class LLMConnection:
                 "gemini": f"gemini/{model}",
                 "azure": f"azure/{model}",
                 "ollama": f"ollama/{model}",
+                "mistral": f"mistral/{model}",
             }
 
             provider_key = (
@@ -480,6 +481,8 @@ class LLMConnection:
             os.environ["ANTHROPIC_API_KEY"] = api_key
         elif provider == "groq":
             os.environ["GROQ_API_KEY"] = api_key
+        elif provider == "mistral":
+            os.environ["MISTRAL_API_KEY"] = api_key
         elif provider == "gemini":
             os.environ["GEMINI_API_KEY"] = api_key
         elif provider == "deepseek":
