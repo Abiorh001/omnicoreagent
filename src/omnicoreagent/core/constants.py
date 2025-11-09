@@ -8,6 +8,7 @@ TOOL_ACCEPTING_PROVIDERS = {
     "deepseek",
     "azureopenai",
     "anthropic",
+    "mistral",
 }
 
 AGENTS_REGISTRY = {}

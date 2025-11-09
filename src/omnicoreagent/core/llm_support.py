@@ -8,11 +8,11 @@ class LLMToolSupport:
     MODEL_TOOL_SUPPORT = {
         "openai": {
             "provider": "openai",
-            "models": None,  # None means all models support tools
+            "models": None,
         },
         "groq": {
             "provider": "groq",
-            "models": None,  # None means all models support tools
+            "models": None,
         },
         "openrouter": {
             "provider": "openrouter",
@@ -20,19 +20,23 @@ class LLMToolSupport:
         },
         "gemini": {
             "provider": "gemini",
-            "models": None,  # None means all models support tools
+            "models": None,
         },
         "deepseek": {
             "provider": "deepseek",
-            "models": None,  # None means all models support tools
+            "models": None,
         },
         "azureopenai": {
             "provider": "azureopenai",
-            "models": None,  # None means all models support tools
+            "models": None,
         },
         "anthropic": {
             "provider": "anthropic",
-            "models": None,  # None means all models support tools
+            "models": None,
+        },
+        "mistral": {
+            "provider": "mistral",
+            "models": None,
         },
     }
 
